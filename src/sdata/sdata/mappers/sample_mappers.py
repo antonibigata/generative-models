@@ -168,8 +168,8 @@ class ToSVDFormat(AbstractMapper):
         sample["cond_aug"] = cond_noise
         sample["motion_bucket_id"] = torch.tensor([self.motion_id])
         sample["fps_id"] = torch.tensor([self.fps])
-        sample["num_video_frames"] = self.n_frames - 1
-        sample["image_only_indicator"] = torch.zeros(self.n_frames - 1)
+        sample["num_video_frames"] = self.n_frames
+        sample["image_only_indicator"] = torch.zeros(self.n_frames)
         return sample
 
 
