@@ -91,7 +91,7 @@ class LinearPredictionGuider(Guider):
         c_out = dict()
 
         for k in c:
-            if k in ["vector", "crossattn", "concat"] + self.additional_cond_keys:
+            if k in ["vector", "crossattn", "concat", "audio_emb"] + self.additional_cond_keys:
                 c_out[k] = torch.cat((uc[k], c[k]), 0)
             else:
                 assert c[k] == uc[k]

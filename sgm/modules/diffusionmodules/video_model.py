@@ -1,12 +1,13 @@
 from functools import partial
 from typing import List, Optional, Union
 
-from einops import rearrange
+from einops import rearrange, repeat
 
 from ...modules.diffusionmodules.openaimodel import *
 from ...modules.video_attention import SpatialVideoTransformer
 from ...util import default
 from .util import AlphaBlender
+from .adapters.scedit import SCEAdapter
 
 
 class VideoResBlock(ResBlock):
@@ -71,12 +72,8 @@ class VideoResBlock(ResBlock):
         x_mix = rearrange(x, "(b t) c h w -> b c t h w", t=num_video_frames)
         x = rearrange(x, "(b t) c h w -> b c t h w", t=num_video_frames)
 
-        x = self.time_stack(
-            x, rearrange(emb, "(b t) ... -> b t ...", t=num_video_frames)
-        )
-        x = self.time_mixer(
-            x_spatial=x_mix, x_temporal=x, image_only_indicator=image_only_indicator
-        )
+        x = self.time_stack(x, rearrange(emb, "(b t) ... -> b t ...", t=num_video_frames))
+        x = self.time_mixer(x_spatial=x_mix, x_temporal=x, image_only_indicator=image_only_indicator)
         x = rearrange(x, "b c t h w -> (b t) c h w")
         return x
 
@@ -115,6 +112,8 @@ class VideoUNet(nn.Module):
         adm_in_channels: Optional[int] = None,
         disable_temporal_crossattention: bool = False,
         max_ddpm_temb_period: int = 10000,
+        fine_tuning_method: str = None,
+        adapter_kwargs: Optional[dict] = {},
     ):
         super().__init__()
         assert context_dim is not None
@@ -128,14 +127,21 @@ class VideoUNet(nn.Module):
         if num_head_channels == -1:
             assert num_heads != -1
 
+        self.adapter = None
+        if fine_tuning_method == "sctuner":
+            self.adapter = nn.ModuleList([])
+            down_ratio = 1
+            if "down_ratio" in adapter_kwargs:
+                down_ratio = adapter_kwargs["down_ratio"]
+                del adapter_kwargs["down_ratio"]
+            sctuner_module = partial(SCEAdapter, **adapter_kwargs)
+
         self.in_channels = in_channels
         self.model_channels = model_channels
         self.out_channels = out_channels
         if isinstance(transformer_depth, int):
             transformer_depth = len(channel_mult) * [transformer_depth]
-        transformer_depth_middle = default(
-            transformer_depth_middle, transformer_depth[-1]
-        )
+        transformer_depth_middle = default(transformer_depth_middle, transformer_depth[-1])
 
         self.num_res_blocks = num_res_blocks
         self.attention_resolutions = attention_resolutions
@@ -184,11 +190,7 @@ class VideoUNet(nn.Module):
                 raise ValueError()
 
         self.input_blocks = nn.ModuleList(
-            [
-                TimestepEmbedSequential(
-                    conv_nd(dims, in_channels, model_channels, 3, padding=1)
-                )
-            ]
+            [TimestepEmbedSequential(conv_nd(dims, in_channels, model_channels, 3, padding=1))]
         )
         self._feature_size = model_channels
         input_block_chans = [model_channels]
@@ -370,6 +372,13 @@ class VideoUNet(nn.Module):
         for level, mult in list(enumerate(channel_mult))[::-1]:
             for i in range(num_res_blocks + 1):
                 ich = input_block_chans.pop()
+                if fine_tuning_method == "sctuner":
+                    self.adapter.append(
+                        sctuner_module(
+                            dim=ich,
+                            adapter_length=ich // down_ratio,
+                        )
+                    )
                 layers = [
                     get_resblock(
                         merge_factor=merge_factor,
@@ -439,12 +448,31 @@ class VideoUNet(nn.Module):
             zero_module(conv_nd(dims, model_channels, out_channels, 3, padding=1)),
         )
 
+        if fine_tuning_method is not None:
+            # Freeze everything except the adapter
+            for param in self.parameters():
+                param.requires_grad = False
+            for param in self.adapter.parameters():
+                param.requires_grad = True
+
+        # if freeze_network:
+        #     print("freezing network")
+        #     # Freeze everything except the last layer
+        #     for param in self.parameters():
+        #         param.requires_grad = False
+        #     for param in self.out.parameters():
+        #         param.requires_grad = True
+        # self.dum_param = nn.Parameter(th.zeros(1))
+        # print(self)
+        # exit()
+
     def forward(
         self,
         x: th.Tensor,
         timesteps: th.Tensor,
         context: Optional[th.Tensor] = None,
         y: Optional[th.Tensor] = None,
+        audio_emb: Optional[th.Tensor] = None,
         time_context: Optional[th.Tensor] = None,
         num_video_frames: Optional[int] = None,
         image_only_indicator: Optional[th.Tensor] = None,
@@ -452,6 +480,19 @@ class VideoUNet(nn.Module):
         assert (y is not None) == (
             self.num_classes is not None
         ), "must specify y if and only if the model is class-conditional -> no, relax this TODO"
+
+        if x.shape[0] != context.shape[0]:
+            num_video_frames = num_video_frames[0].item()
+            # num_frames = x.shape[2]
+            # num_video_frames = default(num_video_frames, num_frames)
+            # x = rearrange(x, "b c t h w -> (b t) c h w")
+            context = repeat(context, "b ... -> b t ...", t=num_video_frames)
+            context = rearrange(context, "b t ... -> (b t) ...", t=num_video_frames)
+            # timesteps = repeat(timesteps, "b ... -> b t ...", t=num_frames)
+            # timesteps = rearrange(timesteps, "b t ... -> (b t) ...", t=num_frames)
+            y = repeat(y, "b ... -> b t ...", t=num_video_frames)
+            y = rearrange(y, "b t ... -> (b t) ...", t=num_video_frames)
+
         hs = []
         t_emb = timestep_embedding(timesteps, self.model_channels, repeat_only=False)
         emb = self.time_embed(t_emb)
@@ -479,8 +520,11 @@ class VideoUNet(nn.Module):
             time_context=time_context,
             num_video_frames=num_video_frames,
         )
-        for module in self.output_blocks:
-            h = th.cat([h, hs.pop()], dim=1)
+        for i, module in enumerate(self.output_blocks):
+            skip_x = hs.pop()
+            if self.adapter is not None:
+                skip_x = self.adapter[i](skip_x, n_frames=num_video_frames, condition=audio_emb)
+            h = th.cat([h, skip_x], dim=1)
             h = module(
                 h,
                 emb,

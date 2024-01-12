@@ -1,0 +1,41 @@
+dataset:
+  urls:
+    # USER: adapt this path the root of your custom dataset
+    - "/data/122-2/Datasets/CREMA/webdataset/train/out-{000000..000006}.tar"
+  pipeline_config:
+    shardshuffle: 10000
+    sample_shuffle: 1000 # USER: you might wanna adapt depending on your available RAM
+
+  decoders:
+    - "video"
+  postprocessors:
+    - target: sdata.mappers.SelectTuple
+      params:
+        key: 'mp4' # USER: you might wanna adapt this for your custom dataset
+        index: 0
+    - target: sdata.mappers.ToSVDFormat
+      params:
+        key: "mp4"
+        n_frames: 14
+        resize_size: 256
+        cond_noise: [-3.0, 0.5]
+    # - target: sdata.mappers.TorchVisionImageTransforms
+    #   params:
+    #     key: 'mp4' # USER: you might wanna adapt this for your custom dataset
+    #     transforms:
+    #       - target: torchvision.transforms.Resize
+    #         params:
+    #           size: 256
+    # - target: sdata.mappers.Rescaler
+    #   params:
+    #     key: 'mp4'
+    #     isfloat: false
+
+    # - target: sdata.mappers.AddOriginalImageSizeAsTupleAndCropToSquare
+    #   params:
+    #     h_key: height # USER: you might wanna adapt this for your custom dataset
+    #     w_key: width # USER: you might wanna adapt this for your custom dataset
+
+loader:
+  batch_size: 4
+  num_workers: 6

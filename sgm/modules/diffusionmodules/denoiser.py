@@ -2,7 +2,7 @@ from typing import Dict, Union
 
 import torch
 import torch.nn as nn
-
+from einops import repeat, rearrange
 from ...util import append_dims, instantiate_from_config
 from .denoiser_scaling import DenoiserScaling
 from .discretizer import Discretization
@@ -29,14 +29,17 @@ class Denoiser(nn.Module):
         **additional_model_inputs,
     ) -> torch.Tensor:
         sigma = self.possibly_quantize_sigma(sigma)
+        if input.ndim == 5:
+            T = input.shape[2]
+            input = rearrange(input, "b c t h w -> (b t) c h w")
+            sigma = repeat(sigma, "b ... -> b t ...", t=T)
+            sigma = rearrange(sigma, "b t ... -> (b t) ...")
         sigma_shape = sigma.shape
         sigma = append_dims(sigma, input.ndim)
         c_skip, c_out, c_in, c_noise = self.scaling(sigma)
         c_noise = self.possibly_quantize_c_noise(c_noise.reshape(sigma_shape))
-        return (
-            network(input * c_in, c_noise, cond, **additional_model_inputs) * c_out
-            + input * c_skip
-        )
+        out = network(input * c_in, c_noise, cond, **additional_model_inputs)
+        return out * c_out + input * c_skip
 
 
 class DiscreteDenoiser(Denoiser):
@@ -50,9 +53,7 @@ class DiscreteDenoiser(Denoiser):
         flip: bool = True,
     ):
         super().__init__(scaling_config)
-        self.discretization: Discretization = instantiate_from_config(
-            discretization_config
-        )
+        self.discretization: Discretization = instantiate_from_config(discretization_config)
         sigmas = self.discretization(num_idx, do_append_zero=do_append_zero, flip=flip)
         self.register_buffer("sigmas", sigmas)
         self.quantize_c_noise = quantize_c_noise

@@ -10,9 +10,14 @@ from einops import rearrange
 from torch.utils.checkpoint import checkpoint
 
 from ...modules.attention import SpatialTransformer
-from ...modules.diffusionmodules.util import (avg_pool_nd, conv_nd, linear,
-                                              normalization,
-                                              timestep_embedding, zero_module)
+from ...modules.diffusionmodules.util import (
+    avg_pool_nd,
+    conv_nd,
+    linear,
+    normalization,
+    timestep_embedding,
+    zero_module,
+)
 from ...modules.video_attention import SpatialVideoTransformer
 from ...util import exists
 
@@ -32,9 +37,7 @@ class AttentionPool2d(nn.Module):
         output_dim: Optional[int] = None,
     ):
         super().__init__()
-        self.positional_embedding = nn.Parameter(
-            th.randn(embed_dim, spacial_dim**2 + 1) / embed_dim**0.5
-        )
+        self.positional_embedding = nn.Parameter(th.randn(embed_dim, spacial_dim**2 + 1) / embed_dim**0.5)
         self.qkv_proj = conv_nd(1, embed_dim, 3 * embed_dim, 1)
         self.c_proj = conv_nd(1, embed_dim, output_dim or embed_dim, 1)
         self.num_heads = embed_dim // num_heads_channels
@@ -83,9 +86,7 @@ class TimestepEmbedSequential(nn.Sequential, TimestepBlock):
         for layer in self:
             module = layer
 
-            if isinstance(module, TimestepBlock) and not isinstance(
-                module, VideoResBlock
-            ):
+            if isinstance(module, TimestepBlock) and not isinstance(module, VideoResBlock):
                 x = layer(x, emb)
             elif isinstance(module, VideoResBlock):
                 x = layer(x, emb, num_video_frames, image_only_indicator)
@@ -132,9 +133,7 @@ class Upsample(nn.Module):
         self.third_up = third_up
         self.scale_factor = scale_factor
         if use_conv:
-            self.conv = conv_nd(
-                dims, self.channels, self.out_channels, kernel_size, padding=padding
-            )
+            self.conv = conv_nd(dims, self.channels, self.out_channels, kernel_size, padding=padding)
 
     def forward(self, x: th.Tensor) -> th.Tensor:
         assert x.shape[1] == self.channels
@@ -272,9 +271,7 @@ class ResBlock(TimestepBlock):
             self.h_upd = self.x_upd = nn.Identity()
 
         self.skip_t_emb = skip_t_emb
-        self.emb_out_channels = (
-            2 * self.out_channels if use_scale_shift_norm else self.out_channels
-        )
+        self.emb_out_channels = 2 * self.out_channels if use_scale_shift_norm else self.out_channels
         if self.skip_t_emb:
             logpy.info(f"Skipping timestep embedding in {self.__class__.__name__}")
             assert not self.use_scale_shift_norm
@@ -307,9 +304,7 @@ class ResBlock(TimestepBlock):
         if self.out_channels == channels:
             self.skip_connection = nn.Identity()
         elif use_conv:
-            self.skip_connection = conv_nd(
-                dims, channels, self.out_channels, kernel_size, padding=padding
-            )
+            self.skip_connection = conv_nd(dims, channels, self.out_channels, kernel_size, padding=padding)
         else:
             self.skip_connection = conv_nd(dims, channels, self.out_channels, 1)
 
@@ -422,9 +417,7 @@ class QKVAttentionLegacy(nn.Module):
         ch = width // (3 * self.n_heads)
         q, k, v = qkv.reshape(bs * self.n_heads, ch * 3, length).split(ch, dim=1)
         scale = 1 / math.sqrt(math.sqrt(ch))
-        weight = th.einsum(
-            "bct,bcs->bts", q * scale, k * scale
-        )  # More stable with f16 than dividing afterwards
+        weight = th.einsum("bct,bcs->bts", q * scale, k * scale)  # More stable with f16 than dividing afterwards
         weight = th.softmax(weight.float(), dim=-1).type(weight.dtype)
         a = th.einsum("bts,bcs->bct", weight, v)
         return a.reshape(bs, -1, length)
@@ -533,14 +526,10 @@ class UNetModel(nn.Module):
             num_heads_upsample = num_heads
 
         if num_heads == -1:
-            assert (
-                num_head_channels != -1
-            ), "Either num_heads or num_head_channels has to be set"
+            assert num_head_channels != -1, "Either num_heads or num_head_channels has to be set"
 
         if num_head_channels == -1:
-            assert (
-                num_heads != -1
-            ), "Either num_heads or num_head_channels has to be set"
+            assert num_heads != -1, "Either num_heads or num_head_channels has to be set"
 
         self.in_channels = in_channels
         self.model_channels = model_channels
@@ -621,11 +610,7 @@ class UNetModel(nn.Module):
                 raise ValueError
 
         self.input_blocks = nn.ModuleList(
-            [
-                TimestepEmbedSequential(
-                    conv_nd(dims, in_channels, model_channels, 3, padding=1)
-                )
-            ]
+            [TimestepEmbedSequential(conv_nd(dims, in_channels, model_channels, 3, padding=1))]
         )
         self._feature_size = model_channels
         input_block_chans = [model_channels]
@@ -657,10 +642,7 @@ class UNetModel(nn.Module):
                     else:
                         disabled_sa = False
 
-                    if (
-                        not exists(num_attention_blocks)
-                        or nr < num_attention_blocks[level]
-                    ):
+                    if not exists(num_attention_blocks) or nr < num_attention_blocks[level]:
                         layers.append(
                             SpatialTransformer(
                                 ch,
@@ -692,9 +674,7 @@ class UNetModel(nn.Module):
                             down=True,
                         )
                         if resblock_updown
-                        else Downsample(
-                            ch, conv_resample, dims=dims, out_channels=out_ch
-                        )
+                        else Downsample(ch, conv_resample, dims=dims, out_channels=out_ch)
                     )
                 )
                 ch = out_ch
@@ -770,10 +750,7 @@ class UNetModel(nn.Module):
                     else:
                         disabled_sa = False
 
-                    if (
-                        not exists(num_attention_blocks)
-                        or i < num_attention_blocks[level]
-                    ):
+                    if not exists(num_attention_blocks) or i < num_attention_blocks[level]:
                         layers.append(
                             SpatialTransformer(
                                 ch,

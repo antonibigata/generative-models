@@ -7,13 +7,13 @@ import torch
 from omegaconf import ListConfig, OmegaConf
 from safetensors.torch import load_file as load_safetensors
 from torch.optim.lr_scheduler import LambdaLR
+from einops import rearrange, repeat
 
 from ..modules import UNCONDITIONAL_CONFIG
 from ..modules.autoencoding.temporal_ae import VideoDecoder
 from ..modules.diffusionmodules.wrappers import OPENAIUNETWRAPPER
 from ..modules.ema import LitEma
-from ..util import (default, disabled_train, get_obj_from_str,
-                    instantiate_from_config, log_txt_as_img)
+from ..util import default, disabled_train, get_obj_from_str, instantiate_from_config, log_txt_as_img
 
 
 class DiffusionEngine(pl.LightningModule):
@@ -35,38 +35,26 @@ class DiffusionEngine(pl.LightningModule):
         disable_first_stage_autocast=False,
         input_key: str = "jpg",
         log_keys: Union[List, None] = None,
+        no_log_keys: Union[List, None] = None,
         no_cond_log: bool = False,
         compile_model: bool = False,
         en_and_decode_n_samples_a_time: Optional[int] = None,
     ):
         super().__init__()
         self.log_keys = log_keys
+        self.no_log_keys = no_log_keys
         self.input_key = input_key
-        self.optimizer_config = default(
-            optimizer_config, {"target": "torch.optim.AdamW"}
-        )
+        self.optimizer_config = default(optimizer_config, {"target": "torch.optim.AdamW"})
         model = instantiate_from_config(network_config)
-        self.model = get_obj_from_str(default(network_wrapper, OPENAIUNETWRAPPER))(
-            model, compile_model=compile_model
-        )
+        self.model = get_obj_from_str(default(network_wrapper, OPENAIUNETWRAPPER))(model, compile_model=compile_model)
 
         self.denoiser = instantiate_from_config(denoiser_config)
-        self.sampler = (
-            instantiate_from_config(sampler_config)
-            if sampler_config is not None
-            else None
-        )
-        self.conditioner = instantiate_from_config(
-            default(conditioner_config, UNCONDITIONAL_CONFIG)
-        )
+        self.sampler = instantiate_from_config(sampler_config) if sampler_config is not None else None
+        self.conditioner = instantiate_from_config(default(conditioner_config, UNCONDITIONAL_CONFIG))
         self.scheduler_config = scheduler_config
         self._init_first_stage(first_stage_config)
 
-        self.loss_fn = (
-            instantiate_from_config(loss_fn_config)
-            if loss_fn_config is not None
-            else None
-        )
+        self.loss_fn = instantiate_from_config(loss_fn_config) if loss_fn_config is not None else None
 
         self.use_ema = use_ema
         if self.use_ema:
@@ -94,9 +82,7 @@ class DiffusionEngine(pl.LightningModule):
             raise NotImplementedError
 
         missing, unexpected = self.load_state_dict(sd, strict=False)
-        print(
-            f"Restored from {path} with {len(missing)} missing and {len(unexpected)} unexpected keys"
-        )
+        print(f"Restored from {path} with {len(missing)} missing and {len(unexpected)} unexpected keys")
         if len(missing) > 0:
             print(f"Missing Keys: {missing}")
         if len(unexpected) > 0:
@@ -116,6 +102,12 @@ class DiffusionEngine(pl.LightningModule):
 
     @torch.no_grad()
     def decode_first_stage(self, z):
+        is_video = False
+        if len(z.shape) == 5:
+            is_video = True
+            T = z.shape[2]
+            z = rearrange(z, "b c t h w -> (b t) c h w")
+
         z = 1.0 / self.scale_factor * z
         n_samples = default(self.en_and_decode_n_samples_a_time, z.shape[0])
 
@@ -127,26 +119,31 @@ class DiffusionEngine(pl.LightningModule):
                     kwargs = {"timesteps": len(z[n * n_samples : (n + 1) * n_samples])}
                 else:
                     kwargs = {}
-                out = self.first_stage_model.decode(
-                    z[n * n_samples : (n + 1) * n_samples], **kwargs
-                )
+                out = self.first_stage_model.decode(z[n * n_samples : (n + 1) * n_samples], **kwargs)
                 all_out.append(out)
         out = torch.cat(all_out, dim=0)
+        if is_video:
+            out = rearrange(out, "(b t) c h w -> b c t h w", t=T)
         return out
 
     @torch.no_grad()
     def encode_first_stage(self, x):
+        is_video = False
+        if len(x.shape) == 5:
+            is_video = True
+            T = x.shape[2]
+            x = rearrange(x, "b c t h w -> (b t) c h w")
         n_samples = default(self.en_and_decode_n_samples_a_time, x.shape[0])
         n_rounds = math.ceil(x.shape[0] / n_samples)
         all_out = []
         with torch.autocast("cuda", enabled=not self.disable_first_stage_autocast):
             for n in range(n_rounds):
-                out = self.first_stage_model.encode(
-                    x[n * n_samples : (n + 1) * n_samples]
-                )
+                out = self.first_stage_model.encode(x[n * n_samples : (n + 1) * n_samples])
                 all_out.append(out)
         z = torch.cat(all_out, dim=0)
         z = self.scale_factor * z
+        if is_video:
+            z = rearrange(z, "(b t) c h w -> b c t h w", t=T)
         return z
 
     def forward(self, x, batch):
@@ -165,9 +162,7 @@ class DiffusionEngine(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         loss, loss_dict = self.shared_step(batch)
 
-        self.log_dict(
-            loss_dict, prog_bar=True, logger=True, on_step=True, on_epoch=False
-        )
+        self.log_dict(loss_dict, prog_bar=True, logger=True, on_step=True, on_epoch=False)
 
         self.log(
             "global_step",
@@ -180,9 +175,7 @@ class DiffusionEngine(pl.LightningModule):
 
         if self.scheduler_config is not None:
             lr = self.optimizers().param_groups[0]["lr"]
-            self.log(
-                "lr_abs", lr, prog_bar=True, logger=True, on_step=True, on_epoch=False
-            )
+            self.log("lr_abs", lr, prog_bar=True, logger=True, on_step=True, on_epoch=False)
 
         return loss
 
@@ -210,9 +203,7 @@ class DiffusionEngine(pl.LightningModule):
                     print(f"{context}: Restored training weights")
 
     def instantiate_optimizer_from_config(self, params, lr, cfg):
-        return get_obj_from_str(cfg["target"])(
-            params, lr=lr, **cfg.get("params", dict())
-        )
+        return get_obj_from_str(cfg["target"])(params, lr=lr, **cfg.get("params", dict()))
 
     def configure_optimizers(self):
         lr = self.learning_rate
@@ -245,10 +236,9 @@ class DiffusionEngine(pl.LightningModule):
     ):
         randn = torch.randn(batch_size, *shape).to(self.device)
 
-        denoiser = lambda input, sigma, c: self.denoiser(
-            self.model, input, sigma, c, **kwargs
-        )
+        denoiser = lambda input, sigma, c: self.denoiser(self.model, input, sigma, c, **kwargs)
         samples = self.sampler(denoiser, randn, cond, uc=uc)
+
         return samples
 
     @torch.no_grad()
@@ -257,13 +247,13 @@ class DiffusionEngine(pl.LightningModule):
         Defines heuristics to log different conditionings.
         These can be lists of strings (text-to-image), tensors, ints, ...
         """
-        image_h, image_w = batch[self.input_key].shape[2:]
+        image_h, image_w = batch[self.input_key].shape[-2:]
         log = dict()
 
         for embedder in self.conditioner.embedders:
-            if (
-                (self.log_keys is None) or (embedder.input_key in self.log_keys)
-            ) and not self.no_cond_log:
+            if ((self.log_keys is None) or (embedder.input_key in self.log_keys)) and not self.no_cond_log:
+                if embedder.input_key in self.no_log_keys:
+                    continue
                 x = batch[embedder.input_key][:n]
                 if isinstance(x, torch.Tensor):
                     if x.dim() == 1:
@@ -272,12 +262,12 @@ class DiffusionEngine(pl.LightningModule):
                         xc = log_txt_as_img((image_h, image_w), x, size=image_h // 4)
                     elif x.dim() == 2:
                         # size and crop cond and the like
-                        x = [
-                            "x".join([str(xx) for xx in x[i].tolist()])
-                            for i in range(x.shape[0])
-                        ]
+                        x = ["x".join([str(xx) for xx in x[i].tolist()]) for i in range(x.shape[0])]
                         xc = log_txt_as_img((image_h, image_w), x, size=image_h // 20)
+                    elif x.dim() == 4:  # already an image
+                        xc = x
                     else:
+                        print(x.shape, embedder.input_key)
                         raise NotImplementedError()
                 elif isinstance(x, (List, ListConfig)):
                     if isinstance(x[0], str):
@@ -313,9 +303,7 @@ class DiffusionEngine(pl.LightningModule):
 
         c, uc = self.conditioner.get_unconditional_conditioning(
             batch,
-            force_uc_zero_embeddings=ucg_keys
-            if len(self.conditioner.embedders) > 0
-            else [],
+            force_uc_zero_embeddings=ucg_keys if len(self.conditioner.embedders) > 0 else [],
         )
 
         sampling_kwargs = {}
@@ -333,9 +321,72 @@ class DiffusionEngine(pl.LightningModule):
 
         if sample:
             with self.ema_scope("Plotting"):
-                samples = self.sample(
-                    c, shape=z.shape[1:], uc=uc, batch_size=N, **sampling_kwargs
-                )
+                samples = self.sample(c, shape=z.shape[1:], uc=uc, batch_size=N, **sampling_kwargs)
+            samples = self.decode_first_stage(samples)
+            log["samples"] = samples
+        return log
+
+    @torch.no_grad()
+    def log_videos(
+        self,
+        batch: Dict,
+        N: int = 8,
+        sample: bool = True,
+        ucg_keys: List[str] = None,
+        **kwargs,
+    ) -> Dict:
+        conditioner_input_keys = [e.input_key for e in self.conditioner.embedders]
+        if ucg_keys:
+            assert all(map(lambda x: x in conditioner_input_keys, ucg_keys)), (
+                "Each defined ucg key for sampling must be in the provided conditioner input keys,"
+                f"but we have {ucg_keys} vs. {conditioner_input_keys}"
+            )
+        else:
+            ucg_keys = conditioner_input_keys
+        log = dict()
+        batch_uc = {}
+
+        x = self.get_input(batch)
+        num_frames = x.shape[2]  # assuming bcthw format
+
+        for key in batch.keys():
+            if key not in batch_uc and isinstance(batch[key], torch.Tensor):
+                batch_uc[key] = torch.clone(batch[key])
+
+        c, uc = self.conditioner.get_unconditional_conditioning(
+            batch,
+            batch_uc=batch_uc,
+            force_uc_zero_embeddings=[
+                "cond_frames",
+                "cond_frames_without_noise",
+            ],
+        )
+
+        # for k in ["crossattn", "concat"]:
+        #     uc[k] = repeat(uc[k], "b ... -> b t ...", t=num_frames)
+        #     uc[k] = rearrange(uc[k], "b t ... -> (b t) ...", t=num_frames)
+        #     c[k] = repeat(c[k], "b ... -> b t ...", t=num_frames)
+        #     c[k] = rearrange(c[k], "b t ... -> (b t) ...", t=num_frames)
+
+        sampling_kwargs = {}
+
+        N = min(x.shape[0], N)
+        x = x.to(self.device)[:N]
+        log["inputs"] = x
+        z = self.encode_first_stage(x)
+        log["reconstructions"] = self.decode_first_stage(z)
+        log.update(self.log_conditionings(batch, N))
+
+        for k in c:
+            if isinstance(c[k], torch.Tensor):
+                c[k], uc[k] = map(lambda y: y[k][:N].to(self.device), (c, uc))
+
+        if sample:
+            sampling_kwargs["image_only_indicator"] = torch.zeros(2, num_frames).to(self.device)
+            sampling_kwargs["num_video_frames"] = batch["num_video_frames"]
+
+            with self.ema_scope("Plotting"):
+                samples = self.sample(c, shape=z.shape[1:], uc=uc, batch_size=N, **sampling_kwargs)
             samples = self.decode_first_stage(samples)
             log["samples"] = samples
         return log

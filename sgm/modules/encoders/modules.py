@@ -137,8 +137,13 @@ class GeneralConditioner(nn.Module):
             ), f"encoder outputs must be tensors or a sequence, but got {type(emb_out)}"
             if not isinstance(emb_out, (list, tuple)):
                 emb_out = [emb_out]
+            # TODO: In future cond_type is probably better than OUTPUT_DIM2KEYS
+            has_cond_type = hasattr(embedder, "cond_type")
             for emb in emb_out:
-                out_key = self.OUTPUT_DIM2KEYS[emb.dim()]
+                if has_cond_type:
+                    out_key = embedder.cond_type
+                else:
+                    out_key = self.OUTPUT_DIM2KEYS[emb.dim()]
                 if embedder.ucg_rate > 0.0 and embedder.legacy_ucg_val is None:
                     emb = (
                         expand_dims_like(
@@ -209,6 +214,30 @@ class IdentityEncoder(AbstractEmbModel):
         return x
 
     def forward(self, x):
+        return x
+
+
+class WhisperAudioEmbedder(AbstractEmbModel):
+    def __init__(self, merge_method="mean", linear_dim=None):
+        super().__init__()
+        self.merge_method = merge_method
+        self.linear = None
+        self.audio_dim = 1280*2 if merge_method == "concat" else 1280
+        if linear_dim is not None:
+            self.linear = nn.Linear(self.audio_dim, linear_dim)
+        self.cond_type = "audio_emb"
+
+    def forward(self, x):
+        # x shape: (batch_size, n_frames, 2, 1280)
+        if self.merge_method == "mean":
+            x = x.mean(dim=2)
+        elif self.merge_method == "concat":
+            x = rearrange(x, "b n c d -> b n (c d)")
+        elif self.merge_method == "add":
+            x = x.sum(dim=2)
+
+        if self.linear is not None:
+            x = self.linear(x)
         return x
 
 
