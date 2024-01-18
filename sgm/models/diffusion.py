@@ -7,7 +7,7 @@ import torch
 from omegaconf import ListConfig, OmegaConf
 from safetensors.torch import load_file as load_safetensors
 from torch.optim.lr_scheduler import LambdaLR
-from einops import rearrange, repeat
+from einops import rearrange
 
 from ..modules import UNCONDITIONAL_CONFIG
 from ..modules.autoencoding.temporal_ae import VideoDecoder
