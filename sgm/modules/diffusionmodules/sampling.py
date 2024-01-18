@@ -50,7 +50,7 @@ class BaseDiffusionSampler:
             t_start = max(len(sigmas) - init_timestep, 0)
             # sigmas[:t_start] = torch.ones_like(sigmas[:t_start]) * sigmas[t_start]
             sigmas = sigmas[t_start:]
-            uc = default(uc, cond)
+        uc = default(uc, cond)
 
         x *= torch.sqrt(1.0 + sigmas[0] ** 2.0)
         num_sigmas = len(sigmas)
