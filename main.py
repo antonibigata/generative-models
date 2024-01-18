@@ -225,8 +225,8 @@ def init_wandb(save_dir, opt, config, group_name, name_str):
     else:
         wandb.init(
             project=opt.projectname,
-            config=config,
-            # settings=wandb.Settings(code_dir="./sgm"),
+            # config=hyperparameter,
+            settings=wandb.Settings(code_dir="./sgm"),
             # group=group_name,
             name=name_str,
         )
@@ -439,6 +439,8 @@ if __name__ == "__main__":
         logger_cfg = OmegaConf.create()
     logger_cfg = OmegaConf.merge(default_logger_cfg, logger_cfg)
     trainer_kwargs["logger"] = instantiate_from_config(logger_cfg)
+    if opt.wandb:
+        trainer_kwargs["logger"].log_hyperparams(config)
 
     # modelcheckpoint - use TrainResult/EvalResult(checkpoint_on=metric) to
     # specify which metric is used to determine best models
