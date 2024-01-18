@@ -14,14 +14,18 @@ from PIL import Image
 from torchvision.transforms import ToTensor
 from tqdm import tqdm
 from torchvision.io import read_video, write_video
+import torchaudio
 
 from scripts.util.detection.nsfw_and_watermark_dectection import DeepFloydDataFiltering
 from sgm.inference.helpers import embed_watermark
 from sgm.util import default, instantiate_from_config
 
+# from sgm.models.components.audio.Whisper import Whisper
+
 
 def sample(
     input_path: str = "assets/test_image.png",  # Can either be image file or folder with image files
+    audio_path: Optional[str] = None,
     video_path: Optional[str] = None,
     num_frames: Optional[int] = None,
     num_steps: Optional[int] = None,
@@ -36,6 +40,8 @@ def sample(
     autoregressive: int = 1,
     strength: float = 1.0,
     degradation: int = 1,
+    audio_rate: int = 16000,
+    model_config: Optional[str] = None,
 ):
     """
     Simple script to generate a single sample conditioned on an image `input_path` or multiple images, one for each
@@ -46,22 +52,22 @@ def sample(
         num_frames = default(num_frames, 14)
         num_steps = default(num_steps, 25)
         output_folder = default(output_folder, "outputs/simple_video_sample/svd/")
-        model_config = "scripts/sampling/configs/svd.yaml"
+        model_config = "scripts/sampling/configs/svd.yaml" if model_config is None else model_config
     elif version == "svd_xt":
         num_frames = default(num_frames, 25)
         num_steps = default(num_steps, 30)
         output_folder = default(output_folder, "outputs/simple_video_sample/svd_xt/")
-        model_config = "scripts/sampling/configs/svd_xt.yaml"
+        model_config = "scripts/sampling/configs/svd_xt.yaml" if model_config is None else model_config
     elif version == "svd_image_decoder":
         num_frames = default(num_frames, 14)
         num_steps = default(num_steps, 25)
         output_folder = default(output_folder, "outputs/simple_video_sample/svd_image_decoder/")
-        model_config = "scripts/sampling/configs/svd_image_decoder.yaml"
+        model_config = "scripts/sampling/configs/svd_image_decoder.yaml" if model_config is None else model_config
     elif version == "svd_xt_image_decoder":
         num_frames = default(num_frames, 25)
         num_steps = default(num_steps, 30)
         output_folder = default(output_folder, "outputs/simple_video_sample/svd_xt_image_decoder/")
-        model_config = "scripts/sampling/configs/svd_xt_image_decoder.yaml"
+        model_config = "scripts/sampling/configs/svd_xt_image_decoder.yaml" if model_config is None else model_config
     else:
         raise ValueError(f"Version {version} does not exist.")
 
@@ -91,6 +97,36 @@ def sample(
             raise ValueError("Folder does not contain any images.")
     else:
         raise ValueError
+
+    # audio = None
+    # raw_audio = None
+    # if audio_path is not None and (audio_path.endswith(".wav") or audio_path.endswith(".mp3")):
+    #     audio, sr = torchaudio.load(audio_path, channels_first=True)
+    #     if audio.shape[0] > 1:
+    #         audio = audio.mean(0, keepdim=True)
+    #     audio = torchaudio.functional.resample(audio, orig_freq=sr, new_freq=audio_rate)[0]
+    #     samples_per_frame = math.ceil(audio_rate / (fps_id + 1))
+    #     n_frames = audio.shape[-1] / samples_per_frame
+    #     if not n_frames.is_integer():
+    #         print("Audio shape before trim_pad_audio: ", audio.shape)
+    #         audio = trim_pad_audio(audio, audio_rate, max_len_raw=math.ceil(n_frames) * samples_per_frame)
+    #         print("Audio shape after trim_pad_audio: ", audio.shape)
+    #     audio = rearrange(audio, "(f s) -> f s", s=samples_per_frame)
+    #     raw_audio = audio.clone()
+    #     if "embeddings" in cfg.model.net.audio_encoder._target_:
+    #         audio_model = Whisper(model_size="large-v3", fps=25)
+    #         model.eval()
+    #         # Get audio embeddings
+    #         audio_embeddings = []
+    #         for chunk in torch.split(
+    #             audio, 750, dim=0
+    #         ):  # 750 is the max size of the audio chunks that can be processed by the model (= 30 seconds)
+    #             audio_embeddings.append(audio_model(chunk.unsqueeze(0).cuda()))
+    #         audio = torch.cat(audio_embeddings, dim=1).squeeze(0)
+    # elif audio_path is not None and audio_path.endswith(".pt"):
+    audio_emb = torch.load(audio_path).to(device)
+    audio_emb = repeat(audio_emb, "f c s -> (t f) c s", t=autoregressive).unsqueeze(0)
+    audio_list = [audio_emb[:, i : i + num_frames] for i in range(0, audio_emb.shape[1], num_frames)]
 
     for input_img_path in all_img_paths:
         image = None
@@ -150,8 +186,10 @@ def sample(
                 image = ToTensor()(image)
                 image = image * 2.0 - 1.0
 
+        or_image = image.clone().unsqueeze(0).to(device)
+
         samples_list = []
-        for _ in tqdm(range(autoregressive), desc="Autoregressive", total=autoregressive):
+        for iter_idx in tqdm(range(autoregressive), desc="Autoregressive", total=autoregressive):
             image = image.unsqueeze(0).to(device)
             H, W = image.shape[2:]
             assert image.shape[1] == 3
@@ -175,9 +213,10 @@ def sample(
             value_dict["motion_bucket_id"] = motion_bucket_id
             value_dict["fps_id"] = fps_id
             value_dict["cond_aug"] = cond_aug
-            value_dict["cond_frames_without_noise"] = image
+            value_dict["cond_frames_without_noise"] = or_image
             value_dict["cond_frames"] = image + cond_aug * torch.randn_like(image)
             value_dict["cond_aug"] = cond_aug
+            value_dict["audio_emb"] = audio_list[iter_idx]
 
             with torch.no_grad():
                 with torch.autocast(device):
@@ -222,7 +261,7 @@ def sample(
                     video = None
 
                     # samples = embed_watermark(samples)
-                    # samples = filter(samples)
+                    samples = filter(samples)
                     samples_list.append(samples)
 
         samples = torch.concatenate(samples_list)

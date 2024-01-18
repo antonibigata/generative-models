@@ -1,12 +1,9 @@
 model:
-  base_learning_rate: 3.0e-5  
   target: sgm.models.diffusion.DiffusionEngine
   params:
-    input_key: frames
-    no_log_keys: [audio_emb, fps_id, motion_bucket_id, cond_aug]
     scale_factor: 0.18215
     disable_first_stage_autocast: True
-    ckpt_path: checkpoints/svd.safetensors
+    ckpt_path: /data/122-2/Experiments/svd_logs/2024-01-12T14-15-47_example_training-svd_training/checkpoints/last.ckpt
 
     denoiser_config:
       target: sgm.modules.diffusionmodules.denoiser.Denoiser
@@ -39,7 +36,7 @@ model:
         video_kernel_size: [3, 1, 1]
         fine_tuning_method: sctuner
         adapter_kwargs:
-          down_ratio: 1
+          down_ratio: 5
           adapter_type: null
           adapter_weight: null
           act_layer: gelu
@@ -111,7 +108,7 @@ model:
             outdim: 256
 
         - input_key: audio_emb
-          is_trainable: True
+          is_trainable: False
           target: sgm.modules.encoders.modules.WhisperAudioEmbedder
           params:
             merge_method: mean 
@@ -170,109 +167,4 @@ model:
             min_scale: 1.0
             num_frames: 14
 
-    loss_fn_config:
-      target: sgm.modules.diffusionmodules.loss.StandardDiffusionLoss
-      params:        
-        batch2model_keys:
-          - image_only_indicator
-          - num_video_frames
-        loss_weighting_config:
-          target: sgm.modules.diffusionmodules.loss_weighting.EpsWeighting
-        sigma_sampler_config:
-          target: sgm.modules.diffusionmodules.sigma_sampling.EDMSampling
-          params:
-            p_mean: 0.7
-            p_std: 1.6
-
-data:
-  target: sgm.data.dataset.StableDataModuleFromConfig
-  params:
-    train:
-      datapipeline:
-        urls:
-          # USER: adapt this path the root of your custom dataset
-          - "/data/122-2/Datasets/CREMA/webdataset/train/out-{000000..000006}.tar"
-        pipeline_config:
-          shardshuffle: 10000
-          sample_shuffle: 1000 # USER: you might wanna adapt depending on your available RAM
-
-        decoders:
-          - "custom"
-        postprocessors:
-          - target: sdata.mappers.SelectTuple
-            params:
-              key: 'mp4' # USER: you might wanna adapt this for your custom dataset
-              index: 0
-          - target: sdata.mappers.ToSVDFormat
-            params:
-              key: "mp4"
-              audio_key: "pt"
-              n_frames: 14
-              resize_size: 576
-              motion_id: 60
-              fps: 24 # FPS - 1 See: https://github.com/Stability-AI/generative-models/blob/ed0997173f98eaf8f4edf7ba5fe8f15c6b877fd3/scripts/sampling/simple_video_sample.py#L188
-              cond_noise: [-3.0, 0.5]
-
-      loader:
-        batch_size: 1
-        num_workers: 6
-
-    # validation:
-
-    #   datapipeline:
-    #     urls:
-    #       # USER: adapt this path the root of your custom dataset
-    #       - "/data/122-2/Datasets/CREMA/webdataset/val/out-{000000..000001}.tar"
-    #     pipeline_config:
-    #       shardshuffle: 10000
-    #       sample_shuffle: 1000 # USER: you might wanna adapt depending on your available RAM
-
-    #     decoders:
-    #       - "video"
-    #     postprocessors:
-    #       - target: sdata.mappers.SelectTuple
-    #         params:
-    #           key: 'mp4' # USER: you might wanna adapt this for your custom dataset
-    #           index: 0
-    #       - target: sdata.mappers.ToSVDFormat
-    #         params:
-    #           key: "mp4"
-    #           n_frames: 14
-    #           resize_size: 256
-    #           cond_noise: [-3.0, 0.5]
-
-    #   loader:
-    #     batch_size: 2
-    #     num_workers: 6
-
-lightning:
-  modelcheckpoint:
-    params:
-      every_n_train_steps: 5000
-      save_top_k: 1
-
-  callbacks:
-    metrics_over_trainsteps_checkpoint:
-      params:
-        every_n_train_steps: 25000
-
-    video_logger:
-      target: sgm.callbacks.video_logger.VideoLogger
-      params:
-        disabled: False
-        enable_autocast: False
-        batch_frequency: 1000
-        max_videos: 2
-        increase_log_steps: False
-        log_first_step: True
-        log_videos_kwargs:
-          use_ema_scope: False
-          N: 2
-          n_rows: 1
-
-  trainer:
-    devices: 0,
-    benchmark: True
-    num_sanity_val_steps: 1
-    accumulate_grad_batches: 1
-    max_epochs: 1000
+    
