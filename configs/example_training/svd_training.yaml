@@ -39,7 +39,7 @@ model:
         video_kernel_size: [3, 1, 1]
         fine_tuning_method: sctuner
         adapter_kwargs:
-          down_ratio: 1
+          down_ratio: 5
           adapter_type: null
           adapter_weight: null
           act_layer: gelu
