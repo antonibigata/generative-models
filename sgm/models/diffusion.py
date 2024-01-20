@@ -27,8 +27,9 @@ class DiffusionEngine(pl.LightningModule):
         optimizer_config: Union[None, Dict, ListConfig, OmegaConf] = None,
         scheduler_config: Union[None, Dict, ListConfig, OmegaConf] = None,
         loss_fn_config: Union[None, Dict, ListConfig, OmegaConf] = None,
-        network_wrapper: Union[None, str] = None,
+        network_wrapper: Union[None, str, Dict, ListConfig, OmegaConf] = None,
         ckpt_path: Union[None, str] = None,
+        load_model_weights: bool = True,
         use_ema: bool = False,
         ema_decay_rate: float = 0.9999,
         scale_factor: float = 1.0,
@@ -46,10 +47,20 @@ class DiffusionEngine(pl.LightningModule):
         self.input_key = input_key
         self.optimizer_config = default(optimizer_config, {"target": "torch.optim.AdamW"})
         model = instantiate_from_config(network_config)
-        self.model = get_obj_from_str(default(network_wrapper, OPENAIUNETWRAPPER))(model, compile_model=compile_model)
+        if isinstance(network_wrapper, str) or network_wrapper is None:
+            self.model = get_obj_from_str(default(network_wrapper, OPENAIUNETWRAPPER))(
+                model, compile_model=compile_model
+            )
+        else:
+            target = network_wrapper["target"]
+            params = network_wrapper.get("params", dict())
+            self.model = get_obj_from_str(target)(model, compile_model=compile_model, **params)
 
         self.denoiser = instantiate_from_config(denoiser_config)
         self.sampler = instantiate_from_config(sampler_config) if sampler_config is not None else None
+        self.is_guided = True
+        if sampler_config is not None and sampler_config["params"].get("guider_config") is None:
+            self.is_guided = False
         self.conditioner = instantiate_from_config(default(conditioner_config, UNCONDITIONAL_CONFIG))
         self.scheduler_config = scheduler_config
         self._init_first_stage(first_stage_config)
@@ -66,13 +77,14 @@ class DiffusionEngine(pl.LightningModule):
         self.no_cond_log = no_cond_log
 
         if ckpt_path is not None:
-            self.init_from_ckpt(ckpt_path)
+            self.init_from_ckpt(ckpt_path, load_model_weights=load_model_weights)
 
         self.en_and_decode_n_samples_a_time = en_and_decode_n_samples_a_time
 
     def init_from_ckpt(
         self,
         path: str,
+        load_model_weights: bool = True,
     ) -> None:
         if path.endswith("ckpt"):
             sd = torch.load(path, map_location="cpu")["state_dict"]
@@ -80,6 +92,11 @@ class DiffusionEngine(pl.LightningModule):
             sd = load_safetensors(path)
         else:
             raise NotImplementedError
+
+        if not load_model_weights:
+            for k in list(sd.keys()):
+                if k.startswith("model."):
+                    del sd[k]
 
         missing, unexpected = self.load_state_dict(sd, strict=False)
         print(f"Restored from {path} with {len(missing)} missing and {len(unexpected)} unexpected keys")
@@ -266,6 +283,8 @@ class DiffusionEngine(pl.LightningModule):
                         xc = log_txt_as_img((image_h, image_w), x, size=image_h // 20)
                     elif x.dim() == 4:  # already an image
                         xc = x
+                    elif x.dim() == 5:
+                        xc = torch.cat([x[:, :, i] for i in range(x.shape[2])], dim=-1)
                     else:
                         print(x.shape, embedder.input_key)
                         raise NotImplementedError()
@@ -382,7 +401,8 @@ class DiffusionEngine(pl.LightningModule):
                 c[k], uc[k] = map(lambda y: y[k][:N].to(self.device), (c, uc))
 
         if sample:
-            sampling_kwargs["image_only_indicator"] = torch.zeros(2, num_frames).to(self.device)
+            n = 2 if self.is_guided else 1
+            sampling_kwargs["image_only_indicator"] = torch.zeros(n, num_frames).to(self.device)
             sampling_kwargs["num_video_frames"] = batch["num_video_frames"]
 
             with self.ema_scope("Plotting"):

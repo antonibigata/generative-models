@@ -108,6 +108,7 @@ class ToSVDFormat(AbstractMapper):
         motion_id=255.0,
         audio_key=None,
         fps=25,
+        mode="prediction",
         *args,
         **kwargs,
     ):
@@ -120,6 +121,8 @@ class ToSVDFormat(AbstractMapper):
         self.motion_id = motion_id
         self.audio_key = audio_key
         self.fps = fps
+        assert mode in ["prediction", "interpolation"]
+        self.mode = mode
 
         self.resizer = TT.Resize((resize_size, resize_size), interpolation=InterpolationMode.BICUBIC, antialias=True)
 
@@ -146,6 +149,9 @@ class ToSVDFormat(AbstractMapper):
         cond = video[:, 0]
         # cond = repeat(cond, "c h w -> c t h w", t=self.n_frames)
         # video = video[:, 1:]
+        if self.mode == "interpolation":
+            # Cond shape becomes (C, T=2, H, W)
+            cond = torch.stack([cond] + [video[:, -1]], dim=1)
 
         # Add noise to conditional frame
         if isinstance(self.cond_noise, ListConfig):
@@ -155,22 +161,24 @@ class ToSVDFormat(AbstractMapper):
             noisy_cond = cond + self.cond_noise * torch.randn_like(cond)
             cond_noise = self.cond_noise
 
+        out_data = {}
+
         # Add audio
         if self.audio_key is not None:
             audio = sample[self.audio_key]
             audio = audio[start : start + self.n_frames]
             # sample["audio_emb"] = audio[1:]
-            sample["audio_emb"] = audio
+            out_data["audio_emb"] = audio
 
-        sample["frames"] = video
-        sample["cond_frames"] = noisy_cond
-        sample["cond_frames_without_noise"] = cond
-        sample["cond_aug"] = cond_noise
-        sample["motion_bucket_id"] = torch.tensor([self.motion_id])
-        sample["fps_id"] = torch.tensor([self.fps])
-        sample["num_video_frames"] = self.n_frames
-        sample["image_only_indicator"] = torch.zeros(self.n_frames)
-        return sample
+        out_data["frames"] = video
+        out_data["cond_frames"] = noisy_cond
+        out_data["cond_frames_without_noise"] = cond
+        out_data["cond_aug"] = cond_noise
+        out_data["motion_bucket_id"] = torch.tensor([self.motion_id])
+        out_data["fps_id"] = torch.tensor([self.fps])
+        out_data["num_video_frames"] = self.n_frames
+        out_data["image_only_indicator"] = torch.zeros(self.n_frames)
+        return out_data
 
 
 class TorchVisionImageTransforms(AbstractMapper):

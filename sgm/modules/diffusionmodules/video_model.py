@@ -114,6 +114,7 @@ class VideoUNet(nn.Module):
         max_ddpm_temb_period: int = 10000,
         fine_tuning_method: str = None,
         adapter_kwargs: Optional[dict] = {},
+        audio_cond_method: str = None,
     ):
         super().__init__()
         assert context_dim is not None
@@ -128,6 +129,7 @@ class VideoUNet(nn.Module):
             assert num_heads != -1
 
         self.adapter = None
+        self.audio_cond_method = audio_cond_method
         if fine_tuning_method == "sctuner":
             self.adapter = nn.ModuleList([])
             down_ratio = 1
@@ -488,6 +490,12 @@ class VideoUNet(nn.Module):
             # x = rearrange(x, "b c t h w -> (b t) c h w")
             context = repeat(context, "b ... -> b t ...", t=num_video_frames)
             context = rearrange(context, "b t ... -> (b t) ...", t=num_video_frames)
+
+        if self.audio_cond_method == "cross_time":
+            assert audio_emb is not None
+            time_context = audio_emb
+
+        if y is not None and y.shape[0] != x.shape[0]:
             # timesteps = repeat(timesteps, "b ... -> b t ...", t=num_frames)
             # timesteps = rearrange(timesteps, "b t ... -> (b t) ...", t=num_frames)
             y = repeat(y, "b ... -> b t ...", t=num_video_frames)
