@@ -29,7 +29,7 @@ class DiffusionEngine(pl.LightningModule):
         loss_fn_config: Union[None, Dict, ListConfig, OmegaConf] = None,
         network_wrapper: Union[None, str, Dict, ListConfig, OmegaConf] = None,
         ckpt_path: Union[None, str] = None,
-        load_model_weights: bool = True,
+        remove_keys_from_weights: Union[None, List, Tuple] = None,
         use_ema: bool = False,
         ema_decay_rate: float = 0.9999,
         scale_factor: float = 1.0,
@@ -77,14 +77,14 @@ class DiffusionEngine(pl.LightningModule):
         self.no_cond_log = no_cond_log
 
         if ckpt_path is not None:
-            self.init_from_ckpt(ckpt_path, load_model_weights=load_model_weights)
+            self.init_from_ckpt(ckpt_path, remove_keys_from_weights=remove_keys_from_weights)
 
         self.en_and_decode_n_samples_a_time = en_and_decode_n_samples_a_time
 
     def init_from_ckpt(
         self,
         path: str,
-        load_model_weights: bool = True,
+        remove_keys_from_weights: bool = True,
     ) -> None:
         if path.endswith("ckpt"):
             sd = torch.load(path, map_location="cpu")["state_dict"]
@@ -93,10 +93,11 @@ class DiffusionEngine(pl.LightningModule):
         else:
             raise NotImplementedError
 
-        if not load_model_weights:
+        if remove_keys_from_weights is not None:
             for k in list(sd.keys()):
-                if k.startswith("model."):
-                    del sd[k]
+                for remove_key in remove_keys_from_weights:
+                    if remove_key in k:
+                        del sd[k]
 
         missing, unexpected = self.load_state_dict(sd, strict=False)
         print(f"Restored from {path} with {len(missing)} missing and {len(unexpected)} unexpected keys")

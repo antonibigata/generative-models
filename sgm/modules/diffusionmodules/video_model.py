@@ -113,6 +113,7 @@ class VideoUNet(nn.Module):
         disable_temporal_crossattention: bool = False,
         max_ddpm_temb_period: int = 10000,
         fine_tuning_method: str = None,
+        unfreeze_input_blocks: bool = False,
         adapter_kwargs: Optional[dict] = {},
         audio_cond_method: str = None,
     ):
@@ -456,6 +457,9 @@ class VideoUNet(nn.Module):
                 param.requires_grad = False
             for param in self.adapter.parameters():
                 param.requires_grad = True
+            if unfreeze_input_blocks:
+                for param in self.input_blocks.parameters():
+                    param.requires_grad = True
 
         # if freeze_network:
         #     print("freezing network")
