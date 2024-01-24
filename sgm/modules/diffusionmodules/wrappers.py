@@ -44,18 +44,18 @@ class InterpolationWrapper(IdentityWrapper):
         compile_model: bool = False,
         im_size=[512, 512],
         n_channels=4,
-        stating_mask_method="zeros",
+        starting_mask_method="zeros",
     ):
         super().__init__(diffusion_model, compile_model)
         im_size = [x // 8 for x in im_size]  # 8 is the default downscaling factor in the vae model
-        if stating_mask_method == "zeros":
+        if starting_mask_method == "zeros":
             self.learned_mask = nn.Parameter(torch.zeros(n_channels, im_size[0], im_size[1]))
-        elif stating_mask_method == "ones":
+        elif starting_mask_method == "ones":
             self.learned_mask = nn.Parameter(torch.ones(n_channels, im_size[0], im_size[1]))
-        elif stating_mask_method == "random":
+        elif starting_mask_method == "random":
             self.learned_mask = nn.Parameter(torch.randn(n_channels, im_size[0], im_size[1]))
         else:
-            raise NotImplementedError(f"Unknown stating_mask_method: {stating_mask_method}")
+            raise NotImplementedError(f"Unknown stating_mask_method: {starting_mask_method}")
 
         # self.zeros_mask = torch.zeros(n_channels, im_size[0], im_size[1])
         # self.ones_mask = torch.ones(n_channels, im_size[0], im_size[1])
