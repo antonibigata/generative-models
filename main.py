@@ -18,6 +18,7 @@ from pytorch_lightning.utilities import rank_zero_only
 
 from sgm.util import instantiate_from_config
 
+
 MULTINODE_HACKS = True
 
 
@@ -366,6 +367,7 @@ if __name__ == "__main__":
     configs = [OmegaConf.load(cfg) for cfg in opt.base]
     cli = OmegaConf.from_dotlist(unknown)
     config = OmegaConf.merge(*configs, cli)
+
     lightning_config = config.pop("lightning", OmegaConf.create())
     # merge trainer cli with config
     trainer_config = lightning_config.get("trainer", OmegaConf.create())
@@ -438,6 +440,15 @@ if __name__ == "__main__":
     else:
         logger_cfg = OmegaConf.create()
     logger_cfg = OmegaConf.merge(default_logger_cfg, logger_cfg)
+
+        
+    # if lightning_config.get("strategy") == "horovod":
+    #     hvd.init()
+    #     if hvd.rank() == 0:
+    #         trainer_kwargs["logger"] = instantiate_from_config(logger_cfg)
+    #     else:
+    #         trainer_kwargs["logger"] = None
+    # else:
     trainer_kwargs["logger"] = instantiate_from_config(logger_cfg)
     if opt.wandb:
         trainer_kwargs["logger"].log_hyperparams(config)
@@ -467,20 +478,23 @@ if __name__ == "__main__":
 
     # https://pytorch-lightning.readthedocs.io/en/stable/extensions/strategy.html
     # default to ddp if not further specified
-    default_strategy_config = {"target": "pytorch_lightning.strategies.DDPStrategy"}
+    # default_strategy_config = {"target": "pytorch_lightning.strategies.DDPStrategy"}
+    # default_strategy_config = {}
 
-    if "strategy" in lightning_config:
-        strategy_cfg = lightning_config.strategy
-    else:
-        strategy_cfg = OmegaConf.create()
-        default_strategy_config["params"] = {
-            "find_unused_parameters": False,
-            # "static_graph": True,
-            # "ddp_comm_hook": default.fp16_compress_hook  # TODO: experiment with this, also for DDPSharded
-        }
-    strategy_cfg = OmegaConf.merge(default_strategy_config, strategy_cfg)
-    print(f"strategy config: \n ++++++++++++++ \n {strategy_cfg} \n ++++++++++++++ ")
-    trainer_kwargs["strategy"] = instantiate_from_config(strategy_cfg)
+    # if "strategy" in lightning_config:
+    #     strategy_cfg = OmegaConf.create()
+    #     default_strategy_config["strategy"] = lightning_config.strategy
+    # else:
+    #     strategy_cfg = OmegaConf.create()
+    #     default_strategy_config["params"] = {
+    #         "find_unused_parameters": False,
+    #         # "static_graph": True,
+    #         # "ddp_comm_hook": default.fp16_compress_hook  # TODO: experiment with this, also for DDPSharded
+    #     }
+    # strategy_cfg = OmegaConf.merge(default_strategy_config, strategy_cfg)
+    # print(f"strategy config: \n ++++++++++++++ \n {strategy_cfg} \n ++++++++++++++ ")
+    # trainer_kwargs["strategy"] = instantiate_from_config(strategy_cfg) if "target" in strategy_cfg else strategy_cfg
+    trainer_kwargs["strategy"] = lightning_config.strategy
 
     # add callback which sets up log directory
     default_callbacks_cfg = {

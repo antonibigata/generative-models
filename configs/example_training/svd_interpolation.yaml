@@ -199,7 +199,7 @@ data:
       datapipeline:
         urls:
           # USER: adapt this path the root of your custom dataset
-          - "/data/122-2/Datasets/CREMA/webdataset/train/out-{000000..000006}.tar"
+          - "/data2/Datasets/CREMA/webdataset/train/out-{000000..000006}.tar"
         pipeline_config:
           shardshuffle: 10000
           sample_shuffle: 1000 # USER: you might wanna adapt depending on your available RAM
@@ -284,7 +284,7 @@ lightning:
           n_rows: 1
 
   trainer:
-    devices: 0,
+    devices: 0,1,2,3
     benchmark: True
     num_sanity_val_steps: 1
     accumulate_grad_batches: 1
