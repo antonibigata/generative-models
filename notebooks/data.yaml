@@ -1,7 +1,7 @@
 dataset:
   urls:
     # USER: adapt this path the root of your custom dataset
-    - "/data/122-2/Datasets/CREMA/webdataset/train/out-{000000..000006}.tar"
+    - "/data2/Datasets/LRW/webdata/train/out-{000000..000004}.tar"
   pipeline_config:
     shardshuffle: 10000
     sample_shuffle: 1000 # USER: you might wanna adapt depending on your available RAM

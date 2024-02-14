@@ -42,6 +42,9 @@ class DiffusionEngine(pl.LightningModule):
         en_and_decode_n_samples_a_time: Optional[int] = None,
     ):
         super().__init__()
+
+        # self.automatic_optimization = False
+
         self.log_keys = log_keys
         self.no_log_keys = no_log_keys
         self.input_key = input_key
@@ -179,6 +182,8 @@ class DiffusionEngine(pl.LightningModule):
 
     def training_step(self, batch, batch_idx):
         loss, loss_dict = self.shared_step(batch)
+        debugging_message = "Training step"
+        print(f"RANK - {self.trainer.global_rank}: {debugging_message}")
 
         self.log_dict(loss_dict, prog_bar=True, logger=True, on_step=True, on_epoch=False)
 
@@ -191,17 +196,35 @@ class DiffusionEngine(pl.LightningModule):
             on_epoch=False,
         )
 
+        debugging_message = "Training step - log"
+        print(f"RANK - {self.trainer.global_rank}: {debugging_message}")
+
         if self.scheduler_config is not None:
             lr = self.optimizers().param_groups[0]["lr"]
             self.log("lr_abs", lr, prog_bar=True, logger=True, on_step=True, on_epoch=False)
 
+        # # to prevent other processes from moving forward until all processes are in sync
+        # self.trainer.strategy.barrier()
+
         return loss
+
+    def on_train_epoch_start(self, *args, **kwargs):
+        print(f"RANK - {self.trainer.global_rank}: on_train_epoch_start")
 
     def on_train_start(self, *args, **kwargs):
         if self.sampler is None or self.loss_fn is None:
             raise ValueError("Sampler and loss function need to be set for training.")
 
+    def on_before_batch_transfer(self, batch, dataloader_idx):
+        print(f"RANK - {self.trainer.global_rank}: on_before_batch_transfer - {dataloader_idx}")
+        return batch
+
+    def on_after_batch_transfer(self, batch, dataloader_idx):
+        print(f"RANK - {self.trainer.global_rank}: on_after_batch_transfer - {dataloader_idx}")
+        return batch
+
     def on_train_batch_end(self, *args, **kwargs):
+        print(f"RANK - {self.trainer.global_rank}: on_train_batch_end")
         if self.use_ema:
             self.model_ema(self.model)
 

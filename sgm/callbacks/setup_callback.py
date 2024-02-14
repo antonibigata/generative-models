@@ -2,6 +2,7 @@ from pytorch_lightning.callbacks import Callback
 import pytorch_lightning as pl
 import os
 from omegaconf import OmegaConf
+from pytorch_lightning.utilities import rank_zero_only
 
 MULTINODE_HACKS = True
 
@@ -30,6 +31,7 @@ class SetupCallback(Callback):
         self.debug = debug
         self.ckpt_name = ckpt_name
 
+    @rank_zero_only
     def on_exception(self, trainer: pl.Trainer, pl_module, exception):
         print("Exception occurred: {}".format(exception))
         if not self.debug and trainer.global_rank == 0:
@@ -40,6 +42,7 @@ class SetupCallback(Callback):
                 ckpt_path = os.path.join(self.ckptdir, self.ckpt_name)
             trainer.save_checkpoint(ckpt_path)
 
+    @rank_zero_only
     def on_fit_start(self, trainer, pl_module):
         if trainer.global_rank == 0:
             # Create logdirs and save configs

@@ -6,7 +6,7 @@ import webdataset as wds
 from itertools import islice
 
 
-def create_webdataset(filelist_path):
+def create_webdataset(filelist_path, audio_model=""):
     with open(filelist_path, "r") as filelist:
         filelist = filelist.readlines()
 
@@ -17,7 +17,10 @@ def create_webdataset(filelist_path):
         speaker_id = os.path.basename(speaker_id)
         base_filename, _ = os.path.splitext(video_file)
         audio_file = base_filename + ".wav"
-        audio_embedding_file = base_filename + "_emb.pt"
+        if audio_model:
+            audio_embedding_file = base_filename + f"_{audio_model}_emb.pt"
+        else:
+            audio_embedding_file = base_filename + "_emb.pt"
 
         audio_file_path = os.path.join(audio_path, audio_file)
         audio_emb_file_path = os.path.join(audio_path, audio_embedding_file)
@@ -51,11 +54,12 @@ if __name__ == "__main__":
     parser.add_argument("tar_output_path", help="Output path for the tar files.")
     parser.add_argument("filelist_path", help="Path to the text file containing the list of video files.")
     parser.add_argument("--batch_size", type=int, default=1, help="Number of samples per tar file.")
+    parser.add_argument("--audio_model", type=str, default="", help="Audio model to use for feature extraction.")
 
     args = parser.parse_args()
 
     os.makedirs(args.tar_output_path, exist_ok=True)
 
     with wds.ShardWriter(f"{args.tar_output_path}/out-%06d.tar", maxcount=args.batch_size) as sink:
-        for sample in islice(create_webdataset(args.filelist_path), 0, 10000):
+        for sample in islice(create_webdataset(args.filelist_path, args.audio_model), 0, 10000):
             sink.write(sample)

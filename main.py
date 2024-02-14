@@ -441,7 +441,6 @@ if __name__ == "__main__":
         logger_cfg = OmegaConf.create()
     logger_cfg = OmegaConf.merge(default_logger_cfg, logger_cfg)
 
-        
     # if lightning_config.get("strategy") == "horovod":
     #     hvd.init()
     #     if hvd.rank() == 0:
@@ -478,23 +477,27 @@ if __name__ == "__main__":
 
     # https://pytorch-lightning.readthedocs.io/en/stable/extensions/strategy.html
     # default to ddp if not further specified
-    # default_strategy_config = {"target": "pytorch_lightning.strategies.DDPStrategy"}
-    # default_strategy_config = {}
+    default_strategy_config = {
+        "target": "pytorch_lightning.strategies.DDPStrategy",
+        "timeout": 60,
+        # "process_group_backend": "gloo",
+        # "bite": "chybre",
+    }
 
-    # if "strategy" in lightning_config:
-    #     strategy_cfg = OmegaConf.create()
-    #     default_strategy_config["strategy"] = lightning_config.strategy
-    # else:
-    #     strategy_cfg = OmegaConf.create()
-    #     default_strategy_config["params"] = {
-    #         "find_unused_parameters": False,
-    #         # "static_graph": True,
-    #         # "ddp_comm_hook": default.fp16_compress_hook  # TODO: experiment with this, also for DDPSharded
-    #     }
-    # strategy_cfg = OmegaConf.merge(default_strategy_config, strategy_cfg)
-    # print(f"strategy config: \n ++++++++++++++ \n {strategy_cfg} \n ++++++++++++++ ")
-    # trainer_kwargs["strategy"] = instantiate_from_config(strategy_cfg) if "target" in strategy_cfg else strategy_cfg
-    trainer_kwargs["strategy"] = lightning_config.strategy
+    if "strategy" in lightning_config:
+        strategy_cfg = OmegaConf.create()
+        default_strategy_config["strategy"] = lightning_config.strategy
+    else:
+        strategy_cfg = OmegaConf.create()
+        default_strategy_config["params"] = {
+            "find_unused_parameters": False,
+            # "static_graph": True,
+            # "ddp_comm_hook": default.fp16_compress_hook  # TODO: experiment with this, also for DDPSharded
+        }
+    strategy_cfg = OmegaConf.merge(default_strategy_config, strategy_cfg)
+    print(f"strategy config: \n ++++++++++++++ \n {strategy_cfg} \n ++++++++++++++ ")
+    trainer_kwargs["strategy"] = instantiate_from_config(strategy_cfg) if "target" in strategy_cfg else strategy_cfg
+    # trainer_kwargs["strategy"] = lightning_config.strategy
 
     # add callback which sets up log directory
     default_callbacks_cfg = {
@@ -556,13 +559,17 @@ if __name__ == "__main__":
         del callbacks_cfg["ignore_keys_callback"]
 
     trainer_kwargs["callbacks"] = [instantiate_from_config(callbacks_cfg[k]) for k in callbacks_cfg]
+    # trainer_kwargs["callbacks"] = list()
     if not "plugins" in trainer_kwargs:
         trainer_kwargs["plugins"] = list()
 
     # cmd line trainer args (which are in trainer_opt) have always priority over config-trainer-args (which are in trainer_kwargs)
     trainer_opt = vars(trainer_opt)
     trainer_kwargs = {key: val for key, val in trainer_kwargs.items() if key not in trainer_opt}
-    trainer = Trainer(**trainer_opt, **trainer_kwargs)
+    print(f"trainer_kwargs: {trainer_kwargs}")
+    print(f"trainer_opt: {trainer_opt}")
+    # exit()
+    trainer = Trainer(**trainer_opt, **trainer_kwargs, limit_train_batches=1.0)
 
     trainer.logdir = logdir  ###
 
