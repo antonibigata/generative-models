@@ -3,11 +3,15 @@ from typing import List, Optional, Union
 
 from einops import rearrange, repeat
 
+# from ...modules.diffusionmodules.adapters.lora import apply_lora
+from ...modules.diffusionmodules.adapters.lora import get_module_names
+from ...modules.diffusionmodules.adapters.lora_v2 import inject_trainable_lora
 from ...modules.diffusionmodules.openaimodel import *
 from ...modules.video_attention import SpatialVideoTransformer
 from ...util import default
 from .util import AlphaBlender
 from .adapters.scedit import SCEAdapter
+from peft import LoraModel, LoraConfig
 
 
 class VideoResBlock(ResBlock):
@@ -455,11 +459,23 @@ class VideoUNet(nn.Module):
             # Freeze everything except the adapter
             for param in self.parameters():
                 param.requires_grad = False
-            for param in self.adapter.parameters():
-                param.requires_grad = True
-            if unfreeze_input_blocks:
-                for param in self.input_blocks.parameters():
+            if self.adapter is not None:
+                for param in self.adapter.parameters():
                     param.requires_grad = True
+            if unfreeze_input_blocks:
+                for param in self.input_blocks[0].parameters():
+                    param.requires_grad = True
+                    # break  # only unfreeze the first input block
+
+        # if fine_tuning_method == "lora":
+        #     inject_trainable_lora(self, **adapter_kwargs)
+        # filters = adapter_kwargs.pop("filters")
+        # module_names = get_module_names(self, filters=filters, all_modules_in_filter=True)
+        # lora_config = LoraConfig(
+        #     **adapter_kwargs,
+        #     target_modules=module_names,
+        # )
+        # self = LoraModel(self, lora_config, "bite")
 
         # if freeze_network:
         #     print("freezing network")
@@ -486,6 +502,11 @@ class VideoUNet(nn.Module):
         assert (y is not None) == (
             self.num_classes is not None
         ), "must specify y if and only if the model is class-conditional -> no, relax this TODO"
+
+        or_batch_size = x.shape[0] // num_video_frames[0]
+        if image_only_indicator.shape[0] != or_batch_size:
+            # TODO: fix this
+            image_only_indicator = repeat(image_only_indicator, "b ... -> (b t) ...", t=2)
 
         if x.shape[0] != context.shape[0]:
             num_video_frames = num_video_frames[0].item()

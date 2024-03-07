@@ -9,6 +9,70 @@ import numpy as np
 import torch
 from PIL import Image, ImageDraw, ImageFont
 from safetensors.torch import load_file as load_safetensors
+import torchaudio
+import math
+from einops import rearrange
+import torchvision
+import moviepy.editor as mpy
+
+
+def save_audio_video(
+    video, audio=None, frame_rate=25, sample_rate=16000, save_path="temp.mp4", keep_intermediate=False
+):
+    """Save audio and video to a single file.
+    video: (t, c, h, w)
+    audio: (channels t)
+    """
+    save_path = str(save_path)
+    try:
+        torchvision.io.write_video("temp_video.mp4", rearrange(video, "t c h w -> t h w c"), frame_rate)
+        video_clip = mpy.VideoFileClip("temp_video.mp4")
+        if audio is not None:
+            torchaudio.save("temp_audio.wav", audio, sample_rate)
+            audio_clip = mpy.AudioFileClip("temp_audio.wav")
+            video_clip = video_clip.set_audio(audio_clip)
+        video_clip.write_videofile(save_path, fps=frame_rate, codec="libx264", audio_codec="aac")
+        if not keep_intermediate:
+            os.remove("temp_video.mp4")
+            if audio is not None:
+                os.remove("temp_audio.wav")
+        return 1
+    except Exception as e:
+        print(e)
+        print("Saving video to file failed")
+        return 0
+
+
+def get_raw_audio(audio_path, audio_rate, fps=25):
+    audio, sr = torchaudio.load(audio_path, channels_first=True)
+    if audio.shape[0] > 1:
+        audio = audio.mean(0, keepdim=True)
+    audio = torchaudio.functional.resample(audio, orig_freq=sr, new_freq=audio_rate)[0]
+    samples_per_frame = math.ceil(audio_rate / fps)
+    n_frames = audio.shape[-1] / samples_per_frame
+    if not n_frames.is_integer():
+        print("Audio shape before trim_pad_audio: ", audio.shape)
+        audio = trim_pad_audio(audio, audio_rate, max_len_raw=math.ceil(n_frames) * samples_per_frame)
+        print("Audio shape after trim_pad_audio: ", audio.shape)
+    audio = rearrange(audio, "(f s) -> f s", s=samples_per_frame)
+    return audio
+
+
+def trim_pad_audio(audio, sr, max_len_sec=None, max_len_raw=None):
+    len_file = audio.shape[-1]
+
+    if max_len_sec or max_len_raw:
+        max_len = max_len_raw if max_len_raw is not None else int(max_len_sec * sr)
+        if len_file < int(max_len):
+            # dummy = np.zeros((1, int(max_len_sec * sr) - len_file))
+            # extened_wav = np.concatenate((audio_data, dummy[0]))
+            extened_wav = torch.nn.functional.pad(audio, (0, int(max_len) - len_file), "constant")
+        else:
+            extened_wav = audio[:, : int(max_len)]
+    else:
+        extened_wav = audio
+
+    return extened_wav
 
 
 def disabled_train(self, mode=True):
@@ -79,9 +143,7 @@ def log_txt_as_img(wh, xc, size=10):
             text_seq = xc[bi][0]
         else:
             text_seq = xc[bi]
-        lines = "\n".join(
-            text_seq[start : start + nc] for start in range(0, len(text_seq), nc)
-        )
+        lines = "\n".join(text_seq[start : start + nc] for start in range(0, len(text_seq), nc))
 
         try:
             draw.text((0, 0), lines, fill="black", font=font)
@@ -193,9 +255,7 @@ def append_dims(x, target_dims):
     """Appends dimensions to the end of a tensor until it has target_dims dimensions."""
     dims_to_append = target_dims - x.ndim
     if dims_to_append < 0:
-        raise ValueError(
-            f"input has {x.ndim} dims but target_dims is {target_dims}, which is less"
-        )
+        raise ValueError(f"input has {x.ndim} dims but target_dims is {target_dims}, which is less")
     return x[(...,) + (None,) * dims_to_append]
 
 

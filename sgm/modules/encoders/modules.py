@@ -947,9 +947,7 @@ class VideoPredictionEmbedderWithEncoder(AbstractEmbModel):
         self.disable_encoder_autocast = disable_encoder_autocast
         self.en_and_decode_n_samples_a_time = en_and_decode_n_samples_a_time
 
-    def forward(
-        self, vid: torch.Tensor
-    ) -> Union[
+    def forward(self, vid: torch.Tensor) -> Union[
         torch.Tensor,
         Tuple[torch.Tensor, torch.Tensor],
         Tuple[torch.Tensor, dict],
@@ -957,6 +955,11 @@ class VideoPredictionEmbedderWithEncoder(AbstractEmbModel):
     ]:
         if vid.ndim == 5:
             vid = rearrange(vid, "b c t h w -> (b t) c h w")
+
+        if vid.shape[1] == 4:
+            self.encoder = None
+            torch.cuda.empty_cache()
+            return rearrange(vid.squeeze(1), "(b t) c h w -> b (t c) h w", t=self.n_cond_frames)
 
         if self.sigma_sampler is not None:
             b = vid.shape[0] // self.n_cond_frames

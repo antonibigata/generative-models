@@ -1,13 +1,9 @@
 model:
-  base_learning_rate: 3.0e-5  
   target: sgm.models.diffusion.DiffusionEngine
   params:
-    input_key: latents
-    no_log_keys: [audio_emb, fps_id, motion_bucket_id, cond_aug]
     scale_factor: 0.18215
     disable_first_stage_autocast: True
-    ckpt_path: checkpoints/svd.safetensors
-    remove_keys_from_weights: [model.diffusion_model.input_blocks.0.0.weight]
+    ckpt_path: /vol/paramonos2/projects/antoni/code/Personal/generative-models/logs/2024-03-01T18-56-20_example_training-svd_interpolation/checkpoints/last.ckpt
 
     denoiser_config:
       target: sgm.modules.diffusionmodules.denoiser.Denoiser
@@ -44,24 +40,18 @@ model:
         use_spatial_context: True
         merge_strategy: learned_with_images
         video_kernel_size: [3, 1, 1]
-        fine_tuning_method: lora
+        fine_tuning_method: sctuner
         unfreeze_input_blocks: True # Because we changed the input block
         adapter_kwargs:
-          # down_ratio: 1
-          # adapter_type: null
-          # adapter_weight: null
-          # act_layer: gelu
-          # zero_init_last: True
-          # use_bias: True
-          # adapt_on_time: True
-          # condition_on: space
-          # condition_dim: 1280
-          target_replace_module: ["SpatialVideoTransformer"]
-          r: 16
-          loras: null  # path to lora .pt
-          verbose: False
-          dropout_p: 0.0
-          scale: 1.0
+          down_ratio: 5
+          adapter_type: null
+          adapter_weight: null
+          act_layer: gelu
+          zero_init_last: True
+          use_bias: True
+          adapt_on_time: False
+          condition_on: space
+          condition_dim: 1280
 
     conditioner_config:
       target: sgm.modules.GeneralConditioner
@@ -184,137 +174,4 @@ model:
             min_scale: 1.0
             num_frames: 14
 
-    loss_fn_config:
-      target: sgm.modules.diffusionmodules.loss.StandardDiffusionLoss
-      params:        
-        batch2model_keys:
-          - image_only_indicator
-          - num_video_frames
-        loss_weighting_config:
-          target: sgm.modules.diffusionmodules.loss_weighting.EpsWeighting
-        sigma_sampler_config:
-          target: sgm.modules.diffusionmodules.sigma_sampling.EDMSampling
-          params:
-            p_mean: 0.7
-            p_std: 1.6
-
-data:
-  target: sgm.data.video_datamodule_latent.VideoDataModule
-  params:
-    train:
-      datapipeline:
-        # urls:
-        #   # USER: adapt this path the root of your custom dataset
-        #   - /data2/Datasets/LRW/webdata/train/out-{000000..000004}.tar
-        # pipeline_config:
-        #   shardshuffle: 10000
-        #   sample_shuffle: 100 # USER: you might wanna adapt depending on your available RAM
-
-        # decoders:
-        #   - custom
-        # postprocessors:
-        #   - target: sdata.mappers.SelectTuple
-        #     params:
-        #       key: 'mp4' # USER: you might wanna adapt this for your custom dataset
-        #       index: 0
-        #   - target: sdata.mappers.ToSVDFormat
-        #     params:
-        #       key: mp4
-        #       audio_key: pt
-        #       n_frames: 14
-        #       resize_size: 320
-        #       motion_id: 60
-        #       fps: 24 # FPS - 1 See: https://github.com/Stability-AI/generative-models/blob/ed0997173f98eaf8f4edf7ba5fe8f15c6b877fd3/scripts/sampling/simple_video_sample.py#L188
-        #       cond_noise: [-3.0, 0.5]
-        #       mode: interpolation
-        filelist: /vol/paramonos2/projects/antoni/datasets/HDTF/filelist_videos_train.txt
-        resize_size: 512
-        audio_folder: audio
-        video_folder: cropped_videos_original
-        video_extension: .mp4
-        audio_extension: .wav
-        audio_rate: 16000
-        num_frames: 14
-        need_cond: True
-        mode: interpolation
-        use_latent: True
-        latent_type: video
-        latent_scale: 1  # For backwards compatibility
-        from_audio_embedding: True
-        load_all_possible_indexes: True
-        audio_emb_type: whisper
-        cond_noise: [-3.0, 0.5]
-        motion_id: 255.0
-        data_mean: null
-        data_std: null
-
-      loader:
-        batch_size: 1
-        num_workers: 6
-        drop_last: True
-        pin_memory: True
-        persistent_workers: True
-        # collation_fn:
-        #   target: sgm.data.collates.collate_video
-        #   params:
-        #     merge_keys: [frames]
-            
-    # validation:
-
-    #   datapipeline:
-    #     urls:
-    #       # USER: adapt this path the root of your custom dataset
-    #       - /data/122-2/Datasets/CREMA/webdataset/val/out-{000000..000001}.tar
-    #     pipeline_config:
-    #       shardshuffle: 10000
-    #       sample_shuffle: 1000 # USER: you might wanna adapt depending on your available RAM
-
-    #     decoders:
-    #       - video
-    #     postprocessors:
-    #       - target: sdata.mappers.SelectTuple
-    #         params:
-    #           key: 'mp4' # USER: you might wanna adapt this for your custom dataset
-    #           index: 0
-    #       - target: sdata.mappers.ToSVDFormat
-    #         params:
-    #           key: mp4
-    #           n_frames: 14
-    #           resize_size: 256
-    #           cond_noise: [-3.0, 0.5]
-
-    #   loader:
-    #     batch_size: 2
-    #     num_workers: 6
-
-lightning:
-  modelcheckpoint:
-    params:
-      every_n_train_steps: 5000
-      save_top_k: 1
-
-  callbacks:
-    metrics_over_trainsteps_checkpoint:
-      params:
-        every_n_train_steps: 25000
-
-    video_logger:
-      target: sgm.callbacks.video_logger.VideoLogger
-      params:
-        disabled: False
-        enable_autocast: False
-        batch_frequency: 1000
-        max_videos: 2
-        increase_log_steps: False
-        log_first_step: True
-        log_videos_kwargs:
-          use_ema_scope: False
-          N: 2
-          n_rows: 1
-
-  trainer:
-    devices: 0,1,2,3,4,5,6,7
-    benchmark: False
-    num_sanity_val_steps: 1
-    accumulate_grad_batches: 1
-    max_epochs: 1000
+   

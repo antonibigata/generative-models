@@ -15,6 +15,10 @@ from ..modules.diffusionmodules.wrappers import OPENAIUNETWRAPPER
 from ..modules.ema import LitEma
 from ..util import default, disabled_train, get_obj_from_str, instantiate_from_config, log_txt_as_img
 
+from peft import LoraModel, LoraConfig
+from ..modules.diffusionmodules.adapters.lora import get_module_names
+from ..modules.diffusionmodules.adapters.lora_v2 import inject_trainable_lora
+
 
 class DiffusionEngine(pl.LightningModule):
     def __init__(
@@ -40,6 +44,8 @@ class DiffusionEngine(pl.LightningModule):
         no_cond_log: bool = False,
         compile_model: bool = False,
         en_and_decode_n_samples_a_time: Optional[int] = None,
+        use_lora: Optional[bool] = True,
+        lora_config: Optional[Dict] = None,
     ):
         super().__init__()
 
@@ -84,6 +90,24 @@ class DiffusionEngine(pl.LightningModule):
 
         self.en_and_decode_n_samples_a_time = en_and_decode_n_samples_a_time
 
+        if use_lora:
+            # for p in self.model.parameters():
+            #     p.requires_grad = False
+            inject_trainable_lora(
+                self.model,
+                **lora_config,
+            )
+            # filters = [".transformer_blocks"]
+            # module_names = get_module_names(self.model, filters=filters, all_modules_in_filter=True)
+            # lora_config = LoraConfig(
+            #     inference_mode=False,
+            #     r=16,
+            #     lora_alpha=32,
+            #     lora_dropout=0.1,
+            #     target_modules=module_names,
+            # )
+            # self.model = LoraModel(self.model, lora_config, "bite")
+
     def init_from_ckpt(
         self,
         path: str,
@@ -115,6 +139,10 @@ class DiffusionEngine(pl.LightningModule):
         for param in model.parameters():
             param.requires_grad = False
         self.first_stage_model = model
+        if self.input_key == "latents":
+            # Remove encoder to save memory
+            self.first_stage_model.encoder = None
+            torch.cuda.empty_cache()
 
     def get_input(self, batch):
         # assuming unified data format, dataloader returns a dict.
@@ -175,15 +203,16 @@ class DiffusionEngine(pl.LightningModule):
 
     def shared_step(self, batch: Dict) -> Any:
         x = self.get_input(batch)
-        x = self.encode_first_stage(x)
+        if self.input_key != "latents":
+            x = self.encode_first_stage(x)
         batch["global_step"] = self.global_step
         loss, loss_dict = self(x, batch)
         return loss, loss_dict
 
     def training_step(self, batch, batch_idx):
         loss, loss_dict = self.shared_step(batch)
-        debugging_message = "Training step"
-        print(f"RANK - {self.trainer.global_rank}: {debugging_message}")
+        # debugging_message = "Training step"
+        # print(f"RANK - {self.trainer.global_rank}: {debugging_message}")
 
         self.log_dict(loss_dict, prog_bar=True, logger=True, on_step=True, on_epoch=False)
 
@@ -196,8 +225,8 @@ class DiffusionEngine(pl.LightningModule):
             on_epoch=False,
         )
 
-        debugging_message = "Training step - log"
-        print(f"RANK - {self.trainer.global_rank}: {debugging_message}")
+        # debugging_message = "Training step - log"
+        # print(f"RANK - {self.trainer.global_rank}: {debugging_message}")
 
         if self.scheduler_config is not None:
             lr = self.optimizers().param_groups[0]["lr"]
@@ -208,23 +237,23 @@ class DiffusionEngine(pl.LightningModule):
 
         return loss
 
-    def on_train_epoch_start(self, *args, **kwargs):
-        print(f"RANK - {self.trainer.global_rank}: on_train_epoch_start")
+    # def on_train_epoch_start(self, *args, **kwargs):
+    #     print(f"RANK - {self.trainer.global_rank}: on_train_epoch_start")
 
     def on_train_start(self, *args, **kwargs):
         if self.sampler is None or self.loss_fn is None:
             raise ValueError("Sampler and loss function need to be set for training.")
 
-    def on_before_batch_transfer(self, batch, dataloader_idx):
-        print(f"RANK - {self.trainer.global_rank}: on_before_batch_transfer - {dataloader_idx}")
-        return batch
+    # def on_before_batch_transfer(self, batch, dataloader_idx):
+    #     print(f"RANK - {self.trainer.global_rank}: on_before_batch_transfer - {dataloader_idx}")
+    #     return batch
 
-    def on_after_batch_transfer(self, batch, dataloader_idx):
-        print(f"RANK - {self.trainer.global_rank}: on_after_batch_transfer - {dataloader_idx}")
-        return batch
+    # def on_after_batch_transfer(self, batch, dataloader_idx):
+    #     print(f"RANK - {self.trainer.global_rank}: on_after_batch_transfer - {dataloader_idx}")
+    #     return batch
 
     def on_train_batch_end(self, *args, **kwargs):
-        print(f"RANK - {self.trainer.global_rank}: on_train_batch_end")
+        # print(f"RANK - {self.trainer.global_rank}: on_train_batch_end")
         if self.use_ema:
             self.model_ema(self.model)
 
@@ -353,8 +382,11 @@ class DiffusionEngine(pl.LightningModule):
 
         N = min(x.shape[0], N)
         x = x.to(self.device)[:N]
-        log["inputs"] = x
-        z = self.encode_first_stage(x)
+        if self.input_key != "latents":
+            log["inputs"] = x
+            z = self.encode_first_stage(x)
+        else:
+            z = x
         log["reconstructions"] = self.decode_first_stage(z)
         log.update(self.log_conditionings(batch, N))
 
@@ -415,8 +447,12 @@ class DiffusionEngine(pl.LightningModule):
 
         N = min(x.shape[0], N)
         x = x.to(self.device)[:N]
-        log["inputs"] = x
-        z = self.encode_first_stage(x)
+
+        if self.input_key != "latents":
+            log["inputs"] = x
+            z = self.encode_first_stage(x)
+        else:
+            z = x
         log["reconstructions"] = self.decode_first_stage(z)
         log.update(self.log_conditionings(batch, N))
 

@@ -489,8 +489,9 @@ if __name__ == "__main__":
         default_strategy_config["strategy"] = lightning_config.strategy
     else:
         strategy_cfg = OmegaConf.create()
+        unused_params = lightning_config.pop("unused_params", False)
         default_strategy_config["params"] = {
-            "find_unused_parameters": False,
+            "find_unused_parameters": unused_params,
             # "static_graph": True,
             # "ddp_comm_hook": default.fp16_compress_hook  # TODO: experiment with this, also for DDPSharded
         }
@@ -519,6 +520,10 @@ if __name__ == "__main__":
         #     "target": "sgm.callbacks.video_logger.VideoLogger",
         #     "params": {"batch_frequency": 1000, "max_videos": 4, "clamp": True},
         # },
+        "model_summary": {
+            "target": "pytorch_lightning.callbacks.ModelSummary",
+            "params": {"max_depth": -1},
+        },
         "learning_rate_logger": {
             "target": "pytorch_lightning.callbacks.LearningRateMonitor",
             "params": {
