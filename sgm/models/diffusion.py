@@ -1,3 +1,4 @@
+import os
 import math
 from contextlib import contextmanager
 from typing import Any, Dict, List, Optional, Tuple, Union
@@ -51,6 +52,8 @@ class DiffusionEngine(pl.LightningModule):
 
         # self.automatic_optimization = False
 
+        os.environ["CUDA_VISIBLE_DEVICES"] = str(self.global_rank)
+
         self.log_keys = log_keys
         self.no_log_keys = no_log_keys
         self.input_key = input_key
@@ -97,6 +100,8 @@ class DiffusionEngine(pl.LightningModule):
                 self.model,
                 **lora_config,
             )
+            # for p in self.model.diffusion_model.input_blocks.parameters():
+            #     print(p.requires_grad)
             # filters = [".transformer_blocks"]
             # module_names = get_module_names(self.model, filters=filters, all_modules_in_filter=True)
             # lora_config = LoraConfig(
@@ -142,7 +147,7 @@ class DiffusionEngine(pl.LightningModule):
         if self.input_key == "latents":
             # Remove encoder to save memory
             self.first_stage_model.encoder = None
-            torch.cuda.empty_cache()
+            # torch.cuda.empty_cache()
 
     def get_input(self, batch):
         # assuming unified data format, dataloader returns a dict.

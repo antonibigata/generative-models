@@ -549,7 +549,8 @@ if __name__ == "__main__":
                     "dirpath": os.path.join(ckptdir, "trainstep_checkpoints"),
                     "filename": "{epoch:06}-{step:09}",
                     "verbose": True,
-                    "save_top_k": -1,
+                    "save_top_k": 1,
+                    "save_last": True,
                     "every_n_train_steps": 10000,
                     "save_weights_only": True,
                 },
@@ -574,6 +575,7 @@ if __name__ == "__main__":
     print(f"trainer_kwargs: {trainer_kwargs}")
     print(f"trainer_opt: {trainer_opt}")
     # exit()
+
     trainer = Trainer(**trainer_opt, **trainer_kwargs, limit_train_batches=1.0)
 
     trainer.logdir = logdir  ###

@@ -4,14 +4,15 @@ from typing import List, Optional, Union
 from einops import rearrange, repeat
 
 # from ...modules.diffusionmodules.adapters.lora import apply_lora
-from ...modules.diffusionmodules.adapters.lora import get_module_names
-from ...modules.diffusionmodules.adapters.lora_v2 import inject_trainable_lora
+# from ...modules.diffusionmodules.adapters.lora import get_module_names
+# from ...modules.diffusionmodules.adapters.lora_v2 import inject_trainable_lora
 from ...modules.diffusionmodules.openaimodel import *
 from ...modules.video_attention import SpatialVideoTransformer
 from ...util import default
 from .util import AlphaBlender
 from .adapters.scedit import SCEAdapter
-from peft import LoraModel, LoraConfig
+
+# from peft import LoraModel, LoraConfig
 
 
 class VideoResBlock(ResBlock):
@@ -509,6 +510,9 @@ class VideoUNet(nn.Module):
             image_only_indicator = repeat(image_only_indicator, "b ... -> (b t) ...", t=2)
 
         if x.shape[0] != context.shape[0]:
+            # print("x.shape:", x.shape)
+            # print("context.shape:", context.shape)
+            # exit()
             num_video_frames = num_video_frames[0].item()
             # num_frames = x.shape[2]
             # num_video_frames = default(num_video_frames, num_frames)

@@ -8,6 +8,17 @@ model:
     disable_first_stage_autocast: True
     ckpt_path: checkpoints/svd.safetensors
     remove_keys_from_weights: [model.diffusion_model.input_blocks.0.0.weight]
+    compile_model: False
+
+    # LoRA
+    use_lora: True
+    lora_config:
+      target_replace_module: null
+      r: 16
+      loras: null  # path to lora .pt
+      verbose: False
+      dropout_p: 0.0
+      scale: 1.0
 
     denoiser_config:
       target: sgm.modules.diffusionmodules.denoiser.Denoiser
@@ -318,3 +329,4 @@ lightning:
     num_sanity_val_steps: 1
     accumulate_grad_batches: 1
     max_epochs: 1000
+    precision: 16
