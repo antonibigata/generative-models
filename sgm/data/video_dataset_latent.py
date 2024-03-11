@@ -250,8 +250,8 @@ class VideoDataset(Dataset):
                 vr = decord.VideoReader(video_file) if vr is None else vr
                 clean_cond = vr[indexes[0]].unsqueeze(0).permute(3, 0, 1, 2).float()
                 clean_cond = self.scale_and_crop((clean_cond / 255.0) * 2 - 1).squeeze(0)
-                # noisy_cond = target[:, 0]
-                noisy_cond = clean_cond
+                noisy_cond = target[:, 0]
+                # noisy_cond = clean_cond
             else:
                 clean_cond = target[:, 0]
                 noisy_cond = clean_cond
@@ -260,8 +260,8 @@ class VideoDataset(Dataset):
                 vr = decord.VideoReader(video_file) if vr is None else vr
                 clean_cond = vr.get_batch([indexes[0], indexes[-1]]).permute(3, 0, 1, 2).float()
                 clean_cond = self.scale_and_crop((clean_cond / 255.0) * 2 - 1)
-                # noisy_cond = torch.stack([frames[:, 0], frames[:, -1]], dim=1)
-                noisy_cond = clean_cond
+                noisy_cond = torch.stack([frames[:, 0], frames[:, -1]], dim=1)
+                # noisy_cond = clean_cond
             else:
                 clean_cond = torch.stack([frames[:, 0], frames[:, -1]], dim=1)
                 noisy_cond = clean_cond

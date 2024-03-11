@@ -16,8 +16,8 @@ from ..modules.diffusionmodules.wrappers import OPENAIUNETWRAPPER
 from ..modules.ema import LitEma
 from ..util import default, disabled_train, get_obj_from_str, instantiate_from_config, log_txt_as_img
 
-from peft import LoraModel, LoraConfig
-from ..modules.diffusionmodules.adapters.lora import get_module_names
+# from peft import LoraModel, LoraConfig
+# from ..modules.diffusionmodules.adapters.lora import get_module_names
 from ..modules.diffusionmodules.adapters.lora_v2 import inject_trainable_lora
 
 
@@ -51,8 +51,6 @@ class DiffusionEngine(pl.LightningModule):
         super().__init__()
 
         # self.automatic_optimization = False
-
-        # os.environ["CUDA_VISIBLE_DEVICES"] = str(self.global_rank)
 
         self.log_keys = log_keys
         self.no_log_keys = no_log_keys
@@ -178,6 +176,7 @@ class DiffusionEngine(pl.LightningModule):
         out = torch.cat(all_out, dim=0)
         if is_video:
             out = rearrange(out, "(b t) c h w -> b c t h w", t=T)
+        torch.cuda.empty_cache()
         return out
 
     @torch.no_grad()
@@ -246,6 +245,9 @@ class DiffusionEngine(pl.LightningModule):
     #     print(f"RANK - {self.trainer.global_rank}: on_train_epoch_start")
 
     def on_train_start(self, *args, **kwargs):
+        # os.environ["CUDA_VISIBLE_DEVICES"] = str(self.trainer.global_rank)
+        # torch.cuda.set_device(self.trainer.global_rank)
+        # torch.cuda.empty_cache()
         if self.sampler is None or self.loss_fn is None:
             raise ValueError("Sampler and loss function need to be set for training.")
 
