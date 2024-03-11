@@ -52,7 +52,7 @@ class DiffusionEngine(pl.LightningModule):
 
         # self.automatic_optimization = False
 
-        os.environ["CUDA_VISIBLE_DEVICES"] = str(self.global_rank)
+        # os.environ["CUDA_VISIBLE_DEVICES"] = str(self.global_rank)
 
         self.log_keys = log_keys
         self.no_log_keys = no_log_keys
@@ -147,7 +147,7 @@ class DiffusionEngine(pl.LightningModule):
         if self.input_key == "latents":
             # Remove encoder to save memory
             self.first_stage_model.encoder = None
-            # torch.cuda.empty_cache()
+            torch.cuda.empty_cache()
 
     def get_input(self, batch):
         # assuming unified data format, dataloader returns a dict.

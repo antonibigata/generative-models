@@ -250,8 +250,9 @@ data:
         from_audio_embedding: True
         load_all_possible_indexes: True
         audio_emb_type: whisper
-        cond_noise: [-3.0, 0.5]
-        motion_id: 255.0
+        # cond_noise: [-3.0, 0.5]
+        cond_noise: 0.
+        motion_id: 125
         data_mean: null
         data_std: null
 

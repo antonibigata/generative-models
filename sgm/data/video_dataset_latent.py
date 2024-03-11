@@ -271,11 +271,11 @@ class VideoDataset(Dataset):
         if self.cond_noise and isinstance(self.cond_noise, ListConfig):
             cond_noise = (self.cond_noise[0] + self.cond_noise[1] * torch.randn((1,))).exp()
             noisy_cond = noisy_cond + cond_noise * torch.randn_like(noisy_cond)
-        elif self.cond_noise:
+        else:
             noisy_cond = noisy_cond + self.cond_noise * torch.randn_like(noisy_cond)
             cond_noise = self.cond_noise
-        else:
-            cond_noise = None
+        # else:
+        #     cond_noise = None
 
         return clean_cond, noisy_cond, target, audio_frames, cond_noise
 
@@ -335,7 +335,7 @@ class VideoDataset(Dataset):
         if cond_noise is not None:
             out_data["cond_aug"] = cond_noise
         out_data["motion_bucket_id"] = torch.tensor([self.motion_id])
-        out_data["fps_id"] = torch.tensor([self.video_rate])
+        out_data["fps_id"] = torch.tensor([self.video_rate - 1])
         out_data["num_video_frames"] = self.num_frames
         out_data["image_only_indicator"] = torch.zeros(self.num_frames)
         return out_data
