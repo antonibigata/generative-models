@@ -54,6 +54,12 @@ class InterpolationWrapper(IdentityWrapper):
             self.learned_mask = nn.Parameter(torch.ones(n_channels, im_size[0], im_size[1]))
         elif starting_mask_method == "random":
             self.learned_mask = nn.Parameter(torch.randn(n_channels, im_size[0], im_size[1]))
+        elif starting_mask_method == "none":
+            self.learned_mask = None
+        elif starting_mask_method == "fixed_ones":
+            self.learned_mask = torch.ones(n_channels, im_size[0], im_size[1])
+        elif starting_mask_method == "fixed_zeros":
+            self.learned_mask = torch.zeros(n_channels, im_size[0], im_size[1])
         else:
             raise NotImplementedError(f"Unknown stating_mask_method: {starting_mask_method}")
 
@@ -65,7 +71,10 @@ class InterpolationWrapper(IdentityWrapper):
         cond_cat = rearrange(cond_cat, "b (t c) h w -> b c t h w", t=2)
         T = x.shape[0] // cond_cat.shape[0]
         start, end = cond_cat.chunk(2, dim=2)
-        learned_mask = repeat(self.learned_mask, "c h w -> b c h w", b=cond_cat.shape[0])
+        if self.learned_mask is None:
+            learned_mask = torch.stack([start.squeeze(2)] * T // 2 + [end.squeeze(2)] * T // 2, dim=2)
+        else:
+            learned_mask = repeat(self.learned_mask, "c h w -> b c h w", b=cond_cat.shape[0])
         ones_mask = torch.ones_like(learned_mask)[:, 0].unsqueeze(1)
         zeros_mask = torch.zeros_like(learned_mask)[:, 0].unsqueeze(1)
         cond_seq = torch.stack([start.squeeze(2)] + [learned_mask] * (T - 2) + [end.squeeze(2)], dim=2)

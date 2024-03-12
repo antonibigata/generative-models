@@ -45,7 +45,7 @@ class DiffusionEngine(pl.LightningModule):
         no_cond_log: bool = False,
         compile_model: bool = False,
         en_and_decode_n_samples_a_time: Optional[int] = None,
-        use_lora: Optional[bool] = True,
+        use_lora: Optional[bool] = False,
         lora_config: Optional[Dict] = None,
     ):
         super().__init__()
