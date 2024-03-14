@@ -504,7 +504,8 @@ class VideoUNet(nn.Module):
             self.num_classes is not None
         ), "must specify y if and only if the model is class-conditional -> no, relax this TODO"
 
-        or_batch_size = x.shape[0] // num_video_frames[0]
+        num_video_frames = num_video_frames if isinstance(num_video_frames, int) else num_video_frames[0]
+        or_batch_size = x.shape[0] // num_video_frames
         if image_only_indicator.shape[0] != or_batch_size:
             # TODO: fix this
             image_only_indicator = repeat(image_only_indicator, "b ... -> (b t) ...", t=2)
@@ -513,7 +514,7 @@ class VideoUNet(nn.Module):
             # print("x.shape:", x.shape)
             # print("context.shape:", context.shape)
             # exit()
-            num_video_frames = num_video_frames[0].item()
+            # num_video_frames = num_video_frames[0].item()
             # num_frames = x.shape[2]
             # num_video_frames = default(num_video_frames, num_frames)
             # x = rearrange(x, "b c t h w -> (b t) c h w")
@@ -532,10 +533,15 @@ class VideoUNet(nn.Module):
 
         hs = []
         t_emb = timestep_embedding(timesteps, self.model_channels, repeat_only=False)
+        # print("t_emb device:", t_emb.dtype)
+        # print("x device:", x.dtype)
+        # for name, param in self.time_embed.named_parameters():
+        #     print(name, param.dtype)
         emb = self.time_embed(t_emb)
 
         if self.num_classes is not None:
             assert y.shape[0] == x.shape[0]
+            y = y.to(emb.dtype)
             emb = emb + self.label_emb(y)
 
         h = x

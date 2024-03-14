@@ -251,7 +251,7 @@ class SpatialVideoTransformer(SpatialTransformer):
         if self.use_linear:
             x = self.proj_in(x)
 
-        num_frames = torch.arange(timesteps, device=x.device)
+        num_frames = torch.arange(timesteps, device=x.device, dtype=x.dtype)
         num_frames = repeat(num_frames, "t -> b t", b=x.shape[0] // timesteps)
         num_frames = rearrange(num_frames, "b t -> (b t)")
         t_emb = timestep_embedding(

@@ -7,18 +7,21 @@ model:
     scale_factor: 0.18215
     disable_first_stage_autocast: True
     ckpt_path: checkpoints/svd.safetensors
-    remove_keys_from_weights: [model.diffusion_model.input_blocks.0.0.weight]
+    # remove_keys_from_weights: [model.diffusion_model.input_blocks.0.0.weight]
     compile_model: False
 
     # LoRA
     use_lora: True
     lora_config:
+      search_class_str: Linear
       target_replace_module: null
-      r: 16
+      r_linear: 16
+      r_conv: 16
       loras: null  # path to lora .pt
-      verbose: False
-      dropout_p: 0.0
-      scale: 1.0
+      # verbose: False
+      # dropout_p: 0.0
+      # scale: 1.0
+      # search_class: both
 
     denoiser_config:
       target: sgm.modules.diffusionmodules.denoiser.Denoiser
@@ -33,6 +36,7 @@ model:
         im_size: [512, 512] # USER: adapt this to your dataset
         n_channels: 4
         starting_mask_method: zeros
+        add_mask: False
 
     network_config:
       target: sgm.modules.diffusionmodules.video_model.VideoUNet
@@ -40,7 +44,7 @@ model:
         adm_in_channels: 768
         num_classes: sequential
         use_checkpoint: True
-        in_channels: 9
+        in_channels: 8
         out_channels: 4
         model_channels: 320
         attention_resolutions: [4, 2, 1]
@@ -240,7 +244,8 @@ data:
         #       fps: 24 # FPS - 1 See: https://github.com/Stability-AI/generative-models/blob/ed0997173f98eaf8f4edf7ba5fe8f15c6b877fd3/scripts/sampling/simple_video_sample.py#L188
         #       cond_noise: [-3.0, 0.5]
         #       mode: interpolation
-        filelist: /vol/paramonos2/projects/antoni/datasets/HDTF/filelist_videos_train.txt
+        # filelist: /vol/paramonos2/projects/antoni/datasets/HDTF/filelist_videos_train.txt
+        filelist: /home/abigata/PhD/datasets/HDTF/filelist_train.txt
         resize_size: 512
         audio_folder: audio
         video_folder: cropped_videos_original
@@ -256,14 +261,14 @@ data:
         from_audio_embedding: True
         load_all_possible_indexes: True
         audio_emb_type: whisper
-        cond_noise: [-3.0, 0.5]
-        # cond_noise: 0.
-        motion_id: 255
+        # cond_noise: [-3.0, 0.5]
+        cond_noise: 0.
+        motion_id: 125
         data_mean: null
         data_std: null
 
       loader:
-        batch_size: 1
+        batch_size: 4
         num_workers: 6
         drop_last: True
         pin_memory: True
@@ -327,9 +332,9 @@ lightning:
           n_rows: 1
 
   trainer:
-    devices: 4,5,6,7
+    devices: 1,2,3,4
     benchmark: False
     num_sanity_val_steps: 1
     accumulate_grad_batches: 1
     max_epochs: 1000
-    precision: 16
+    precision: bf16

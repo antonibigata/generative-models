@@ -7,16 +7,18 @@ model:
     scale_factor: 0.18215
     disable_first_stage_autocast: True
     ckpt_path: checkpoints/svd.safetensors
+    compile_model: False
 
     # LoRA
     use_lora: True
     lora_config:
       target_replace_module: ["SpatialVideoTransformer"]
-      r: 16
+      r_linear: 16
+      r_conv: 16
       loras: null  # path to lora .pt
-      verbose: False
-      dropout_p: 0.0
-      scale: 1.0
+      # verbose: False
+      # dropout_p: 0.0
+      # scale: 1.0
 
     denoiser_config:
       target: sgm.modules.diffusionmodules.denoiser.Denoiser
@@ -234,7 +236,7 @@ data:
         #       fps: 24 # FPS - 1 See: https://github.com/Stability-AI/generative-models/blob/ed0997173f98eaf8f4edf7ba5fe8f15c6b877fd3/scripts/sampling/simple_video_sample.py#L188
         #       cond_noise: [-3.0, 0.5]
         #       mode: interpolation
-        filelist: /vol/paramonos2/projects/antoni/datasets/HDTF/filelist_videos_train.txt
+        filelist: /home/abigata/PhD/datasets/HDTF/filelist_train.txt
         resize_size: 512
         audio_folder: audio
         video_folder: cropped_videos_original
@@ -252,7 +254,7 @@ data:
         audio_emb_type: whisper
         # cond_noise: [-3.0, 0.5]
         cond_noise: 0.
-        motion_id: 125
+        motion_id: 60
         data_mean: null
         data_std: null
 
@@ -321,8 +323,9 @@ lightning:
           n_rows: 1
 
   trainer:
-    devices: 4,
+    devices: 6,
     benchmark: False
     num_sanity_val_steps: 1
     accumulate_grad_batches: 1
     max_epochs: 1000
+    precision: bf16-mixed

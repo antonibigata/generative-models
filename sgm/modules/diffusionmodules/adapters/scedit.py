@@ -55,9 +55,9 @@ class SCEAdapter(nn.Module):
         self.condition_on = condition_on if condition_dim is not None else None
 
         if self.condition_on in ["both", "space"]:
-            self.mlp_cond_space = nn.Sequential(nn.SiLU(), nn.Linear(condition_dim, adapter_length*2))
-        if self.condition_on in ["both", "time"]:
-            self.mlp_cond_time = nn.Sequential(nn.SiLU(), nn.Linear(condition_dim, adapter_length*2))
+            self.mlp_cond_space = nn.Sequential(nn.SiLU(), nn.Linear(condition_dim, adapter_length * 2))
+        if self.condition_on in ["both", "time"] and adapt_on_time:
+            self.mlp_cond_time = nn.Sequential(nn.SiLU(), nn.Linear(condition_dim, adapter_length * 2))
 
         self.ln1 = nn.Linear(dim, adapter_length, bias=use_bias)
         if isinstance(act_layer, str):

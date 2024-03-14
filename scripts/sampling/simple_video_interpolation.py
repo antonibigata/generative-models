@@ -110,6 +110,7 @@ def sample(
     # degradation: int = 1,
     model_config: Optional[str] = None,
     max_seconds: Optional[int] = None,
+    lora_path: Optional[str] = None,
 ):
     """
     Simple script to generate a single sample conditioned on an image `input_path` or multiple images, one for each
@@ -152,6 +153,8 @@ def sample(
         input_key,
     )
     model.en_and_decode_n_samples_a_time = decoding_t
+    if lora_path is not None:
+        model.init_from_ckpt(lora_path, remove_keys_from_weights=None)
     torch.manual_seed(seed)
 
     path = Path(input_path)
@@ -297,6 +300,10 @@ def sample(
 
                     samples_z = model.sampler(denoiser, video, cond=c, uc=uc, strength=strength)
                     samples_x = model.decode_first_stage(samples_z)
+
+                    # Replace first and last by condition
+                    samples_x[0] = condition.squeeze(0)[:, 0]
+                    samples_x[-1] = condition.squeeze(0)[:, 1]
 
                     samples = torch.clamp((samples_x + 1.0) / 2.0, min=0.0, max=1.0)
 

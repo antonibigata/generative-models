@@ -18,7 +18,7 @@ from ..util import default, disabled_train, get_obj_from_str, instantiate_from_c
 
 # from peft import LoraModel, LoraConfig
 # from ..modules.diffusionmodules.adapters.lora import get_module_names
-from ..modules.diffusionmodules.adapters.lora_v2 import inject_trainable_lora
+from ..modules.diffusionmodules.adapters.lora_v2 import inject_trainable_lora_extended
 
 
 class DiffusionEngine(pl.LightningModule):
@@ -94,8 +94,15 @@ class DiffusionEngine(pl.LightningModule):
         if use_lora:
             # for p in self.model.parameters():
             #     p.requires_grad = False
-            inject_trainable_lora(
+            search_class_str = lora_config.pop("search_class_str", "Linear")
+            search_class_list = []
+            if search_class_str.lower() in ["linear", "both"]:
+                search_class_list.append(torch.nn.Linear)
+            if search_class_str.lower() in ["conv2d", "both"]:
+                search_class_list.append(torch.nn.Conv2d)
+            inject_trainable_lora_extended(
                 self.model,
+                search_class=search_class_list,
                 **lora_config,
             )
             # for p in self.model.diffusion_model.input_blocks.parameters():
@@ -111,11 +118,7 @@ class DiffusionEngine(pl.LightningModule):
             # )
             # self.model = LoraModel(self.model, lora_config, "bite")
 
-    def init_from_ckpt(
-        self,
-        path: str,
-        remove_keys_from_weights: bool = True,
-    ) -> None:
+    def init_from_ckpt(self, path: str, remove_keys_from_weights: Optional[Union[List, Tuple]] = None) -> None:
         if path.endswith("ckpt"):
             sd = torch.load(path, map_location="cpu")["state_dict"]
         elif path.endswith("safetensors"):

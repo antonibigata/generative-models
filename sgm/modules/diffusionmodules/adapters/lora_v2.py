@@ -79,7 +79,10 @@ class LoraInjectedConv2d(nn.Module):
     ):
         super().__init__()
         if r > min(in_channels, out_channels):
-            raise ValueError(f"LoRA rank {r} must be less or equal than {min(in_channels, out_channels)}")
+            # raise ValueError(f"LoRA rank {r} must be less or equal than {min(in_channels, out_channels)}")
+            print(f"LoRA rank {r} must be less or equal than {min(in_channels, out_channels)}")
+            print("Setting r to", min(in_channels, out_channels))
+            r = min(in_channels, out_channels)
         self.r = r
         self.conv = nn.Conv2d(
             in_channels=in_channels,
@@ -290,7 +293,9 @@ def inject_trainable_lora(
 def inject_trainable_lora_extended(
     model: nn.Module,
     target_replace_module: Set[str] = UNET_EXTENDED_TARGET_REPLACE,
-    r: int = 4,
+    search_class: List[Type[nn.Module]] = [nn.Linear, nn.Conv2d],
+    r_conv: int = 4,
+    r_linear: int = 4,
     loras=None,  # path to lora .pt
 ):
     """
@@ -303,9 +308,7 @@ def inject_trainable_lora_extended(
     if loras != None:
         loras = torch.load(loras)
 
-    for _module, name, _child_module in _find_modules(
-        model, target_replace_module, search_class=[nn.Linear, nn.Conv2d]
-    ):
+    for _module, name, _child_module in _find_modules(model, target_replace_module, search_class=search_class):
         if _child_module.__class__ == nn.Linear:
             weight = _child_module.weight
             bias = _child_module.bias
@@ -313,7 +316,7 @@ def inject_trainable_lora_extended(
                 _child_module.in_features,
                 _child_module.out_features,
                 _child_module.bias is not None,
-                r=r,
+                r=r_linear,
             )
             _tmp.linear.weight = weight
             if bias is not None:
@@ -330,7 +333,7 @@ def inject_trainable_lora_extended(
                 _child_module.dilation,
                 _child_module.groups,
                 _child_module.bias is not None,
-                r=r,
+                r=r_conv,
             )
 
             _tmp.conv.weight = weight

@@ -486,6 +486,7 @@ if __name__ == "__main__":
 
     if "strategy" in lightning_config:
         strategy_cfg = OmegaConf.create()
+        default_strategy_config = {}
         default_strategy_config["strategy"] = lightning_config.strategy
     else:
         strategy_cfg = OmegaConf.create()
@@ -497,7 +498,9 @@ if __name__ == "__main__":
         }
     strategy_cfg = OmegaConf.merge(default_strategy_config, strategy_cfg)
     print(f"strategy config: \n ++++++++++++++ \n {strategy_cfg} \n ++++++++++++++ ")
-    trainer_kwargs["strategy"] = instantiate_from_config(strategy_cfg) if "target" in strategy_cfg else strategy_cfg
+    trainer_kwargs["strategy"] = (
+        instantiate_from_config(strategy_cfg) if "target" in strategy_cfg else strategy_cfg["strategy"]
+    )
     # trainer_kwargs["strategy"] = lightning_config.strategy
 
     # add callback which sets up log directory

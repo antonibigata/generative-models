@@ -624,13 +624,22 @@ class FrozenOpenCLIPImageEmbedder(AbstractEmbModel):
 
     def preprocess(self, x):
         # normalize to [0,1]
-        x = kornia.geometry.resize(
-            x,
-            (224, 224),
-            interpolation="bicubic",
-            align_corners=True,
-            antialias=self.antialias,
+        prev_dtype = x.dtype
+        # move to torch.float32
+        x = x.to(torch.float32)
+        # print(f"Preprocessing image with dtype {x.dtype}")
+        # x = kornia.geometry.resize(
+        #     x,
+        #     (224, 224),
+        #     interpolation="bicubic",
+        #     align_corners=True,
+        #     antialias=self.antialias,
+        # )
+        x = torch.nn.functional.interpolate(
+            x, size=(224, 224), mode="bicubic", align_corners=True, antialias=self.antialias
         )
+        x = x.to(prev_dtype)
+        # print(f"Postprocessing image with dtype {x.dtype}")
         x = (x + 1.0) / 2.0
         # renormalize according to clip
         x = kornia.enhance.normalize(x, self.mean, self.std)

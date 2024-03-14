@@ -150,7 +150,9 @@ class Upsample(nn.Module):
                 mode="nearest",
             )
         else:
-            x = F.interpolate(x, scale_factor=self.scale_factor, mode="nearest")
+            prev_dtype = x.dtype
+            x = F.interpolate(x.to(th.float32), scale_factor=self.scale_factor, mode="nearest")
+            x = x.to(prev_dtype)
         if self.use_conv:
             x = self.conv(x)
         return x
@@ -698,19 +700,21 @@ class UNetModel(nn.Module):
                 use_checkpoint=use_checkpoint,
                 use_scale_shift_norm=use_scale_shift_norm,
             ),
-            SpatialTransformer(
-                ch,
-                num_heads,
-                dim_head,
-                depth=transformer_depth_middle,
-                context_dim=context_dim,
-                disable_self_attn=disable_middle_self_attn,
-                use_linear=use_linear_in_transformer,
-                attn_type=spatial_transformer_attn_type,
-                use_checkpoint=use_checkpoint,
-            )
-            if not disable_middle_transformer
-            else th.nn.Identity(),
+            (
+                SpatialTransformer(
+                    ch,
+                    num_heads,
+                    dim_head,
+                    depth=transformer_depth_middle,
+                    context_dim=context_dim,
+                    disable_self_attn=disable_middle_self_attn,
+                    use_linear=use_linear_in_transformer,
+                    attn_type=spatial_transformer_attn_type,
+                    use_checkpoint=use_checkpoint,
+                )
+                if not disable_middle_transformer
+                else th.nn.Identity()
+            ),
             ResBlock(
                 ch,
                 time_embed_dim,

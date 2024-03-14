@@ -38,3 +38,11 @@ webdataset>=0.2.33
 wheel>=0.41.0
 xformers>=0.0.20
 streamlit-keyup==0.2.0
+moviepy==1.0.3
+pyrootutils==1.0.4
+decord==0.6.0
+more-itertools==10.2.0
+soundfile==0.12.1
+audiomentations==0.34.1
+av==11.0.0
+-e src/sdata
