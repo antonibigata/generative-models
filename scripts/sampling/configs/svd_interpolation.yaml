@@ -3,8 +3,8 @@ model:
   params:
     scale_factor: 0.18215
     disable_first_stage_autocast: True
-    ckpt_path: /home/abigata/PhD/code/generative-models/checkpoints/svd.safetensors
-    remove_keys_from_weights: [model.diffusion_model.input_blocks.0.0.weight]
+    ckpt_path: /data2/Experiments/generative_models/logs/2024-03-01T18-56-20_example_training-svd_interpolation/checkpoints/last.ckpt
+    # remove_keys_from_weights: [model.diffusion_model.input_blocks.0.0.weight]
 
     denoiser_config:
       target: sgm.modules.diffusionmodules.denoiser.Denoiser
@@ -20,7 +20,7 @@ model:
         n_channels: 4
         starting_mask_method: zeros
 
-    use_lora: True
+    use_lora: False
     lora_config:
       search_class_str: Linear
       target_replace_module: null
@@ -49,7 +49,7 @@ model:
         use_spatial_context: True
         merge_strategy: learned_with_images
         video_kernel_size: [3, 1, 1]
-        fine_tuning_method: lora
+        fine_tuning_method: sctuner
         unfreeze_input_blocks: True # Because we changed the input block
         adapter_kwargs:
           down_ratio: 5

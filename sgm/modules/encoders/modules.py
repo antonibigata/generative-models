@@ -624,21 +624,21 @@ class FrozenOpenCLIPImageEmbedder(AbstractEmbModel):
 
     def preprocess(self, x):
         # normalize to [0,1]
-        prev_dtype = x.dtype
-        # move to torch.float32
-        x = x.to(torch.float32)
+        # prev_dtype = x.dtype
+        # # move to torch.float32
+        # x = x.to(torch.float32)
         # print(f"Preprocessing image with dtype {x.dtype}")
-        # x = kornia.geometry.resize(
-        #     x,
-        #     (224, 224),
-        #     interpolation="bicubic",
-        #     align_corners=True,
-        #     antialias=self.antialias,
-        # )
-        x = torch.nn.functional.interpolate(
-            x, size=(224, 224), mode="bicubic", align_corners=True, antialias=self.antialias
+        x = kornia.geometry.resize(
+            x,
+            (224, 224),
+            interpolation="bicubic",
+            align_corners=True,
+            antialias=self.antialias,
         )
-        x = x.to(prev_dtype)
+        # x = torch.nn.functional.interpolate(
+        #     x, size=(224, 224), mode="bicubic", align_corners=True, antialias=self.antialias
+        # )
+        # x = x.to(prev_dtype)
         # print(f"Postprocessing image with dtype {x.dtype}")
         x = (x + 1.0) / 2.0
         # renormalize according to clip
@@ -956,7 +956,9 @@ class VideoPredictionEmbedderWithEncoder(AbstractEmbModel):
         self.disable_encoder_autocast = disable_encoder_autocast
         self.en_and_decode_n_samples_a_time = en_and_decode_n_samples_a_time
 
-    def forward(self, vid: torch.Tensor) -> Union[
+    def forward(
+        self, vid: torch.Tensor
+    ) -> Union[
         torch.Tensor,
         Tuple[torch.Tensor, torch.Tensor],
         Tuple[torch.Tensor, dict],
@@ -970,7 +972,7 @@ class VideoPredictionEmbedderWithEncoder(AbstractEmbModel):
                 self.encoder = None
                 torch.cuda.empty_cache()
             # exit()
-            return rearrange(vid.squeeze(1), "(b t) c h w -> b (t c) h w", t=self.n_cond_frames) / 0.18215
+            return rearrange(vid.squeeze(1), "(b t) c h w -> b (t c) h w", t=self.n_cond_frames)
 
         if self.sigma_sampler is not None:
             b = vid.shape[0] // self.n_cond_frames

@@ -47,7 +47,7 @@ class AttentionPool2d(nn.Module):
         b, c, _ = x.shape
         x = x.reshape(b, c, -1)
         x = th.cat([x.mean(dim=-1, keepdim=True), x], dim=-1)
-        x = x + self.positional_embedding[None, :, :].to(x.dtype)
+        x = x + self.positional_embedding[None, :, :]
         x = self.qkv_proj(x)
         x = self.attention(x)
         x = self.c_proj(x)
@@ -150,9 +150,9 @@ class Upsample(nn.Module):
                 mode="nearest",
             )
         else:
-            prev_dtype = x.dtype
-            x = F.interpolate(x.to(th.float32), scale_factor=self.scale_factor, mode="nearest")
-            x = x.to(prev_dtype)
+            # prev_dtype = x.dtype
+            x = F.interpolate(x, scale_factor=self.scale_factor, mode="nearest")
+            # x = x.to(prev_dtype)
         if self.use_conv:
             x = self.conv(x)
         return x

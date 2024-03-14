@@ -197,7 +197,7 @@ def timestep_embedding(timesteps, dim, max_period=10000, repeat_only=False):
             embedding = torch.cat([embedding, torch.zeros_like(embedding[:, :1])], dim=-1)
     else:
         embedding = repeat(timesteps, "b -> b d", d=dim)
-    return embedding.to(timesteps.dtype)
+    return embedding
 
 
 def zero_module(module):
@@ -324,5 +324,5 @@ class AlphaBlender(nn.Module):
         image_only_indicator: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         alpha = self.get_alpha(image_only_indicator)
-        x = alpha.to(x_spatial.dtype) * x_spatial + (1.0 - alpha).to(x_spatial.dtype) * x_temporal
+        x = alpha * x_spatial + (1.0 - alpha) * x_temporal
         return x
