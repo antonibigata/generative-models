@@ -521,6 +521,11 @@ class VideoUNet(nn.Module):
             context = repeat(context, "b ... -> b t ...", t=num_video_frames)
             context = rearrange(context, "b t ... -> (b t) ...", t=num_video_frames)
 
+        if self.audio_cond_method == "cross_attention":
+            assert audio_emb is not None
+            audio_emb = rearrange(audio_emb, "b t d c -> (b t) d c")
+            context = th.cat([context, audio_emb], dim=1)
+
         if self.audio_cond_method == "cross_time":
             assert audio_emb is not None
             time_context = audio_emb
@@ -537,11 +542,12 @@ class VideoUNet(nn.Module):
         # print("x device:", x.dtype)
         # for name, param in self.time_embed.named_parameters():
         #     print(name, param.dtype)
+        t_emb = t_emb.to(x.dtype)
         emb = self.time_embed(t_emb)
 
         if self.num_classes is not None:
             assert y.shape[0] == x.shape[0]
-            # y = y.to(emb.dtype)
+            y = y.to(emb.dtype)
             emb = emb + self.label_emb(y)
 
         h = x

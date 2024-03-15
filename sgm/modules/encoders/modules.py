@@ -228,6 +228,8 @@ class WhisperAudioEmbedder(AbstractEmbModel):
             x = rearrange(x, "b n c d -> b n (c d)")
         elif self.merge_method == "add":
             x = x.sum(dim=2)
+        elif self.merge_method == "none":
+            pass
         else:
             raise NotImplementedError(f"Unknown merge method: {self.merge_method}")
 
@@ -972,7 +974,7 @@ class VideoPredictionEmbedderWithEncoder(AbstractEmbModel):
                 self.encoder = None
                 torch.cuda.empty_cache()
             # exit()
-            return rearrange(vid.squeeze(1), "(b t) c h w -> b (t c) h w", t=self.n_cond_frames)
+            return rearrange(vid.squeeze(1), "(b t) c h w -> b (t c) h w", t=self.n_cond_frames) / 0.18215
 
         if self.sigma_sampler is not None:
             b = vid.shape[0] // self.n_cond_frames

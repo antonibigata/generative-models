@@ -7,18 +7,21 @@ model:
     scale_factor: 0.18215
     disable_first_stage_autocast: True
     ckpt_path: checkpoints/svd.safetensors
+    remove_keys_from_weights: [model.diffusion_model.input_blocks.0.0.weight]
     compile_model: False
 
     # LoRA
     use_lora: True
     lora_config:
-      target_replace_module: ["SpatialVideoTransformer"]
+      search_class_str: Linear
+      target_replace_module: null
       r_linear: 16
       r_conv: 16
       loras: null  # path to lora .pt
       # verbose: False
       # dropout_p: 0.0
       # scale: 1.0
+      # search_class: both
 
     denoiser_config:
       target: sgm.modules.diffusionmodules.denoiser.Denoiser
@@ -27,6 +30,13 @@ model:
           target: sgm.modules.diffusionmodules.denoiser_scaling.VScalingWithEDMcNoise
 
     # network_wrapper: sgm.modules.diffusionmodules.wrappers.IdentityWrapper
+    network_wrapper: 
+      target: sgm.modules.diffusionmodules.wrappers.InterpolationWrapper
+      params:
+        im_size: [512, 512] # USER: adapt this to your dataset
+        n_channels: 4
+        starting_mask_method: zeros
+        add_mask: True
 
     network_config:
       target: sgm.modules.diffusionmodules.video_model.VideoUNet
@@ -34,7 +44,7 @@ model:
         adm_in_channels: 768
         num_classes: sequential
         use_checkpoint: True
-        in_channels: 8
+        in_channels: 9
         out_channels: 4
         model_channels: 320
         attention_resolutions: [4, 2, 1]
@@ -49,29 +59,25 @@ model:
         use_spatial_context: True
         merge_strategy: learned_with_images
         video_kernel_size: [3, 1, 1]
-        audio_cond_method: cross_attention
         fine_tuning_method: lora
-        adapter_kwargs:
-          # down_ratio: 5
-          # adapter_type: null
-          # adapter_weight: null
-          # act_layer: gelu
-          # zero_init_last: True
-          # use_bias: True
-          # adapt_on_time: False
-          # condition_on: space
-          # condition_dim: 1280
-          # filters: [".transformer_blocks"]
-          # inference_mode: False
-          # r: 16
-          # lora_alpha: 32
-          # lora_dropout: 0.1
-          target_replace_module: ["SpatialVideoTransformer"]
-          r: 16
-          loras: null  # path to lora .pt
-          verbose: False
-          dropout_p: 0.0
-          scale: 1.0
+        audio_cond_method: cross_attention
+        unfreeze_input_blocks: True # Because we changed the input block
+        # adapter_kwargs:
+        #   # down_ratio: 1
+        #   # adapter_type: null
+        #   # adapter_weight: null
+        #   # act_layer: gelu
+        #   # zero_init_last: True
+        #   # use_bias: True
+        #   # adapt_on_time: True
+        #   # condition_on: space
+        #   # condition_dim: 1280
+        #   target_replace_module: ["SpatialVideoTransformer"]
+        #   r: 16
+        #   loras: null  # path to lora .pt
+        #   verbose: False
+        #   dropout_p: 0.0
+        #   scale: 1.0
 
     conditioner_config:
       target: sgm.modules.GeneralConditioner
@@ -81,7 +87,7 @@ model:
           input_key: cond_frames_without_noise
           target: sgm.modules.encoders.modules.FrozenOpenCLIPImagePredictionEmbedder
           params:
-            n_cond_frames: 1
+            n_cond_frames: 2
             n_copies: 1
             open_clip_embedding_config:
               target: sgm.modules.encoders.modules.FrozenOpenCLIPImageEmbedder
@@ -105,7 +111,7 @@ model:
           target: sgm.modules.encoders.modules.VideoPredictionEmbedderWithEncoder
           params:
             disable_encoder_autocast: True
-            n_cond_frames: 1
+            n_cond_frames: 2
             n_copies: 1
             is_ae: True
             encoder_config:
@@ -205,8 +211,10 @@ model:
         sigma_sampler_config:
           target: sgm.modules.diffusionmodules.sigma_sampling.EDMSampling
           params:
-            p_mean: 0.7
-            p_std: 1.6
+            # p_mean: 0.7
+            # p_std: 1.6
+            p_mean: 1.
+            p_std: 1.2
 
 data:
   target: sgm.data.video_datamodule_latent.VideoDataModule
@@ -237,6 +245,7 @@ data:
         #       fps: 24 # FPS - 1 See: https://github.com/Stability-AI/generative-models/blob/ed0997173f98eaf8f4edf7ba5fe8f15c6b877fd3/scripts/sampling/simple_video_sample.py#L188
         #       cond_noise: [-3.0, 0.5]
         #       mode: interpolation
+        # filelist: /vol/paramonos2/projects/antoni/datasets/HDTF/filelist_videos_train.txt
         filelist: /home/abigata/PhD/datasets/HDTF/filelist_train.txt
         resize_size: 512
         audio_folder: audio
@@ -245,8 +254,8 @@ data:
         audio_extension: .wav
         audio_rate: 16000
         num_frames: 14
-        need_cond: False
-        mode: prediction
+        need_cond: True
+        mode: interpolation
         use_latent: True
         latent_type: video
         latent_scale: 1  # For backwards compatibility
@@ -255,12 +264,12 @@ data:
         audio_emb_type: whisper
         # cond_noise: [-3.0, 0.5]
         cond_noise: 0.
-        motion_id: 60
+        motion_id: 125
         data_mean: null
         data_std: null
 
       loader:
-        batch_size: 1
+        batch_size: 4
         num_workers: 6
         drop_last: True
         pin_memory: True
@@ -275,13 +284,13 @@ data:
     #   datapipeline:
     #     urls:
     #       # USER: adapt this path the root of your custom dataset
-    #       - "/data/122-2/Datasets/CREMA/webdataset/val/out-{000000..000001}.tar"
+    #       - /data/122-2/Datasets/CREMA/webdataset/val/out-{000000..000001}.tar
     #     pipeline_config:
     #       shardshuffle: 10000
     #       sample_shuffle: 1000 # USER: you might wanna adapt depending on your available RAM
 
     #     decoders:
-    #       - "video"
+    #       - video
     #     postprocessors:
     #       - target: sdata.mappers.SelectTuple
     #         params:
@@ -289,7 +298,7 @@ data:
     #           index: 0
     #       - target: sdata.mappers.ToSVDFormat
     #         params:
-    #           key: "mp4"
+    #           key: mp4
     #           n_frames: 14
     #           resize_size: 256
     #           cond_noise: [-3.0, 0.5]
@@ -315,16 +324,16 @@ lightning:
         disabled: False
         enable_autocast: False
         batch_frequency: 1000
-        max_videos: 2
+        max_videos: 1
         increase_log_steps: False
         log_first_step: True
         log_videos_kwargs:
           use_ema_scope: False
-          N: 2
+          N: 1
           n_rows: 1
 
   trainer:
-    devices: 7,
+    devices: 1,2,3,4
     benchmark: False
     num_sanity_val_steps: 1
     accumulate_grad_batches: 1
