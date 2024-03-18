@@ -1,5 +1,5 @@
 model:
-  base_learning_rate: 1.e-4
+  base_learning_rate: 3.e-5
   target: sgm.models.diffusion.DiffusionEngine
   params:
     input_key: latents
@@ -248,7 +248,7 @@ data:
         #       cond_noise: [-3.0, 0.5]
         #       mode: interpolation
         # filelist: /vol/paramonos2/projects/antoni/datasets/HDTF/filelist_videos_train.txt
-        filelist: /home/abigata/PhD/datasets/HDTF/filelist_train.txt
+        filelist: /vol/paramonos2/projects/antoni/datasets/HDTF/filelist_videos_train.txt
         resize_size: 512
         audio_folder: audio
         video_folder: cropped_videos_original
@@ -271,7 +271,7 @@ data:
         data_std: null
 
       loader:
-        batch_size: 2
+        batch_size: 1
         num_workers: 6
         drop_last: True
         pin_memory: True

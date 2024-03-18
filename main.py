@@ -605,6 +605,7 @@ if __name__ == "__main__":
             config.data.params.train.loader.batch_size,
             config.model.base_learning_rate,
         )
+    print("Base learning rate: ", base_lr)
     if not cpu:
         if lightning_config.trainer.devices == -1:
             ngpu = torch.cuda.device_count()

@@ -14,4 +14,4 @@ conda activate /fsx/rs2517/conda_envs/svd
 export WANDB_ENTITY=animator
 export NCCL_SOCKET_IFNAME=ens32
 export HYDRA_FULL_ERROR=1
-srun python main.py --base configs/example_training/svd_interpolation.yaml --wandb True lightning.num_nodes 4 lightning.strategy=deepspeed_stage_2_offload lightning.trainer.precision=32
+srun python main.py --base configs/example_training/svd_interpolation.yaml --wandb True lightning.num_nodes 4 lightning.strategy=deepspeed_stage_2_offload lightning.trainer.precision=32 model.base_learning_rate=1.e-4

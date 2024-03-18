@@ -479,4 +479,6 @@ class DiffusionEngine(pl.LightningModule):
                 samples = self.sample(c, shape=z.shape[1:], uc=uc, batch_size=N, **sampling_kwargs)
             samples = self.decode_first_stage(samples)
             log["samples"] = samples
+
+        torch.cuda.empty_cache()
         return log
