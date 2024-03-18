@@ -609,6 +609,8 @@ if __name__ == "__main__":
     if not cpu:
         if lightning_config.trainer.devices == -1:
             ngpu = torch.cuda.device_count()
+        elif isinstance(lightning_config.trainer.devices, int):
+            ngpu = lightning_config.trainer.devices
         else:
             ngpu = len(lightning_config.trainer.devices.strip(",").split(","))
     else:

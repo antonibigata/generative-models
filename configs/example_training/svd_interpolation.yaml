@@ -248,7 +248,7 @@ data:
         #       cond_noise: [-3.0, 0.5]
         #       mode: interpolation
         # filelist: /vol/paramonos2/projects/antoni/datasets/HDTF/filelist_videos_train.txt
-        filelist: /vol/paramonos2/projects/antoni/datasets/HDTF/filelist_videos_train.txt
+        filelist: /fsx/rs2517/data/lists/HDTF/filelist_videos_train.txt
         resize_size: 512
         audio_folder: audio
         video_folder: cropped_videos_original
@@ -335,7 +335,7 @@ lightning:
           n_rows: 1
 
   trainer:
-    devices: -1
+    devices: 4
     benchmark: False
     num_sanity_val_steps: 1
     accumulate_grad_batches: 1
