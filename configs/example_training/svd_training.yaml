@@ -237,7 +237,8 @@ data:
         #       fps: 24 # FPS - 1 See: https://github.com/Stability-AI/generative-models/blob/ed0997173f98eaf8f4edf7ba5fe8f15c6b877fd3/scripts/sampling/simple_video_sample.py#L188
         #       cond_noise: [-3.0, 0.5]
         #       mode: interpolation
-        filelist: /home/abigata/PhD/datasets/HDTF/filelist_train.txt
+        # filelist: /home/abigata/PhD/datasets/HDTF/filelist_train.txt
+        filelist: /fsx/rs2517/data/lists/HDTF/filelist_videos_train.txt
         resize_size: 512
         audio_folder: audio
         video_folder: cropped_videos_original
