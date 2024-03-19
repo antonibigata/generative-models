@@ -13,10 +13,10 @@ import wandb
 import moviepy.editor as mpy
 from einops import rearrange
 import torchaudio
-import tempfile
-import cv2
-import scipy.io.wavfile as wav
-import ffmpeg
+# import tempfile
+# import cv2
+# import scipy.io.wavfile as wav
+# import ffmpeg
 
 
 @suppress_output
@@ -55,38 +55,38 @@ def save_audio_video(
         return 0
 
 
-def write_video_opencv(video, video_rate, video_path):
-    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-    out = cv2.VideoWriter(video_path, fourcc, video_rate, (video.shape[2], video.shape[3]), 0)
-    for frame in list(video):
-        frame = np.squeeze(frame)
-        out.write(np.squeeze(frame))
-    out.release()
+# def write_video_opencv(video, video_rate, video_path):
+#     fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+#     out = cv2.VideoWriter(video_path, fourcc, video_rate, (video.shape[2], video.shape[3]), 0)
+#     for frame in list(video):
+#         frame = np.squeeze(frame)
+#         out.write(np.squeeze(frame))
+#     out.release()
 
 
-# Code mostly inherited from bulletin
-def save_av_sample(video, video_rate, audio=None, audio_rate=16_000, path=None):
-    # Save video sample in train dir for debugging
-    # video_save = 0.5 * video.detach().cpu().numpy() + 0.5
-    video_save = rearrange(video, "t c h w -> t h w c").detach().cpu().numpy()
-    temp_filename = next(tempfile._get_candidate_names())
-    if path:
-        video_path = path
-    else:
-        video_path = "/tmp/" + next(tempfile._get_candidate_names()) + ".mp4"
-    write_video_opencv((video_save).astype(np.uint8), video_rate, "/tmp/" + temp_filename + ".mp4")
-    audio_save = audio.detach().squeeze().cpu().numpy()
-    wav.write("/tmp/" + temp_filename + ".wav", audio_rate, audio_save)
-    try:
-        in1 = ffmpeg.input("/tmp/" + temp_filename + ".mp4")
-        in2 = ffmpeg.input("/tmp/" + temp_filename + ".wav")
-        out = ffmpeg.output(in1["v"], in2["a"], video_path, loglevel="panic").overwrite_output()
-        out.run(capture_stdout=True, capture_stderr=True)
-    except ffmpeg.Error as e:
-        print("stdout:", e.stdout.decode("utf8"))
-        print("stderr:", e.stderr.decode("utf8"))
-        raise e
-    return video_path
+# # Code mostly inherited from bulletin
+# def save_av_sample(video, video_rate, audio=None, audio_rate=16_000, path=None):
+#     # Save video sample in train dir for debugging
+#     # video_save = 0.5 * video.detach().cpu().numpy() + 0.5
+#     video_save = rearrange(video, "t c h w -> t h w c").detach().cpu().numpy()
+#     temp_filename = next(tempfile._get_candidate_names())
+#     if path:
+#         video_path = path
+#     else:
+#         video_path = "/tmp/" + next(tempfile._get_candidate_names()) + ".mp4"
+#     write_video_opencv((video_save).astype(np.uint8), video_rate, "/tmp/" + temp_filename + ".mp4")
+#     audio_save = audio.detach().squeeze().cpu().numpy()
+#     wav.write("/tmp/" + temp_filename + ".wav", audio_rate, audio_save)
+#     try:
+#         in1 = ffmpeg.input("/tmp/" + temp_filename + ".mp4")
+#         in2 = ffmpeg.input("/tmp/" + temp_filename + ".wav")
+#         out = ffmpeg.output(in1["v"], in2["a"], video_path, loglevel="panic").overwrite_output()
+#         out.run(capture_stdout=True, capture_stderr=True)
+#     except ffmpeg.Error as e:
+#         print("stdout:", e.stdout.decode("utf8"))
+#         print("stderr:", e.stderr.decode("utf8"))
+#         raise e
+#     return video_path
 
 
 class VideoLogger(Callback):

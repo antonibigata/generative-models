@@ -6,7 +6,7 @@ model:
     no_log_keys: [audio_emb, fps_id, motion_bucket_id, cond_aug]
     scale_factor: 0.18215
     disable_first_stage_autocast: True
-    ckpt_path: checkpoints/svd.safetensors
+    ckpt_path: checkpoints/v2-1_512-ema-pruned.safetensors
     compile_model: False
 
     denoiser_config:
@@ -38,51 +38,51 @@ model:
       target: sgm.modules.GeneralConditioner
       params:
         emb_models:
-          # - is_trainable: False
-          #   input_key: txt
-          #   target: sgm.modules.encoders.modules.FrozenOpenCLIPEmbedder
-          #   params:
-          #     freeze: true
-          #     layer: penultimate
-
           - is_trainable: False
-          input_key: cond_frames_without_noise
-          target: sgm.modules.encoders.modules.FrozenOpenCLIPImagePredictionEmbedder
-          params:
-            n_cond_frames: 1
-            n_copies: 1
-            open_clip_embedding_config:
-              target: sgm.modules.encoders.modules.FrozenOpenCLIPImageEmbedder
-              params:
-                freeze: True
+            input_key: txt
+            target: sgm.modules.encoders.modules.FrozenOpenCLIPEmbedder
+            params:
+              freeze: true
+              layer: penultimate
 
-          - input_key: cond_frames
-          is_trainable: False
-          target: sgm.modules.encoders.modules.VideoPredictionEmbedderWithEncoder
-          params:
-            disable_encoder_autocast: True
-            n_cond_frames: 1
-            n_copies: 1
-            is_ae: True
-            encoder_config:
-              target: sgm.models.autoencoder.AutoencoderKLModeOnly
-              params:
-                embed_dim: 4
-                monitor: val/rec_loss
-                ddconfig:
-                  attn_type: vanilla-xformers
-                  double_z: True
-                  z_channels: 4
-                  resolution: 256
-                  in_channels: 3
-                  out_ch: 3
-                  ch: 128
-                  ch_mult: [1, 2, 4, 4]
-                  num_res_blocks: 2
-                  attn_resolutions: []
-                  dropout: 0.0
-                lossconfig:
-                  target: torch.nn.Identity
+          # - is_trainable: False
+          # input_key: cond_frames_without_noise
+          # target: sgm.modules.encoders.modules.FrozenOpenCLIPImagePredictionEmbedder
+          # params:
+          #   n_cond_frames: 1
+          #   n_copies: 1
+          #   open_clip_embedding_config:
+          #     target: sgm.modules.encoders.modules.FrozenOpenCLIPImageEmbedder
+          #     params:
+          #       freeze: True
+
+          # - input_key: cond_frames
+          # is_trainable: False
+          # target: sgm.modules.encoders.modules.VideoPredictionEmbedderWithEncoder
+          # params:
+          #   disable_encoder_autocast: True
+          #   n_cond_frames: 1
+          #   n_copies: 1
+          #   is_ae: True
+          #   encoder_config:
+          #     target: sgm.models.autoencoder.AutoencoderKLModeOnly
+          #     params:
+          #       embed_dim: 4
+          #       monitor: val/rec_loss
+          #       ddconfig:
+          #         attn_type: vanilla-xformers
+          #         double_z: True
+          #         z_channels: 4
+          #         resolution: 256
+          #         in_channels: 3
+          #         out_ch: 3
+          #         ch: 128
+          #         ch_mult: [1, 2, 4, 4]
+          #         num_res_blocks: 2
+          #         attn_resolutions: []
+          #         dropout: 0.0
+          #       lossconfig:
+          #         target: torch.nn.Identity
 
     first_stage_config:
       target: sgm.models.autoencoder.AutoencoderKL
@@ -118,11 +118,11 @@ loss_fn_config:
             p_std: 1.6
 
 data:
-  target: sgm.data.video_datamodule_latent.VideoDataModule
+  target: sgm.data.video_image_datamodule.VideoDataModule
   params:
     train:
       datapipeline:
-        filelist: /fsx/rs2517/data/lists/HDTF/filelist_videos_train.txt
+        filelist: /home/abigata/PhD/datasets/HDTF/filelist_train.txt
         resize_size: 512
         audio_folder: audio
         video_folder: cropped_videos_original
@@ -130,19 +130,19 @@ data:
         audio_extension: .wav
         audio_rate: 16000
         num_frames: 14
-        need_cond: False
-        mode: prediction
         use_latent: True
         latent_type: video
         latent_scale: 1  # For backwards compatibility
         from_audio_embedding: True
         load_all_possible_indexes: True
+        allow_all_possible_permutations: true
         audio_emb_type: whisper
-        # cond_noise: [-3.0, 0.5]
-        cond_noise: 0.
+        cond_noise: [-3.0, 0.5]
+        # cond_noise: 0.
         motion_id: 60
-        data_mean: null
-        data_std: null
+        # data_mean: null
+        # data_std: null
+        additional_audio_frames: 0
 
       loader:
         batch_size: 1
@@ -163,21 +163,21 @@ lightning:
         every_n_train_steps: 25000
 
     video_logger:
-      target: sgm.callbacks.video_logger.VideoLogger
+      target: sgm.callbacks.image_logger.ImageLogger
       params:
         disabled: False
         enable_autocast: False
         batch_frequency: 1000
-        max_videos: 2
+        max_images: 2
         increase_log_steps: False
         log_first_step: True
-        log_videos_kwargs:
+        log_images_kwargs:
           use_ema_scope: False
           N: 2
           n_rows: 1
 
   trainer:
-    devices: 7,
+    devices: -1
     benchmark: False
     num_sanity_val_steps: 1
     accumulate_grad_batches: 1

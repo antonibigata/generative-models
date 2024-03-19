@@ -219,35 +219,22 @@ class VideoDataset(Dataset):
             noisy_cond = cond * self.latent_scale
             clean_cond = vr[init_index].float()
 
-            if not self.from_audio_embedding:
-                audio = self._load_audio(
-                    audio_file, max_len_sec=len(vr) / self.video_rate, start=None, return_all=True
-                )
-                audio_frames = rearrange(audio, "(f s) -> f s", s=self.samples_per_frame)[audio_indexes]
-            else:
-                audio = torch.load(audio_file.split(".")[0] + f"_{self.audio_emb_type}_emb.pt")
-                try:
-                    audio_frames = audio[audio_indexes, :]
-                except IndexError as e:
-                    print(f"Index error for {audio_file}")
-                    print(f"Audio shape: {audio.shape}")
-                    print(f"Indexes: {audio_indexes}")
-                    print(
-                        f"Frames shape: \
-                            {torch.load(video_file.replace(self.video_ext, f'_{self.latent_type}_latent.pt')).shape}"
-                    )
-                    raise e
         else:
             frame = vr[predict_index].float()
             clean_cond = vr[init_index].float()
 
-            if not self.from_audio_embedding:
-                audio = self._load_audio(
-                    audio_file, max_len_sec=len(vr) / self.video_rate, start=None, return_all=True
-                )
-            else:
-                audio = torch.load(audio_file.split(".")[0] + f"_{self.audio_emb_type}_emb.pt")
-                audio_frames = audio[audio_indexes, :]
+        if not self.from_audio_embedding:
+            raw_audio = self._load_audio(
+                audio_file, max_len_sec=frames.shape[1] / self.video_rate, start=indexes[0] / self.video_rate
+            )
+            audio = raw_audio
+            audio_frames = rearrange(audio, "(f s) -> f s", s=self.samples_per_frame)
+        else:
+            raw_audio = self._load_audio(
+                audio_file, max_len_sec=frames.shape[1] / self.video_rate, start=indexes[0] / self.video_rate
+            )
+            audio = torch.load(audio_file.split(".")[0] + f"_{self.audio_emb_type}_emb.pt")
+            audio_frames = audio[indexes, :]
 
         diff_score = None
         if self.get_difference_score:
@@ -272,6 +259,7 @@ class VideoDataset(Dataset):
         else:
             clean_cond = rearrange(clean_cond, "h w c -> c h w")
             clean_cond = self.scale_and_crop((clean_cond / 255.0) * 2 - 1)
+            noisy_cond = clean_cond
 
         target = frame.unsqueeze(1)
 
@@ -282,7 +270,7 @@ class VideoDataset(Dataset):
             noisy_cond = noisy_cond + self.cond_noise * torch.randn_like(noisy_cond)
             cond_noise = self.cond_noise
 
-        return clean_cond, noisy_cond, target, audio_frames, diff_score, cond_noise
+        return clean_cond, noisy_cond, target, audio_frames, raw_audio, diff_score, cond_noise
 
     def _get_indexes(self, video_filelist, audio_filelist):
         indexes = []
@@ -325,7 +313,7 @@ class VideoDataset(Dataset):
         return self.maybe_augment(video).squeeze(0)
 
     def __getitem__(self, idx):
-        clean_cond, noisy_cond, target, audio, diff_score, cond_noise = self._get_frames_and_audio(idx)
+        clean_cond, noisy_cond, target, audio, raw_audio, diff_score, cond_noise = self._get_frames_and_audio(idx)
 
         out_data = {}
         # out_data = {"cond": cond, "video": target, "audio": audio, "video_file": video_file}
@@ -335,6 +323,7 @@ class VideoDataset(Dataset):
 
         if audio is not None:
             out_data["audio_emb"] = audio
+            out_data["raw_audio"] = raw_audio
 
         if self.use_latent:
             input_key = "latents"
@@ -348,6 +337,7 @@ class VideoDataset(Dataset):
             out_data["cond_aug"] = cond_noise
         out_data["motion_bucket_id"] = torch.tensor([self.motion_id])
         out_data["fps_id"] = torch.tensor([self.video_rate - 1])
+        out_data["txt"] = ""
         # out_data["num_video_frames"] = self.num_frames
         # out_data["image_only_indicator"] = torch.zeros(self.num_frames)
         return out_data
