@@ -30,7 +30,7 @@ def save_audio_video(
             torchaudio.save("temp_audio.wav", audio, sample_rate)
             audio_clip = mpy.AudioFileClip("temp_audio.wav")
             video_clip = video_clip.set_audio(audio_clip)
-        video_clip.write_videofile(save_path, fps=frame_rate, codec="libx264", audio_codec="aac")
+        video_clip.write_videofile(save_path, fps=frame_rate, codec="libx264", audio_codec="aac", verbose=False)
         if not keep_intermediate:
             os.remove("temp_video.mp4")
             if audio is not None:
