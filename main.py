@@ -556,6 +556,7 @@ if __name__ == "__main__":
                     "save_last": True,
                     "every_n_train_steps": 10000,
                     "save_weights_only": True,
+                    "monitor": "loss",
                 },
             }
         }

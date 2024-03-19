@@ -333,7 +333,7 @@ lightning:
           n_rows: 1
 
   trainer:
-    devices: 1,2,3,4
+    devices: 4
     benchmark: False
     num_sanity_val_steps: 1
     accumulate_grad_batches: 1

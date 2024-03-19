@@ -471,6 +471,7 @@ class FrozenOpenCLIPEmbedder2(AbstractEmbModel):
         if self.return_pooled:
             assert not self.legacy
             return z[self.layer], z["pooled"]
+
         return z[self.layer]
 
     def encode_with_transformer(self, text):
