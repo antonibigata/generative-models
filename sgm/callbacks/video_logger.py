@@ -5,7 +5,7 @@ from pytorch_lightning.utilities import rank_zero_only
 from typing import Union
 import pytorch_lightning as pl
 import os
-from sgm.util import exists
+from sgm.util import exists, suppress_output
 import torchvision
 from PIL import Image
 import torch
@@ -13,8 +13,13 @@ import wandb
 import moviepy.editor as mpy
 from einops import rearrange
 import torchaudio
+import tempfile
+import cv2
+import scipy.io.wavfile as wav
+import ffmpeg
 
 
+@suppress_output
 def save_audio_video(
     video, audio=None, frame_rate=25, sample_rate=16000, save_path="temp.mp4", keep_intermediate=False
 ):
@@ -22,12 +27,20 @@ def save_audio_video(
     video: (t, c, h, w)
     audio: (channels t)
     """
+
+    # temp_filename = next(tempfile._get_candidate_names())
+    # if save_path:
+    #     save_path = save_path
+    # else:
+    #     save_path = "/tmp/" + next(tempfile._get_candidate_names()) + ".mp4"
     save_path = str(save_path)
     try:
-        torchvision.io.write_video("temp_video.mp4", rearrange(video, "t c h w -> t h w c"), frame_rate)
+        torchvision.io.write_video(
+            "temp_video.mp4", rearrange(video.detach().cpu(), "t c h w -> t h w c").to(torch.uint8), frame_rate
+        )
         video_clip = mpy.VideoFileClip("temp_video.mp4")
         if audio is not None:
-            torchaudio.save("temp_audio.wav", audio, sample_rate)
+            torchaudio.save("temp_audio.wav", audio.detach().cpu(), sample_rate)
             audio_clip = mpy.AudioFileClip("temp_audio.wav")
             video_clip = video_clip.set_audio(audio_clip)
         video_clip.write_videofile(save_path, fps=frame_rate, codec="libx264", audio_codec="aac", verbose=False)
@@ -40,6 +53,40 @@ def save_audio_video(
         print(e)
         print("Saving video to file failed")
         return 0
+
+
+def write_video_opencv(video, video_rate, video_path):
+    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+    out = cv2.VideoWriter(video_path, fourcc, video_rate, (video.shape[2], video.shape[3]), 0)
+    for frame in list(video):
+        frame = np.squeeze(frame)
+        out.write(np.squeeze(frame))
+    out.release()
+
+
+# Code mostly inherited from bulletin
+def save_av_sample(video, video_rate, audio=None, audio_rate=16_000, path=None):
+    # Save video sample in train dir for debugging
+    # video_save = 0.5 * video.detach().cpu().numpy() + 0.5
+    video_save = rearrange(video, "t c h w -> t h w c").detach().cpu().numpy()
+    temp_filename = next(tempfile._get_candidate_names())
+    if path:
+        video_path = path
+    else:
+        video_path = "/tmp/" + next(tempfile._get_candidate_names()) + ".mp4"
+    write_video_opencv((video_save).astype(np.uint8), video_rate, "/tmp/" + temp_filename + ".mp4")
+    audio_save = audio.detach().squeeze().cpu().numpy()
+    wav.write("/tmp/" + temp_filename + ".wav", audio_rate, audio_save)
+    try:
+        in1 = ffmpeg.input("/tmp/" + temp_filename + ".mp4")
+        in2 = ffmpeg.input("/tmp/" + temp_filename + ".wav")
+        out = ffmpeg.output(in1["v"], in2["a"], video_path, loglevel="panic").overwrite_output()
+        out.run(capture_stdout=True, capture_stderr=True)
+    except ffmpeg.Error as e:
+        print("stdout:", e.stdout.decode("utf8"))
+        print("stderr:", e.stderr.decode("utf8"))
+        raise e
+    return video_path
 
 
 class VideoLogger(Callback):
@@ -78,6 +125,7 @@ class VideoLogger(Callback):
         save_dir,
         split,
         log_elements,
+        raw_audio,
         global_step,
         current_epoch,
         batch_idx,
@@ -114,19 +162,22 @@ class VideoLogger(Callback):
                 if self.rescale:
                     video = (video + 1.0) / 2.0  # -1,1 -> 0,1; c,h,w
                 video = video * 255.0
-                video = video.permute(0, 2, 1, 3, 4).cpu()  # b,t,c,h,w
+                video = video.permute(0, 2, 1, 3, 4).cpu().detach().to(torch.uint8)  # b,t,c,h,w
                 for i in range(video.shape[0]):
                     filename = "{}_gs-{:06}_e-{:06}_b-{:06}_{}.mp4".format(k, global_step, current_epoch, batch_idx, i)
                     path = os.path.join(root, filename)
                     os.makedirs(os.path.split(path)[0], exist_ok=True)
+                    log_audio = raw_audio[i] if raw_audio is not None else None
                     success = save_audio_video(
                         video[i],
-                        audio=None,
+                        audio=log_audio.unsqueeze(0) if log_audio is not None else None,
                         frame_rate=25,
                         sample_rate=16000,
                         save_path=path,
                         keep_intermediate=False,
                     )
+
+                    # video_path = save_av_sample(video[i], 25, audio=raw_audio, audio_rate=16000, path=None)
                     if exists(pl_module):
                         assert isinstance(
                             pl_module.logger, WandbLogger
@@ -174,10 +225,13 @@ class VideoLogger(Callback):
                     if self.clamp:
                         videos[k] = torch.clamp(videos[k], -1.0, 1.0)
 
+            raw_audio = batch.get("raw_audio", None)
+
             self.log_local(
                 pl_module.logger.save_dir,
                 split,
                 videos,
+                raw_audio,
                 pl_module.global_step,
                 pl_module.current_epoch,
                 batch_idx,

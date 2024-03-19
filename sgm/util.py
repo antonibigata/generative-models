@@ -15,6 +15,11 @@ from einops import rearrange
 import torchvision
 import moviepy.editor as mpy
 
+import contextlib
+import io
+from functools import wraps
+import warnings
+
 
 def save_audio_video(
     video, audio=None, frame_rate=25, sample_rate=16000, save_path="temp.mp4", keep_intermediate=False
@@ -333,3 +338,15 @@ def get_nested_attribute(obj, attribute_path, depth=None, return_key=False):
             current_attribute = getattr(current_attribute, attribute)
 
     return (current_attribute, current_key) if return_key else current_attribute
+
+
+def suppress_output(f):
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(
+            io.StringIO()
+        ), warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            return f(*args, **kwargs)
+
+    return wrapper

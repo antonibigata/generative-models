@@ -193,7 +193,7 @@ class VideoDataset(Dataset):
             start_idx = np.random.randint(0, len_video - self.num_frames)
             indexes = list(range(start_idx, start_idx + self.num_frames))
 
-        audio_frames = None
+        # audio_frames = None
         if self.use_latent and self.precomputed_latent:
             frames = load_file(video_file.replace(self.video_ext, f"_{self.latent_type}_512_latent.safetensors"))[
                 "latents"
@@ -225,15 +225,20 @@ class VideoDataset(Dataset):
             frames = vr.get_batch(indexes).permute(3, 0, 1, 2).float()
 
         if not self.from_audio_embedding:
-            audio = self._load_audio(
+            raw_audio = self._load_audio(
                 audio_file, max_len_sec=frames.shape[1] / self.video_rate, start=indexes[0] / self.video_rate
             )
+            audio = raw_audio
+            audio_frames = rearrange(audio, "(f s) -> f s", s=self.samples_per_frame)
         else:
+            raw_audio = self._load_audio(
+                audio_file, max_len_sec=frames.shape[1] / self.video_rate, start=indexes[0] / self.video_rate
+            )
             audio = torch.load(audio_file.split(".")[0] + f"_{self.audio_emb_type}_emb.pt")
             audio_frames = audio[indexes, :]
 
-        if audio_frames is None:
-            audio_frames = rearrange(audio, "(f s) -> f s", s=self.samples_per_frame)
+        # if audio_frames is None:
+        #     audio_frames = rearrange(audio, "(f s) -> f s", s=self.samples_per_frame)
 
         # audio_frames = audio_frames.T
         audio_frames = audio_frames[1:] if self.need_cond else audio_frames  # Remove audio of first frame
@@ -277,7 +282,7 @@ class VideoDataset(Dataset):
         # else:
         #     cond_noise = None
 
-        return clean_cond, noisy_cond, target, audio_frames, cond_noise
+        return clean_cond, noisy_cond, target, audio_frames, raw_audio, cond_noise
 
     def _get_indexes(self, video_filelist, audio_filelist):
         indexes = []
@@ -317,12 +322,13 @@ class VideoDataset(Dataset):
         return self.maybe_augment(video)
 
     def __getitem__(self, idx):
-        clean_cond, noisy_cond, target, audio, cond_noise = self._get_frames_and_audio(idx)
+        clean_cond, noisy_cond, target, audio, raw_audio, cond_noise = self._get_frames_and_audio(idx)
         out_data = {}
         # out_data = {"cond": cond, "video": target, "audio": audio, "video_file": video_file}
 
         if audio is not None:
             out_data["audio_emb"] = audio
+            out_data["raw_audio"] = raw_audio
 
         if self.use_latent:
             input_key = "latents"
