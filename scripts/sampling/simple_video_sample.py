@@ -1,10 +1,13 @@
 import math
 import os
+import sys
 from glob import glob
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
+sys.path.append(os.path.realpath(os.path.join(os.path.dirname(__file__), "../../")))
 import cv2
+import imageio
 import numpy as np
 import torch
 from einops import rearrange, repeat
@@ -18,6 +21,7 @@ from torchvision.io import read_video, write_video
 from scripts.util.detection.nsfw_and_watermark_dectection import DeepFloydDataFiltering
 from sgm.inference.helpers import embed_watermark
 from sgm.util import default, instantiate_from_config
+from torchvision.transforms import ToTensor
 
 
 def sample(
@@ -62,6 +66,31 @@ def sample(
         num_steps = default(num_steps, 30)
         output_folder = default(output_folder, "outputs/simple_video_sample/svd_xt_image_decoder/")
         model_config = "scripts/sampling/configs/svd_xt_image_decoder.yaml"
+    elif version == "sv3d_u":
+        num_frames = 21
+        num_steps = default(num_steps, 50)
+        output_folder = default(output_folder, "outputs/simple_video_sample/sv3d_u/")
+        model_config = "scripts/sampling/configs/sv3d_u.yaml"
+        cond_aug = 1e-5
+    elif version == "sv3d_p":
+        num_frames = 21
+        num_steps = default(num_steps, 50)
+        output_folder = default(output_folder, "outputs/simple_video_sample/sv3d_p/")
+        model_config = "scripts/sampling/configs/sv3d_p.yaml"
+        cond_aug = 1e-5
+        if isinstance(elevations_deg, float) or isinstance(elevations_deg, int):
+            elevations_deg = [elevations_deg] * num_frames
+        assert (
+            len(elevations_deg) == num_frames
+        ), f"Please provide 1 value, or a list of {num_frames} values for elevations_deg! Given {len(elevations_deg)}"
+        polars_rad = [np.deg2rad(90 - e) for e in elevations_deg]
+        if azimuths_deg is None:
+            azimuths_deg = np.linspace(0, 360, num_frames + 1)[1:] % 360
+        assert (
+            len(azimuths_deg) == num_frames
+        ), f"Please provide a list of {num_frames} values for azimuths_deg! Given {len(azimuths_deg)}"
+        azimuths_rad = [np.deg2rad((a - azimuths_deg[-1]) % 360) for a in azimuths_deg]
+        azimuths_rad[:-1].sort()
     else:
         raise ValueError(f"Version {version} does not exist.")
 
@@ -70,6 +99,7 @@ def sample(
         device,
         num_frames,
         num_steps,
+        verbose,
     )
     model.en_and_decode_n_samples_a_time = decoding_t
     torch.manual_seed(seed)
@@ -283,6 +313,7 @@ def load_model(
     device: str,
     num_frames: int,
     num_steps: int,
+    verbose: bool = False,
 ):
     config = OmegaConf.load(config)
     if device == "cuda":
@@ -290,6 +321,7 @@ def load_model(
             0
         ].params.open_clip_embedding_config.params.init_device = device
 
+    config.model.params.sampler_config.params.verbose = verbose
     config.model.params.sampler_config.params.num_steps = num_steps
     config.model.params.sampler_config.params.guider_config.params.num_frames = num_frames
     if device == "cuda":
