@@ -17,6 +17,7 @@ from itertools import permutations
 from torchvision.transforms import RandomHorizontalFlip
 from audiomentations import Compose, AddGaussianNoise, PitchShift
 from skimage.metrics import structural_similarity as ssim
+from safetensors.torch import load_file
 
 torchaudio.set_audio_backend("sox_io")
 decord.bridge.set_bridge("torch")
@@ -77,6 +78,7 @@ class VideoDataset(Dataset):
         get_difference_score=False,
         cond_noise=[-3.0, 0.5],
         motion_id=255.0,
+        virtual_increase=1,
     ):
         self.audio_folder = audio_folder
         self.landmark_folder = landmark_folder
@@ -116,6 +118,7 @@ class VideoDataset(Dataset):
         self.video_ext = video_extension
         self.video_folder = video_folder
         self.additional_audio_frames = additional_audio_frames
+        self.virtual_increase = virtual_increase
 
         self.augment = augment
         self.maybe_augment = RandomHorizontalFlip(p=0.5) if augment else lambda x: x
@@ -150,7 +153,7 @@ class VideoDataset(Dataset):
         self.samples_per_frame = math.ceil(1 / a2v_ratio)
 
     def __len__(self):
-        return len(self._indexes)
+        return len(self._indexes) * self.virtual_increase
 
     def _load_audio(self, filename, max_len_sec, start=None, return_all=False):
         if return_all:
@@ -207,14 +210,16 @@ class VideoDataset(Dataset):
         audio_frames = None
 
         if self.use_latent:
-            try:
-                frames = torch.load(video_file.replace(self.video_ext, f"_{self.latent_type}_latent.pt"))
-                frame = frames[predict_index, :, :, :]
-                cond = frames[init_index]
-            except FileNotFoundError:
-                frames = torch.load(video_file.replace(self.video_ext, "_latent.pt"))
-                frame = frames[predict_index, :, :, :]
-                cond = frames[init_index]
+            # try:
+            frames = load_file(video_file.replace(self.video_ext, f"_{self.latent_type}_512_latent.safetensors"))[
+                "latents"
+            ]
+            frame = frames[predict_index, :, :, :]
+            cond = frames[init_index]
+            # except FileNotFoundError:
+            #     frames = torch.load(video_file.replace(self.video_ext, "_latent.pt"))
+            #     frame = frames[predict_index, :, :, :]
+            #     cond = frames[init_index]
             frame = frame * self.latent_scale
             noisy_cond = cond * self.latent_scale
             clean_cond = vr[init_index].float()
@@ -249,10 +254,9 @@ class VideoDataset(Dataset):
         if self.scale_audio:
             audio_frames = (audio_frames / audio_frames.max()) * 2 - 1
 
-        frame = rearrange(frame, "h w c -> c h w")
-        clean_cond = rearrange(clean_cond, "h w c -> c h w")
-
         if not self.use_latent:
+            frame = rearrange(frame, "h w c -> c h w")
+            clean_cond = rearrange(clean_cond, "h w c -> c h w")
             frame = self.scale_and_crop((frame / 255.0) * 2 - 1)
             clean_cond = self.scale_and_crop((clean_cond / 255.0) * 2 - 1)
             noisy_cond = clean_cond
@@ -313,7 +317,9 @@ class VideoDataset(Dataset):
         return self.maybe_augment(video).squeeze(0)
 
     def __getitem__(self, idx):
-        clean_cond, noisy_cond, target, audio, raw_audio, diff_score, cond_noise = self._get_frames_and_audio(idx)
+        clean_cond, noisy_cond, target, audio, raw_audio, diff_score, cond_noise = self._get_frames_and_audio(
+            idx % len(self._indexes)
+        )
 
         out_data = {}
         # out_data = {"cond": cond, "video": target, "audio": audio, "video_file": video_file}
@@ -335,9 +341,9 @@ class VideoDataset(Dataset):
         out_data["cond_frames_without_noise"] = clean_cond
         if cond_noise is not None:
             out_data["cond_aug"] = cond_noise
-        out_data["motion_bucket_id"] = torch.tensor([self.motion_id])
-        out_data["fps_id"] = torch.tensor([self.video_rate - 1])
-        out_data["txt"] = ""
+        # out_data["motion_bucket_id"] = torch.tensor([self.motion_id])
+        # out_data["fps_id"] = torch.tensor([self.video_rate - 1])
+        out_data["txt"] = "An astronaut riding an horse"
         # out_data["num_video_frames"] = self.num_frames
         # out_data["image_only_indicator"] = torch.zeros(self.num_frames)
         return out_data

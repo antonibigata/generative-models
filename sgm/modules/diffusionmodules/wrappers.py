@@ -23,7 +23,7 @@ class IdentityWrapper(nn.Module):
 class OpenAIWrapper(IdentityWrapper):
     def forward(self, x: torch.Tensor, t: torch.Tensor, c: dict, **kwargs) -> torch.Tensor:
         cond_cat = c.get("concat", torch.Tensor([]).type_as(x))
-        if len(cond_cat.shape) and cond_cat.shape[0] and x.shape[0] != cond_cat.shape[0]:
+        if len(cond_cat.shape) and cond_cat.shape[0]:
             cond_cat = repeat(cond_cat, "b c h w -> b c t h w", t=x.shape[0] // cond_cat.shape[0])
             cond_cat = rearrange(cond_cat, "b c t h w -> (b t) c h w")
             x = torch.cat((x, cond_cat), dim=1)

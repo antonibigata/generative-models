@@ -11,6 +11,7 @@ import torchvision
 from PIL import Image
 import torch
 import wandb
+from einops import rearrange
 
 
 class ImageLogger(Callback):
@@ -69,10 +70,12 @@ class ImageLogger(Callback):
                 plt.close()
                 # TODO: support wandb
             else:
-                grid = torchvision.utils.make_grid(images[k], nrow=4)
+                grid = torchvision.utils.make_grid(images[k].squeeze(2), nrow=4)
                 if self.rescale:
                     grid = (grid + 1.0) / 2.0  # -1,1 -> 0,1; c,h,w
-                grid = grid.transpose(0, 1).transpose(1, 2).squeeze(-1)
+                # print(grid.shape, grid.dtype, grid.min(), grid.max(), k)
+                grid = rearrange(grid.squeeze(1), "c h w -> h w c")
+                # grid = grid.transpose(0, 1).transpose(1, 2).squeeze(-1)
                 grid = grid.numpy()
                 grid = (grid * 255).astype(np.uint8)
                 filename = "{}_gs-{:06}_e-{:06}_b-{:06}.png".format(k, global_step, current_epoch, batch_idx)
@@ -139,6 +142,8 @@ class ImageLogger(Callback):
                 pl_module.train()
 
     def check_frequency(self, check_idx):
+        if check_idx:
+            check_idx -= 1
         if ((check_idx % self.batch_freq) == 0 or (check_idx in self.log_steps)) and (
             check_idx > 0 or self.log_first_step
         ):

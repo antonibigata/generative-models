@@ -521,6 +521,9 @@ class UNetModel(nn.Module):
         use_linear_in_transformer: bool = False,
         spatial_transformer_attn_type: str = "softmax",
         adm_in_channels: Optional[int] = None,
+        unfreeze_input_blocks: bool = False,
+        fine_tuning_method: str = None,
+        **kwargs,
     ):
         super().__init__()
 
@@ -532,6 +535,8 @@ class UNetModel(nn.Module):
 
         if num_head_channels == -1:
             assert num_heads != -1, "Either num_heads or num_head_channels has to be set"
+
+        self.adapter = None
 
         self.in_channels = in_channels
         self.model_channels = model_channels
@@ -793,6 +798,17 @@ class UNetModel(nn.Module):
             nn.SiLU(),
             zero_module(conv_nd(dims, model_channels, out_channels, 3, padding=1)),
         )
+
+        if fine_tuning_method is not None:
+            # Freeze everything except the adapter
+            for param in self.parameters():
+                param.requires_grad = False
+            if self.adapter is not None:
+                for param in self.adapter.parameters():
+                    param.requires_grad = True
+            if unfreeze_input_blocks:
+                for param in self.input_blocks[0].parameters():
+                    param.requires_grad = True
 
     def forward(
         self,

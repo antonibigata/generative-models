@@ -5,9 +5,19 @@ model:
     input_key: latents
     no_log_keys: [audio_emb, fps_id, motion_bucket_id, cond_aug]
     scale_factor: 0.18215
+    # scale_factor: 0.13025
     disable_first_stage_autocast: True
     ckpt_path: checkpoints/v2-1_512-ema-pruned.safetensors
+    remove_keys_from_weights: [model.diffusion_model.input_blocks.0.0.weight]
     compile_model: False
+
+    use_lora: true
+    lora_config:
+      search_class_str: Linear
+      target_replace_module: null
+      r_linear: 16
+      r_conv: 16
+      loras: null  # path to lora .pt
 
     denoiser_config:
       target: sgm.modules.diffusionmodules.denoiser.DiscreteDenoiser
@@ -23,7 +33,7 @@ model:
       target: sgm.modules.diffusionmodules.openaimodel.UNetModel
       params:
         use_checkpoint: True
-        in_channels: 4
+        in_channels: 8
         out_channels: 4
         model_channels: 320
         attention_resolutions: [4, 2, 1]
@@ -33,56 +43,60 @@ model:
         use_linear_in_transformer: True
         transformer_depth: 1
         context_dim: 1024
+        fine_tuning_method: lora
+        unfreeze_input_blocks: True # Because we changed the input block
+        spatial_transformer_attn_type: softmax-xformers
 
     conditioner_config:
       target: sgm.modules.GeneralConditioner
       params:
         emb_models:
-          - is_trainable: False
-            input_key: txt
-            target: sgm.modules.encoders.modules.FrozenOpenCLIPEmbedder
-            params:
-              freeze: true
-              layer: penultimate
-
           # - is_trainable: False
-          # input_key: cond_frames_without_noise
-          # target: sgm.modules.encoders.modules.FrozenOpenCLIPImagePredictionEmbedder
-          # params:
-          #   n_cond_frames: 1
-          #   n_copies: 1
-          #   open_clip_embedding_config:
-          #     target: sgm.modules.encoders.modules.FrozenOpenCLIPImageEmbedder
-          #     params:
-          #       freeze: True
+          #   input_key: txt
+          #   target: sgm.modules.encoders.modules.FrozenOpenCLIPEmbedder
+          #   params:
+          #     freeze: true
+          #     layer: penultimate
 
-          # - input_key: cond_frames
-          # is_trainable: False
-          # target: sgm.modules.encoders.modules.VideoPredictionEmbedderWithEncoder
-          # params:
-          #   disable_encoder_autocast: True
-          #   n_cond_frames: 1
-          #   n_copies: 1
-          #   is_ae: True
-          #   encoder_config:
-          #     target: sgm.models.autoencoder.AutoencoderKLModeOnly
-          #     params:
-          #       embed_dim: 4
-          #       monitor: val/rec_loss
-          #       ddconfig:
-          #         attn_type: vanilla-xformers
-          #         double_z: True
-          #         z_channels: 4
-          #         resolution: 256
-          #         in_channels: 3
-          #         out_ch: 3
-          #         ch: 128
-          #         ch_mult: [1, 2, 4, 4]
-          #         num_res_blocks: 2
-          #         attn_resolutions: []
-          #         dropout: 0.0
-          #       lossconfig:
-          #         target: torch.nn.Identity
+          - is_trainable: False
+            input_key: cond_frames_without_noise
+            ucg_rate: 0.1
+            target: sgm.modules.encoders.modules.FrozenOpenCLIPImagePredictionEmbedder
+            params:
+              n_cond_frames: 1
+              n_copies: 1
+              open_clip_embedding_config:
+                target: sgm.modules.encoders.modules.FrozenOpenCLIPImageEmbedder
+                params:
+                  freeze: True
+
+          - input_key: cond_frames
+            is_trainable: False
+            target: sgm.modules.encoders.modules.VideoPredictionEmbedderWithEncoder
+            params:
+              disable_encoder_autocast: True
+              n_cond_frames: 1
+              n_copies: 1
+              is_ae: True
+              encoder_config:
+                target: sgm.models.autoencoder.AutoencoderKLModeOnly
+                params:
+                  embed_dim: 4
+                  monitor: val/rec_loss
+                  ddconfig:
+                    attn_type: vanilla-xformers
+                    double_z: True
+                    z_channels: 4
+                    resolution: 256
+                    in_channels: 3
+                    out_ch: 3
+                    ch: 128
+                    ch_mult: [1, 2, 4, 4]
+                    num_res_blocks: 2
+                    attn_resolutions: []
+                    dropout: 0.0
+                  lossconfig:
+                    target: torch.nn.Identity
 
     first_stage_config:
       target: sgm.models.autoencoder.AutoencoderKL
@@ -103,19 +117,46 @@ model:
         lossconfig:
           target: torch.nn.Identity
 
-loss_fn_config:
-      target: sgm.modules.diffusionmodules.loss.StandardDiffusionLoss
-      params:        
-        batch2model_keys:
-          - image_only_indicator
-          - num_video_frames
-        loss_weighting_config:
-          target: sgm.modules.diffusionmodules.loss_weighting.EpsWeighting
-        sigma_sampler_config:
-          target: sgm.modules.diffusionmodules.sigma_sampling.EDMSampling
+    loss_fn_config:
+          target: sgm.modules.diffusionmodules.loss.StandardDiffusionLoss
+          params:        
+            # # batch2model_keys:
+            # #   - image_only_indicator
+            # #   - num_video_frames
+            # loss_weighting_config:
+            #   target: sgm.modules.diffusionmodules.loss_weighting.EpsWeighting
+            # sigma_sampler_config:
+            #   target: sgm.modules.diffusionmodules.sigma_sampling.EDMSampling
+            #   params:
+            #     p_mean: 0.7
+            #     p_std: 1.6
+            loss_weighting_config:
+              target: sgm.modules.diffusionmodules.loss_weighting.EpsWeighting
+            sigma_sampler_config:
+              target: sgm.modules.diffusionmodules.sigma_sampling.DiscreteSampling
+              params:
+                num_idx: 1000
+
+                discretization_config:
+                  target: sgm.modules.diffusionmodules.discretizer.LegacyDDPMDiscretization
+
+    sampler_config:
+          target: sgm.modules.diffusionmodules.sampling.EulerEDMSampler
           params:
-            p_mean: 0.7
-            p_std: 1.6
+            num_steps: 50
+            # s_churn: 0.
+            # s_tmin: 0.
+            # s_tmax: 999.
+            # s_noise: 1.
+            discretization_config:
+              target: sgm.modules.diffusionmodules.discretizer.LegacyDDPMDiscretization
+              # params:
+              #   sigma_max: 700.0
+
+            guider_config:
+              target: sgm.modules.diffusionmodules.guiders.VanillaCFG
+              params:
+                scale: 7.5
 
 data:
   target: sgm.data.video_image_datamodule.VideoDataModule
@@ -134,8 +175,8 @@ data:
         latent_type: video
         latent_scale: 1  # For backwards compatibility
         from_audio_embedding: True
-        load_all_possible_indexes: True
-        allow_all_possible_permutations: true
+        load_all_possible_indexes: False
+        allow_all_possible_permutations: False
         audio_emb_type: whisper
         cond_noise: [-3.0, 0.5]
         # cond_noise: 0.
@@ -143,9 +184,10 @@ data:
         # data_mean: null
         # data_std: null
         additional_audio_frames: 0
+        virtual_increase: 1000
 
       loader:
-        batch_size: 1
+        batch_size: 32
         num_workers: 6
         drop_last: True
         pin_memory: True
@@ -168,13 +210,13 @@ lightning:
         disabled: False
         enable_autocast: False
         batch_frequency: 1000
-        max_images: 2
+        max_images: 4
         increase_log_steps: False
         log_first_step: True
         log_images_kwargs:
           use_ema_scope: False
-          N: 2
-          n_rows: 1
+          N: 4
+          n_rows: 2
 
   trainer:
     devices: -1

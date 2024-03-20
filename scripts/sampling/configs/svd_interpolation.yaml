@@ -3,7 +3,7 @@ model:
   params:
     scale_factor: 0.18215
     disable_first_stage_autocast: True
-    ckpt_path: /home/abigata/PhD/code/generative-models/checkpoints/svd.safetensors
+    ckpt_path: /vol/paramonos2/projects/antoni/code/Personal/generative-models/checkpoints/svd.safetensors
     remove_keys_from_weights: [model.diffusion_model.input_blocks.0.0.weight]
 
     denoiser_config:
