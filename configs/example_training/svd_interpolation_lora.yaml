@@ -220,10 +220,10 @@ model:
         sigma_sampler_config:
           target: sgm.modules.diffusionmodules.sigma_sampling.EDMSampling
           params:
-            # p_mean: 0.7
-            # p_std: 1.6
-            p_mean: 1.
-            p_std: 1.2
+            p_mean: 0.7
+            p_std: 1.6
+            # p_mean: 1.
+            # p_std: 1.2
 
 data:
   target: sgm.data.video_datamodule_latent.VideoDataModule
