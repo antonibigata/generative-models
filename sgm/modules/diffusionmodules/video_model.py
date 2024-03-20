@@ -118,7 +118,7 @@ class VideoUNet(nn.Module):
         disable_temporal_crossattention: bool = False,
         max_ddpm_temb_period: int = 10000,
         fine_tuning_method: str = None,
-        unfreeze_input_blocks: bool = False,
+        unfreeze_blocks: Optional[List[str]] = None,
         adapter_kwargs: Optional[dict] = {},
         audio_cond_method: str = None,
     ):
@@ -463,10 +463,14 @@ class VideoUNet(nn.Module):
             if self.adapter is not None:
                 for param in self.adapter.parameters():
                     param.requires_grad = True
-            if unfreeze_input_blocks:
-                for param in self.input_blocks[0].parameters():
-                    param.requires_grad = True
+            if unfreeze_blocks:
+                if "input" in unfreeze_blocks:
+                    for param in self.input_blocks[0].parameters():
+                        param.requires_grad = True
                     # break  # only unfreeze the first input block
+                if "label_emb" in unfreeze_blocks:
+                    for param in self.label_emb.parameters():
+                        param.requires_grad = True
 
         # if fine_tuning_method == "lora":
         #     inject_trainable_lora(self, **adapter_kwargs)
@@ -549,6 +553,12 @@ class VideoUNet(nn.Module):
             assert y.shape[0] == x.shape[0]
             y = y.to(emb.dtype)
             emb = emb + self.label_emb(y)
+
+        if self.audio_cond_method == "to_time_emb":
+            assert audio_emb is not None
+            audio_emb = audio_emb.to(emb.dtype)
+            audio_emb = rearrange(audio_emb, "b t c -> (b t) c")
+            emb = emb + audio_emb
 
         h = x
         for module in self.input_blocks:
