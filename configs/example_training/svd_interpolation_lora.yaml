@@ -18,6 +18,7 @@ model:
       r_linear: 16
       r_conv: 16
       loras: null  # path to lora .pt
+      exclude_layers: []
       # verbose: False
       # dropout_p: 0.0
       # scale: 1.0
@@ -254,8 +255,8 @@ data:
         #       fps: 24 # FPS - 1 See: https://github.com/Stability-AI/generative-models/blob/ed0997173f98eaf8f4edf7ba5fe8f15c6b877fd3/scripts/sampling/simple_video_sample.py#L188
         #       cond_noise: [-3.0, 0.5]
         #       mode: interpolation
-        # filelist: /vol/paramonos2/projects/antoni/datasets/HDTF/filelist_videos_train.txt
-        filelist: /home/abigata/PhD/datasets/HDTF/filelist_train.txt
+        filelist: /vol/paramonos2/projects/antoni/datasets/HDTF/filelist_videos_train.txt
+        # filelist: /home/abigata/PhD/datasets/HDTF/filelist_train.txt
         resize_size: 512
         audio_folder: audio
         video_folder: cropped_videos_original

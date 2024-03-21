@@ -183,6 +183,7 @@ def _find_modules_v2(
         LoraInjectedLinear,
         LoraInjectedConv2d,
     ],
+    exclude_layers: Optional[List[str]] = [],
 ):
     """
     Find all modules of a certain class (or union of classes) that are direct or
@@ -194,14 +195,20 @@ def _find_modules_v2(
 
     # Get the targets we should replace all linears under
     if ancestor_class is not None:
-        ancestors = (module for module in model.modules() if module.__class__.__name__ in ancestor_class)
+        ancestors = (
+            (name, module) for (name, module) in model.named_modules() if module.__class__.__name__ in ancestor_class
+        )
     else:
         # this, incase you want to naively iterate over all modules.
-        ancestors = [module for module in model.modules()]
+        ancestors = [(name, module) for (name, module) in model.named_modules()]
 
     # For each target find every linear_class module that isn't a child of a LoraInjectedLinear
-    for ancestor in ancestors:
+    for ancestor_name, ancestor in ancestors:
+        if any([name in ancestor_name for name in exclude_layers]):
+            continue
         for fullname, module in ancestor.named_modules():
+            if any([name in fullname for name in exclude_layers]):
+                continue
             if any([isinstance(module, _class) for _class in search_class]):
                 # Find the direct parent if this is a descendant, not a child, of target
                 *path, name = fullname.split(".")
@@ -224,7 +231,6 @@ def _find_modules_old(
     ret = []
     for _module in model.modules():
         if _module.__class__.__name__ in ancestor_class:
-
             for name, _child_module in _module.named_modules():
                 if _child_module.__class__ in search_class:
                     ret.append((_module, name, _child_module))
@@ -294,9 +300,11 @@ def inject_trainable_lora_extended(
     model: nn.Module,
     target_replace_module: Set[str] = UNET_EXTENDED_TARGET_REPLACE,
     search_class: List[Type[nn.Module]] = [nn.Linear, nn.Conv2d],
+    exclude_layers: List[str] = [],
     r_conv: int = 4,
     r_linear: int = 4,
     loras=None,  # path to lora .pt
+    verbose: bool = False,
 ):
     """
     inject lora into model, and returns lora parameter groups.
@@ -308,10 +316,15 @@ def inject_trainable_lora_extended(
     if loras != None:
         loras = torch.load(loras)
 
-    for _module, name, _child_module in _find_modules(model, target_replace_module, search_class=search_class):
+    for _module, name, _child_module in _find_modules(
+        model, target_replace_module, search_class=search_class, exclude_layers=exclude_layers
+    ):
         if _child_module.__class__ == nn.Linear:
             weight = _child_module.weight
             bias = _child_module.bias
+            if verbose:
+                print("LoRA Injection : injecting lora into ", name)
+                print("LoRA Injection : weight shape", weight.shape)
             _tmp = LoraInjectedLinear(
                 _child_module.in_features,
                 _child_module.out_features,
@@ -362,7 +375,6 @@ def inject_trainable_lora_extended(
 
 
 def extract_lora_ups_down(model, target_replace_module=DEFAULT_TARGET_REPLACE):
-
     loras = []
 
     for _m, _n, _child_module in _find_modules(
@@ -379,7 +391,6 @@ def extract_lora_ups_down(model, target_replace_module=DEFAULT_TARGET_REPLACE):
 
 
 def extract_lora_as_tensor(model, target_replace_module=DEFAULT_TARGET_REPLACE, as_fp16=True):
-
     loras = []
 
     for _m, _n, _child_module in _find_modules(
@@ -606,13 +617,11 @@ def load_safeloras_both(path, device="cpu"):
 
 
 def collapse_lora(model, alpha=1.0):
-
     for _module, name, _child_module in _find_modules(
         model,
         UNET_EXTENDED_TARGET_REPLACE | TEXT_ENCODER_EXTENDED_TARGET_REPLACE,
         search_class=[LoraInjectedLinear, LoraInjectedConv2d],
     ):
-
         if isinstance(_child_module, LoraInjectedLinear):
             print("Collapsing Lin Lora in", name)
 
@@ -686,7 +695,6 @@ def monkeypatch_or_replace_lora_extended(
         target_replace_module,
         search_class=[nn.Linear, LoraInjectedLinear, nn.Conv2d, LoraInjectedConv2d],
     ):
-
         if (_child_module.__class__ == nn.Linear) or (_child_module.__class__ == LoraInjectedLinear):
             if len(loras[0].shape) != 2:
                 continue
@@ -1010,7 +1018,6 @@ def save_all(
 
         # save text encoder
         if save_lora:
-
             save_lora_weight(unet, save_path, target_replace_module=target_replace_module_unet)
             print("Unet saved to ", save_path)
 
@@ -1028,7 +1035,6 @@ def save_all(
         embeds = {}
 
         if save_lora:
-
             loras["unet"] = (unet, target_replace_module_unet)
             loras["text_encoder"] = (text_encoder, target_replace_module_text)
 

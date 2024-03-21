@@ -50,7 +50,7 @@ model:
         merge_strategy: learned_with_images
         video_kernel_size: [3, 1, 1]
         fine_tuning_method: lora
-        unfreeze_input_blocks: True # Because we changed the input block
+        unfreeze_blocks: ["input"] # Because we changed the input block
         adapter_kwargs:
           down_ratio: 5
           adapter_type: null
@@ -176,11 +176,16 @@ model:
           params:
             sigma_max: 700.0
 
+        # guider_config:
+        #   target: sgm.modules.diffusionmodules.guiders.LinearPredictionGuider
+        #   params:
+        #     max_scale: 2.5
+        #     min_scale: 1.0
+        #     num_frames: 14
+
         guider_config:
-          target: sgm.modules.diffusionmodules.guiders.LinearPredictionGuider
-          params:
-            max_scale: 2.5
-            min_scale: 1.0
-            num_frames: 14
+          target: sgm.modules.diffusionmodules.guiders.IdentityGuider
+          # params:
+            # num_frames: 14
 
    

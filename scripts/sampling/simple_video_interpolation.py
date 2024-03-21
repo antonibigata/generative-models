@@ -11,7 +11,7 @@ from einops import rearrange, repeat
 from fire import Fire
 from omegaconf import OmegaConf
 from PIL import Image
-from torchvision.transforms import ToTensor
+from torchvision.transforms import ToTensor, Grayscale, Resize
 from tqdm import tqdm
 from torchvision.io import read_video, write_video
 import torchaudio
@@ -40,6 +40,14 @@ def create_interpolation_inputs(video, audio, num_frames, video_emb=None, overla
             last = video[i + num_frames - 1]
         except IndexError:
             break  # Last chunk is smaller than num_frames
+        # last = Grayscale(3)(last)
+        # image = Image.open(
+        #     "/vol/paramonos2/projects/antoni/code/Personal/Old/generating_laugh/bigata_antoni.png"
+        # ).convert("RGB")
+        # last = ToTensor()(image)
+        # last = Resize((512, 512))(last).cuda()
+        # last = (last / 255.0) * 2.0 - 1.0
+
         cond = torch.stack([first, last], dim=1)  # [C, 2, H, W]
         video_chunks.append(cond)
         if video_emb is not None:
@@ -292,7 +300,7 @@ def sample(
                     video = torch.randn(shape, device=device)
 
                     additional_model_inputs = {}
-                    additional_model_inputs["image_only_indicator"] = torch.zeros(2, num_frames).to(device)
+                    additional_model_inputs["image_only_indicator"] = torch.zeros(1, num_frames).to(device)
                     additional_model_inputs["num_video_frames"] = batch["num_video_frames"]
 
                     def denoiser(input, sigma, c):
@@ -398,7 +406,10 @@ def load_model(
     config["model"]["params"]["input_key"] = input_key
 
     config.model.params.sampler_config.params.num_steps = num_steps
-    config.model.params.sampler_config.params.guider_config.params.num_frames = num_frames
+    try:
+        config.model.params.sampler_config.params.guider_config.params.num_frames = num_frames
+    except AttributeError:
+        pass
     if device == "cuda":
         with torch.device(device):
             model = instantiate_from_config(config.model).to(device).eval()

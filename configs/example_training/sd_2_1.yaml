@@ -18,6 +18,8 @@ model:
       r_linear: 16
       r_conv: 16
       loras: null  # path to lora .pt
+      exclude_layers: []
+      verbose: False
 
     denoiser_config:
       target: sgm.modules.diffusionmodules.denoiser.DiscreteDenoiser
@@ -156,7 +158,7 @@ model:
             guider_config:
               target: sgm.modules.diffusionmodules.guiders.VanillaCFG
               params:
-                scale: 7.5
+                scale: 1.
 
 data:
   target: sgm.data.video_image_datamodule.VideoDataModule
@@ -178,8 +180,8 @@ data:
         load_all_possible_indexes: False
         allow_all_possible_permutations: False
         audio_emb_type: whisper
-        cond_noise: [-3.0, 0.5]
-        # cond_noise: 0.
+        # cond_noise: [-3.0, 0.5]
+        cond_noise: 0.
         motion_id: 60
         # data_mean: null
         # data_std: null
@@ -188,7 +190,7 @@ data:
 
       loader:
         batch_size: 32
-        num_workers: 6
+        num_workers: 8
         drop_last: True
         pin_memory: True
         persistent_workers: True

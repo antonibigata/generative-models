@@ -15,9 +15,7 @@ class Guider(ABC):
     def __call__(self, x: torch.Tensor, sigma: float) -> torch.Tensor:
         pass
 
-    def prepare_inputs(
-        self, x: torch.Tensor, s: float, c: Dict, uc: Dict
-    ) -> Tuple[torch.Tensor, float, Dict]:
+    def prepare_inputs(self, x: torch.Tensor, s: float, c: Dict, uc: Dict) -> Tuple[torch.Tensor, float, Dict]:
         pass
 
 
@@ -43,12 +41,13 @@ class VanillaCFG(Guider):
 
 
 class IdentityGuider(Guider):
+    # def __init__(self, num_frames: int):
+    #     self.num_frames = num_frames
+
     def __call__(self, x: torch.Tensor, sigma: float) -> torch.Tensor:
         return x
 
-    def prepare_inputs(
-        self, x: torch.Tensor, s: float, c: Dict, uc: Dict
-    ) -> Tuple[torch.Tensor, float, Dict]:
+    def prepare_inputs(self, x: torch.Tensor, s: float, c: Dict, uc: Dict) -> Tuple[torch.Tensor, float, Dict]:
         c_out = dict()
 
         for k in c:
@@ -82,7 +81,6 @@ class LinearPredictionGuider(Guider):
         x_c = rearrange(x_c, "(b t) ... -> b t ...", t=self.num_frames)
         scale = repeat(self.scale, "1 t -> b t", b=x_u.shape[0])
         scale = append_dims(scale, x_u.ndim).to(x_u.device)
-
         return rearrange(x_u + scale * (x_c - x_u), "b t ... -> (b t) ...")
 
     def prepare_inputs(
@@ -96,6 +94,7 @@ class LinearPredictionGuider(Guider):
             else:
                 assert c[k] == uc[k]
                 c_out[k] = c[k]
+
         return torch.cat([x] * 2), torch.cat([s] * 2), c_out
 
 

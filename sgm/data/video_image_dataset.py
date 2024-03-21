@@ -263,7 +263,7 @@ class VideoDataset(Dataset):
         else:
             clean_cond = rearrange(clean_cond, "h w c -> c h w")
             clean_cond = self.scale_and_crop((clean_cond / 255.0) * 2 - 1)
-            noisy_cond = clean_cond
+            # noisy_cond = clean_cond
 
         target = frame.unsqueeze(1)
 

@@ -209,7 +209,7 @@ model:
           params:
             max_scale: 2.5
             min_scale: 1.0
-            num_frames: 14
+            num_frames: 5
 
     loss_fn_config:
       target: sgm.modules.diffusionmodules.loss.StandardDiffusionLoss
@@ -264,7 +264,7 @@ data:
         video_extension: .mp4
         audio_extension: .wav
         audio_rate: 16000
-        num_frames: 14
+        num_frames: 5
         need_cond: True
         mode: interpolation
         use_latent: True
@@ -280,7 +280,7 @@ data:
         data_std: null
 
       loader:
-        batch_size: 1
+        batch_size: 4
         num_workers: 6
         drop_last: True
         pin_memory: True

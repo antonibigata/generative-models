@@ -100,11 +100,13 @@ class DiffusionEngine(pl.LightningModule):
                 search_class_list.append(torch.nn.Linear)
             if search_class_str.lower() in ["conv2d", "both"]:
                 search_class_list.append(torch.nn.Conv2d)
+
             inject_trainable_lora_extended(
                 self.model,
                 search_class=search_class_list,
                 **lora_config,
             )
+
             # for p in self.model.diffusion_model.input_blocks.parameters():
             #     print(p.requires_grad)
             # filters = [".transformer_blocks"]
