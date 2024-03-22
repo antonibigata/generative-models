@@ -32,7 +32,7 @@ class VanillaCFG(Guider):
         c_out = dict()
 
         for k in c:
-            if k in ["vector", "crossattn", "concat"]:
+            if k in ["vector", "crossattn", "concat", "audio_emb"]:
                 c_out[k] = torch.cat((uc[k], c[k]), 0)
             else:
                 assert c[k] == uc[k]

@@ -33,6 +33,15 @@ model:
     #     f_max: [1.]
     #     f_min: [1.]
 
+    scheduler_config:
+      target: sgm.lr_scheduler.LambdaWarmUpCosineScheduler2
+      params:
+        warm_up_steps: [1000]
+        cycle_lengths: [10000]
+        f_start: [1.e-6]
+        f_max: [1.e-4]
+        f_min: [3.e-6]
+
     denoiser_config:
       target: sgm.modules.diffusionmodules.denoiser.Denoiser
       params:
@@ -95,6 +104,7 @@ model:
         emb_models:
         - is_trainable: False
           input_key: cond_frames_without_noise
+          ucg_rate: 0.1
           target: sgm.modules.encoders.modules.FrozenOpenCLIPImagePredictionEmbedder
           params:
             n_cond_frames: 2
@@ -119,6 +129,7 @@ model:
         - input_key: cond_frames
           is_trainable: False
           target: sgm.modules.encoders.modules.VideoPredictionEmbedderWithEncoder
+          ucg_rate: 0.1
           params:
             disable_encoder_autocast: True
             n_cond_frames: 2
@@ -204,11 +215,13 @@ model:
             sigma_max: 700.0
 
         guider_config:
-          target: sgm.modules.diffusionmodules.guiders.LinearPredictionGuider
+          target: sgm.modules.diffusionmodules.guiders.TrianglePredictionGuider
           params:
             max_scale: 2.5
             min_scale: 1.0
             num_frames: 14
+            period: [1,1]
+            period_fusing: multiply
 
     loss_fn_config:
       target: sgm.modules.diffusionmodules.loss.StandardDiffusionLoss

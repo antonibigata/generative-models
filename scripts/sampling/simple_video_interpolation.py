@@ -153,13 +153,14 @@ def sample(
     else:
         input_key = "frames"
 
-    model, filter = load_model(
+    model, filter, n_batch = load_model(
         model_config,
         device,
         num_frames,
         num_steps,
         input_key,
     )
+
     model.en_and_decode_n_samples_a_time = decoding_t
     if lora_path is not None:
         model.init_from_ckpt(lora_path, remove_keys_from_weights=None)
@@ -300,7 +301,7 @@ def sample(
                     video = torch.randn(shape, device=device)
 
                     additional_model_inputs = {}
-                    additional_model_inputs["image_only_indicator"] = torch.zeros(1, num_frames).to(device)
+                    additional_model_inputs["image_only_indicator"] = torch.zeros(n_batch, num_frames).to(device)
                     additional_model_inputs["num_video_frames"] = batch["num_video_frames"]
 
                     def denoiser(input, sigma, c):
@@ -310,8 +311,8 @@ def sample(
                     samples_x = model.decode_first_stage(samples_z)
 
                     # Replace first and last by condition
-                    samples_x[0] = condition.squeeze(0)[:, 0]
-                    samples_x[-1] = condition.squeeze(0)[:, 1]
+                    # samples_x[0] = condition.squeeze(0)[:, 0]
+                    # samples_x[-1] = condition.squeeze(0)[:, 1]
 
                     samples = torch.clamp((samples_x + 1.0) / 2.0, min=0.0, max=1.0)
 
@@ -406,10 +407,13 @@ def load_model(
     config["model"]["params"]["input_key"] = input_key
 
     config.model.params.sampler_config.params.num_steps = num_steps
-    try:
+    if "num_frames" in config.model.params.sampler_config.params.guider_config.params:
         config.model.params.sampler_config.params.guider_config.params.num_frames = num_frames
-    except AttributeError:
-        pass
+
+    if "IdentityGuider" in config.model.params.sampler_config.params.guider_config.target:
+        n_batch = 1
+    else:
+        n_batch = 2  # Conditional and unconditional
     if device == "cuda":
         with torch.device(device):
             model = instantiate_from_config(config.model).to(device).eval()
@@ -417,7 +421,7 @@ def load_model(
         model = instantiate_from_config(config.model).to(device).eval()
 
     # filter = DeepFloydDataFiltering(verbose=False, device=device)
-    return model, filter
+    return model, filter, n_batch
 
 
 if __name__ == "__main__":

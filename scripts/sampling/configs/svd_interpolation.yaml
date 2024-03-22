@@ -183,9 +183,18 @@ model:
         #     min_scale: 1.0
         #     num_frames: 14
 
+        # guider_config:
+        #   target: sgm.modules.diffusionmodules.guiders.IdentityGuider
+        #   # params:
+        #     # num_frames: 14
+
         guider_config:
-          target: sgm.modules.diffusionmodules.guiders.IdentityGuider
-          # params:
+          target: sgm.modules.diffusionmodules.guiders.VanillaCFG
+          params:
+            scale: 2
+            # max_scale: 2.5
+            # min_scale: 1.0
             # num_frames: 14
+            # period: [1.,1.]
 
    

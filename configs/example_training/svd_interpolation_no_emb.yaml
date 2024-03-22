@@ -6,8 +6,8 @@ model:
     no_log_keys: [audio_emb, fps_id, motion_bucket_id, cond_aug]
     scale_factor: 0.18215
     disable_first_stage_autocast: True
-    ckpt_path: checkpoints/svd.safetensors
-    remove_keys_from_weights: [model.diffusion_model.input_blocks.0.0.weight]
+    ckpt_path: checkpoints/svd_no_emb.safetensors
+    remove_keys_from_weights: [model.diffusion_model.input_blocks.0.0.weight, model.diffusion_model.label_emb.0.0.weight]
     compile_model: False
     optimizer_config: 
       target: deepspeed.ops.adam.DeepSpeedCPUAdam
@@ -106,17 +106,17 @@ model:
               params:
                 freeze: True
 
-        - input_key: fps_id
-          is_trainable: False
-          target: sgm.modules.encoders.modules.ConcatTimestepEmbedderND
-          params:
-            outdim: 256
+        # - input_key: fps_id
+        #   is_trainable: False
+        #   target: sgm.modules.encoders.modules.ConcatTimestepEmbedderND
+        #   params:
+        #     outdim: 256
 
-        - input_key: motion_bucket_id
-          is_trainable: False
-          target: sgm.modules.encoders.modules.ConcatTimestepEmbedderND
-          params:
-            outdim: 256
+        # - input_key: motion_bucket_id
+        #   is_trainable: False
+        #   target: sgm.modules.encoders.modules.ConcatTimestepEmbedderND
+        #   params:
+        #     outdim: 256
 
         - input_key: cond_frames
           is_trainable: False
@@ -207,13 +207,11 @@ model:
             sigma_max: 700.0
 
         guider_config:
-          target: sgm.modules.diffusionmodules.guiders.TrianglePredictionGuider
+          target: sgm.modules.diffusionmodules.guiders.LinearPredictionGuider
           params:
             max_scale: 2.5
             min_scale: 1.0
             num_frames: 14
-            period: [1,1]
-            period_fusing: multiply
 
     loss_fn_config:
       target: sgm.modules.diffusionmodules.loss.StandardDiffusionLoss
