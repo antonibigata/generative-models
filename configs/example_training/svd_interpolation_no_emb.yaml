@@ -52,7 +52,7 @@ model:
     network_config:
       target: sgm.modules.diffusionmodules.video_model.VideoUNet
       params:
-        adm_in_channels: 768
+        adm_in_channels: 256
         num_classes: sequential
         use_checkpoint: True
         in_channels: 9
