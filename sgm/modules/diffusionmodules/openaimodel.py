@@ -523,6 +523,7 @@ class UNetModel(nn.Module):
         adm_in_channels: Optional[int] = None,
         unfreeze_input_blocks: bool = False,
         fine_tuning_method: str = None,
+        audio_cond_method: str = None,
         **kwargs,
     ):
         super().__init__()
@@ -541,6 +542,7 @@ class UNetModel(nn.Module):
         self.in_channels = in_channels
         self.model_channels = model_channels
         self.out_channels = out_channels
+        self.audio_cond_method = audio_cond_method
         if isinstance(transformer_depth, int):
             transformer_depth = len(channel_mult) * [transformer_depth]
         transformer_depth_middle = transformer_depth[-1]
@@ -816,6 +818,7 @@ class UNetModel(nn.Module):
         timesteps: Optional[th.Tensor] = None,
         context: Optional[th.Tensor] = None,
         y: Optional[th.Tensor] = None,
+        audio_emb: Optional[th.Tensor] = None,
         **kwargs,
     ) -> th.Tensor:
         """
@@ -836,6 +839,12 @@ class UNetModel(nn.Module):
         if self.num_classes is not None:
             assert y.shape[0] == x.shape[0]
             emb = emb + self.label_emb(y)
+
+        if self.audio_cond_method == "cross_attention":
+            assert audio_emb is not None
+            if audio_emb.ndim == 4:
+                audio_emb = rearrange(audio_emb, "b t d c -> b (t d) c")
+            context = th.cat([context, audio_emb], dim=1)
 
         h = x
         for module in self.input_blocks:
