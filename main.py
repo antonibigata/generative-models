@@ -423,7 +423,7 @@ if __name__ == "__main__":
     default_logger_cfg = default_logger_cfgs["wandb" if opt.wandb else "csv"]
     if "SLURM_JOB_ID" in os.environ:
         print("The SLURM job ID for this run is {}".format(os.environ["SLURM_JOB_ID"]))
-        # config["slurm_job_id"] = os.environ["SLURM_JOB_ID"]
+        config["slurm_job_id"] = os.environ["SLURM_JOB_ID"]
     if opt.wandb:
         # TODO change once leaving "swiffer" config directory
         try:
@@ -478,6 +478,15 @@ if __name__ == "__main__":
     modelckpt_cfg = OmegaConf.merge(default_modelckpt_cfg, modelckpt_cfg)
     print(f"Merged modelckpt-cfg: \n{modelckpt_cfg}")
 
+    # configure learning rate
+    if "batch_size" in config.data.params:
+        bs, base_lr = config.data.params.batch_size, config.model.base_learning_rate
+    else:
+        bs, base_lr = (
+            config.data.params.train.loader.batch_size,
+            config.model.base_learning_rate,
+        )
+
     # https://pytorch-lightning.readthedocs.io/en/stable/extensions/strategy.html
     # default to ddp if not further specified
     default_strategy_config = {
@@ -490,7 +499,22 @@ if __name__ == "__main__":
     if "strategy" in lightning_config:
         strategy_cfg = OmegaConf.create()
         default_strategy_config = {}
-        default_strategy_config["strategy"] = lightning_config.strategy
+        if "deepspeed" in lightning_config.strategy:
+            stage = lightning_config.strategy.split("_")[2]
+            offload = "offload" in lightning_config.strategy
+            default_strategy_config = {
+                "target": "pytorch_lightning.strategies.DeepSpeedStrategy",
+                "params": {
+                    "stage": stage,
+                    "offload_optimizer": offload,
+                    # "offload_parameters": offload,
+                    "logging_batch_size_per_gpu": bs,
+                    "allgather_bucket_size": 5e8,
+                    "reduce_bucket_size": 5e8,
+                },
+            }
+        else:
+            default_strategy_config["strategy"] = lightning_config.strategy
     else:
         strategy_cfg = OmegaConf.create()
         unused_params = lightning_config.pop("unused_params", False)
@@ -601,14 +625,6 @@ if __name__ == "__main__":
     except:
         print("datasets not yet initialized.")
 
-    # configure learning rate
-    if "batch_size" in config.data.params:
-        bs, base_lr = config.data.params.batch_size, config.model.base_learning_rate
-    else:
-        bs, base_lr = (
-            config.data.params.train.loader.batch_size,
-            config.model.base_learning_rate,
-        )
     print("Base learning rate: ", base_lr)
     if not cpu:
         if lightning_config.trainer.devices == -1:

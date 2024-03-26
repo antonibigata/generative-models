@@ -127,6 +127,10 @@ class DiffusionEngine(pl.LightningModule):
     def init_from_ckpt(self, path: str, remove_keys_from_weights: Optional[Union[List, Tuple]] = None) -> None:
         if path.endswith("ckpt"):
             sd = torch.load(path, map_location="cpu")["state_dict"]
+        elif path.endswith("pt"):
+            sd = torch.load(path, map_location="cpu")["module"]
+            # Remove leading _forward_module from keys
+            sd = {k.replace("_forward_module.", ""): v for k, v in sd.items()}
         elif path.endswith("safetensors"):
             sd = load_safetensors(path)
         else:

@@ -93,6 +93,8 @@ def get_audio_embeddings(audio_path: str, audio_rate: int = 16000, fps: int = 25
 
         if os.path.exists(raw_audio_path):
             raw_audio = get_raw_audio(raw_audio_path, audio_rate)
+        else:
+            print(f"WARNING: Could not find raw audio file at {raw_audio_path}.")
 
     return audio, raw_audio
 
