@@ -505,7 +505,7 @@ if __name__ == "__main__":
             default_strategy_config = {
                 "target": "pytorch_lightning.strategies.DeepSpeedStrategy",
                 "params": {
-                    "stage": stage,
+                    "stage": int(stage),
                     "offload_optimizer": offload,
                     # "offload_parameters": offload,
                     "logging_batch_size_per_gpu": bs,
