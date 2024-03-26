@@ -435,6 +435,11 @@ class DiffusionEngine(pl.LightningModule):
                 samples = self.sample(c, shape=z.shape[1:], uc=uc, batch_size=N, **sampling_kwargs)
             samples = self.decode_first_stage(samples)
             log["samples"] = samples
+
+            with self.ema_scope("Plotting"):
+                samples = self.sample_no_guider(c, shape=z.shape[1:], uc=uc, batch_size=N, **sampling_kwargs)
+            samples = self.decode_first_stage(samples)
+            log["samples_no_guidance"] = samples
         return log
 
     @torch.no_grad()
