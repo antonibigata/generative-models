@@ -5,7 +5,7 @@ model:
     scale_factor: 0.18215
     # scale_factor: 0.13025
     disable_first_stage_autocast: True
-    ckpt_path: checkpoints/v2-1_512-ema-pruned.safetensors
+    ckpt_path: /home/abigata/PhD/code/generative-models/checkpoints/last.ckpt
     # remove_keys_from_weights: [model.diffusion_model.input_blocks.0.0.weight]
     # compile_model: False
 
@@ -149,7 +149,7 @@ model:
               #   sigma_max: 700.0
 
             guider_config:
-              target: sgm.modules.diffusionmodules.guiders.IdentityGuider
+              target: sgm.modules.diffusionmodules.guiders.VanillaCFG
               params:
-                chybre: 0.0
+                scale: 2.5
 

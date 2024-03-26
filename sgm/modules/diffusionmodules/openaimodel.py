@@ -842,6 +842,7 @@ class UNetModel(nn.Module):
 
         if self.audio_cond_method == "cross_attention":
             assert audio_emb is not None
+            # print(f"{context.shape=}")
             if audio_emb.ndim == 4:
                 audio_emb = rearrange(audio_emb, "b t d c -> b (t d) c")
             context = th.cat([context, audio_emb], dim=1)
