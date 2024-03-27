@@ -46,8 +46,9 @@ model:
         transformer_depth: 1
         context_dim: 1024
         fine_tuning_method: lora
-        unfreeze_input_blocks: True # Because we changed the input block
+        unfreeze_blocks: ["input"] # Because we changed the input block
         spatial_transformer_attn_type: softmax-xformers
+        audio_cond_method: cross_attention
 
     conditioner_config:
       target: sgm.modules.GeneralConditioner
@@ -100,6 +101,13 @@ model:
                     dropout: 0.0
                   lossconfig:
                     target: torch.nn.Identity
+
+          - input_key: audio_emb
+            is_trainable: True
+            target: sgm.modules.encoders.modules.WhisperAudioEmbedder
+            params:
+              merge_method: mean 
+              linear_dim: 1024
 
     first_stage_config:
       target: sgm.models.autoencoder.AutoencoderKL
@@ -159,7 +167,7 @@ model:
             guider_config:
               target: sgm.modules.diffusionmodules.guiders.VanillaCFG
               params:
-                scale: 1.
+                scale: 3.
 
 data:
   target: sgm.data.video_image_datamodule.VideoDataModule
@@ -190,7 +198,7 @@ data:
         virtual_increase: 1000
 
       loader:
-        batch_size: 32
+        batch_size: 64
         num_workers: 8
         drop_last: True
         pin_memory: True

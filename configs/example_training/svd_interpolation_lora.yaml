@@ -292,7 +292,7 @@ data:
         data_std: null
 
       loader:
-        batch_size: 4
+        batch_size: 128
         num_workers: 6
         drop_last: True
         pin_memory: True

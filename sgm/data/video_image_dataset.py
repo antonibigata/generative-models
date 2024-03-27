@@ -343,7 +343,7 @@ class VideoDataset(Dataset):
             out_data["cond_aug"] = cond_noise
         # out_data["motion_bucket_id"] = torch.tensor([self.motion_id])
         # out_data["fps_id"] = torch.tensor([self.video_rate - 1])
-        out_data["txt"] = "An astronaut riding an horse"
+        out_data["txt"] = ""
         # out_data["num_video_frames"] = self.num_frames
         # out_data["image_only_indicator"] = torch.zeros(self.num_frames)
         return out_data

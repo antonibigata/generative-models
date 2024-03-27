@@ -521,7 +521,7 @@ class UNetModel(nn.Module):
         use_linear_in_transformer: bool = False,
         spatial_transformer_attn_type: str = "softmax",
         adm_in_channels: Optional[int] = None,
-        unfreeze_input_blocks: bool = False,
+        unfreeze_blocks: Optional[List[str]] = None,
         fine_tuning_method: str = None,
         audio_cond_method: str = None,
         **kwargs,
@@ -808,9 +808,17 @@ class UNetModel(nn.Module):
             if self.adapter is not None:
                 for param in self.adapter.parameters():
                     param.requires_grad = True
-            if unfreeze_input_blocks:
-                for param in self.input_blocks[0].parameters():
-                    param.requires_grad = True
+            if unfreeze_blocks:
+                if "input" in unfreeze_blocks:
+                    for param in self.input_blocks[0].parameters():
+                        param.requires_grad = True
+                    # break  # only unfreeze the first input block
+                if "label_emb" in unfreeze_blocks:
+                    for param in self.label_emb.parameters():
+                        param.requires_grad = True
+                if "time_embed" in unfreeze_blocks:
+                    for param in self.time_embed.parameters():
+                        param.requires_grad = True
 
     def forward(
         self,
