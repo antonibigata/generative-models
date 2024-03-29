@@ -13,7 +13,7 @@ model:
       target: deepspeed.ops.adam.DeepSpeedCPUAdam
 
     scheduler_config:
-      # target: sgm.lr_scheduler.LambdaLinearScheduler
+      target: sgm.lr_scheduler.LambdaLinearScheduler
       params:
         warm_up_steps: [1000]
         cycle_lengths: [100000000]
