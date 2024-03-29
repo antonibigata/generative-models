@@ -67,14 +67,15 @@ class DiffusionEngine(pl.LightningModule):
             self.model = get_obj_from_str(target)(model, compile_model=compile_model, **params)
 
         self.denoiser = instantiate_from_config(denoiser_config)
-        self.sampler = instantiate_from_config(sampler_config)
+        self.sampler = instantiate_from_config(sampler_config) if sampler_config is not None else None
         self.is_guided = True
-        if "IdentityGuider" in sampler_config["params"]["guider_config"]["target"]:
+        if self.sampler and "IdentityGuider" in sampler_config["params"]["guider_config"]["target"]:
             self.is_guided = False
-        config_guider = sampler_config["params"]["guider_config"]
-        sampler_config["params"]["guider_config"] = None
-        self.sampler_no_guidance = instantiate_from_config(sampler_config)
-        sampler_config["params"]["guider_config"] = config_guider
+        if self.sampler is not None:
+            config_guider = sampler_config["params"]["guider_config"]
+            sampler_config["params"]["guider_config"] = None
+            self.sampler_no_guidance = instantiate_from_config(sampler_config)
+            sampler_config["params"]["guider_config"] = config_guider
         self.conditioner = instantiate_from_config(default(conditioner_config, UNCONDITIONAL_CONFIG))
         self.scheduler_config = scheduler_config
         self._init_first_stage(first_stage_config)

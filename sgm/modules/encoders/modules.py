@@ -355,7 +355,7 @@ class FrozenByT5Embedder(AbstractEmbModel):
 class FrozenCLIPEmbedder(AbstractEmbModel):
     """Uses the CLIP transformer encoder for text (from huggingface)"""
 
-    LAYERS = ["last", "pooled", "hidden"]
+    LAYERS = ["last", "pooled", "hidden", "zero"]
 
     def __init__(
         self,
@@ -403,6 +403,8 @@ class FrozenCLIPEmbedder(AbstractEmbModel):
         outputs = self.transformer(input_ids=tokens, output_hidden_states=self.layer == "hidden")
         if self.layer == "last":
             z = outputs.last_hidden_state
+        elif self.layer == "zero":
+            z = torch.zeros_like(outputs.last_hidden_state)
         elif self.layer == "pooled":
             z = outputs.pooler_output[:, None, :]
         else:

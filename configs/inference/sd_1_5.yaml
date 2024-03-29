@@ -25,9 +25,9 @@ model:
         num_res_blocks: 2
         channel_mult: [1, 2, 4, 4]
         num_head_channels: 64
-        use_linear_in_transformer: True
+        use_linear_in_transformer: False
         transformer_depth: 1
-        context_dim: 1024
+        context_dim: 768
 
     conditioner_config:
       target: sgm.modules.GeneralConditioner
@@ -35,10 +35,10 @@ model:
         emb_models:
           - is_trainable: False
             input_key: txt
-            target: sgm.modules.encoders.modules.FrozenOpenCLIPEmbedder
+            target: sgm.modules.encoders.modules.FrozenCLIPEmbedder
             params:
-              freeze: true
-              layer: penultimate
+              layer: last
+              # layer_idx: 11
 
     first_stage_config:
       target: sgm.models.autoencoder.AutoencoderKL

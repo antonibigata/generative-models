@@ -5,6 +5,7 @@ from scripts.demo.streamlit_helpers import *
 SAVE_PATH = "outputs/demo/txt2img/"
 
 SD_XL_BASE_RATIOS = {
+    "0.25": (512, 512),
     "0.5": (704, 1408),
     "0.52": (704, 1344),
     "0.57": (768, 1344),
@@ -70,6 +71,15 @@ VERSION2SPECS = {
         "config": "configs/inference/sd_2_1_768.yaml",
         "ckpt": "checkpoints/v2-1_768-ema-pruned.safetensors",
     },
+    "SD-1.5": {
+        "H": 512,
+        "W": 512,
+        "C": 4,
+        "f": 8,
+        "is_legacy": True,
+        "config": "configs/inference/sd_1_5.yaml",
+        "ckpt": "checkpoints/v1-5-pruned-emaonly.safetensors",
+    },
     "SDXL-refiner-0.9": {
         "H": 1024,
         "W": 1024,
@@ -99,9 +109,7 @@ def load_img(display=True, key=None, device="cuda"):
         st.image(image)
     w, h = image.size
     print(f"loaded input image of size ({w}, {h})")
-    width, height = map(
-        lambda x: x - x % 64, (w, h)
-    )  # resize to integer multiple of 64
+    width, height = map(lambda x: x - x % 64, (w, h))  # resize to integer multiple of 64
     image = image.resize((width, height))
     image = np.array(image.convert("RGB"))
     image = image[None].transpose(0, 3, 1, 2)
@@ -184,9 +192,7 @@ def run_img2img(
         prompt=prompt,
         negative_prompt=negative_prompt,
     )
-    strength = st.number_input(
-        "**Img2Img Strength**", value=0.75, min_value=0.0, max_value=1.0
-    )
+    strength = st.number_input("**Img2Img Strength**", value=0.75, min_value=0.0, max_value=1.0)
     sampler, num_rows, num_cols = init_sampling(
         img2img_strength=strength,
         stage2strength=stage2strength,
@@ -295,18 +301,14 @@ if __name__ == "__main__":
     if add_pipeline:
         st.write("__________________________")
         version2 = st.selectbox("Refiner:", ["SDXL-refiner-1.0", "SDXL-refiner-0.9"])
-        st.warning(
-            f"Running with {version2} as the second stage model. Make sure to provide (V)RAM :) "
-        )
+        st.warning(f"Running with {version2} as the second stage model. Make sure to provide (V)RAM :) ")
         st.write("**Refiner Options:**")
 
         version_dict2 = VERSION2SPECS[version2]
         state2 = init_st(version_dict2, load_filter=False)
         st.info(state2["msg"])
 
-        stage2strength = st.number_input(
-            "**Refinement strength**", value=0.15, min_value=0.0, max_value=1.0
-        )
+        stage2strength = st.number_input("**Refinement strength**", value=0.15, min_value=0.0, max_value=1.0)
 
         sampler2, *_ = init_sampling(
             key=2,
