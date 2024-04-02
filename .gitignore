@@ -14,3 +14,6 @@
 /videos
 /logs
 /images
+__pycache__/
+/wandb
+main.log
