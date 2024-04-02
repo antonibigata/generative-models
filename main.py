@@ -478,15 +478,6 @@ if __name__ == "__main__":
     modelckpt_cfg = OmegaConf.merge(default_modelckpt_cfg, modelckpt_cfg)
     print(f"Merged modelckpt-cfg: \n{modelckpt_cfg}")
 
-    # configure learning rate
-    if "batch_size" in config.data.params:
-        bs, base_lr = config.data.params.batch_size, config.model.base_learning_rate
-    else:
-        bs, base_lr = (
-            config.data.params.train.loader.batch_size,
-            config.model.base_learning_rate,
-        )
-
     # https://pytorch-lightning.readthedocs.io/en/stable/extensions/strategy.html
     # default to ddp if not further specified
     default_strategy_config = {
@@ -499,22 +490,22 @@ if __name__ == "__main__":
     if "strategy" in lightning_config:
         strategy_cfg = OmegaConf.create()
         default_strategy_config = {}
-        if "deepspeed" in lightning_config.strategy:
-            stage = lightning_config.strategy.split("_")[2]
-            offload = "offload" in lightning_config.strategy
-            default_strategy_config = {
-                "target": "pytorch_lightning.strategies.DeepSpeedStrategy",
-                "params": {
-                    "stage": int(stage),
-                    "offload_optimizer": offload,
-                    # "offload_parameters": offload,
-                    "logging_batch_size_per_gpu": bs,
-                    "allgather_bucket_size": 5e8,
-                    "reduce_bucket_size": 5e8,
-                },
-            }
-        else:
-            default_strategy_config["strategy"] = lightning_config.strategy
+        # if "deepspeed" in lightning_config.strategy:
+        #     stage = lightning_config.strategy.split("_")[2]
+        #     offload = "offload" in lightning_config.strategy
+        #     default_strategy_config = {
+        #         "target": "pytorch_lightning.strategies.DeepSpeedStrategy",
+        #         "params": {
+        #             "stage": int(stage),
+        #             "offload_optimizer": offload,
+        #             # "offload_parameters": offload,
+        #             "logging_batch_size_per_gpu": bs,
+        #             "allgather_bucket_size": 5e8,
+        #             "reduce_bucket_size": 5e8,
+        #         },
+        #     }
+        # else:
+        default_strategy_config["strategy"] = lightning_config.strategy
     else:
         strategy_cfg = OmegaConf.create()
         unused_params = lightning_config.pop("unused_params", False)
@@ -624,6 +615,15 @@ if __name__ == "__main__":
             print(f"{k}, {data.datasets[k].__class__.__name__}, {len(data.datasets[k])}")
     except:
         print("datasets not yet initialized.")
+
+    # configure learning rate
+    if "batch_size" in config.data.params:
+        bs, base_lr = config.data.params.batch_size, config.model.base_learning_rate
+    else:
+        bs, base_lr = (
+            config.data.params.train.loader.batch_size,
+            config.model.base_learning_rate,
+        )
 
     print("Base learning rate: ", base_lr)
     if not cpu:
