@@ -16,7 +16,7 @@ model:
       target: sgm.lr_scheduler.LambdaLinearScheduler
       params:
         warm_up_steps: [1000]
-        cycle_lengths: [100000000]
+        cycle_lengths: [10000000000000]
         f_start: [1.e-6]
         f_max: [1.]
         f_min: [1.]

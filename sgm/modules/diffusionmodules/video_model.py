@@ -463,7 +463,7 @@ class VideoUNet(nn.Module):
             if self.adapter is not None:
                 for param in self.adapter.parameters():
                     param.requires_grad = True
-            if unfreeze_blocks:
+            if len(unfreeze_blocks):
                 if "input" in unfreeze_blocks:
                     for param in self.input_blocks[0].parameters():
                         param.requires_grad = True
