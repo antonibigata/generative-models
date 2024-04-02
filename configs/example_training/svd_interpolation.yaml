@@ -9,8 +9,8 @@ model:
     ckpt_path: checkpoints/svd.safetensors
     remove_keys_from_weights: [model.diffusion_model.input_blocks.0.0.weight]
     compile_model: False
-    optimizer_config: 
-      target: deepspeed.ops.adam.DeepSpeedCPUAdam
+    # optimizer_config: 
+    #   target: deepspeed.ops.adam.DeepSpeedCPUAdam
 
     scheduler_config:
       target: sgm.lr_scheduler.LambdaLinearScheduler
@@ -80,6 +80,7 @@ model:
         fine_tuning_method: null
         audio_cond_method: cross_attention
         unfreeze_blocks: ["input"] # Because we changed the input block
+        # unfreeze_input_blocks: True
         # adapter_kwargs:
         #   # down_ratio: 1
         #   # adapter_type: null
