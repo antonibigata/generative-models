@@ -15,7 +15,9 @@ class Guider(ABC):
     def __call__(self, x: torch.Tensor, sigma: float) -> torch.Tensor:
         pass
 
-    def prepare_inputs(self, x: torch.Tensor, s: float, c: Dict, uc: Dict) -> Tuple[torch.Tensor, float, Dict]:
+    def prepare_inputs(
+        self, x: torch.Tensor, s: float, c: Dict, uc: Dict
+    ) -> Tuple[torch.Tensor, float, Dict]:
         pass
 
 
@@ -41,14 +43,12 @@ class VanillaCFG(Guider):
 
 
 class IdentityGuider(Guider):
-    def __init__(self, *args, **kwargs):
-        # self.num_frames = num_frames
-        pass
-
     def __call__(self, x: torch.Tensor, sigma: float) -> torch.Tensor:
         return x
 
-    def prepare_inputs(self, x: torch.Tensor, s: float, c: Dict, uc: Dict) -> Tuple[torch.Tensor, float, Dict]:
+    def prepare_inputs(
+        self, x: torch.Tensor, s: float, c: Dict, uc: Dict
+    ) -> Tuple[torch.Tensor, float, Dict]:
         c_out = dict()
 
         for k in c:
