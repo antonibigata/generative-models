@@ -69,8 +69,13 @@ class DiffusionEngine(pl.LightningModule):
         self.denoiser = instantiate_from_config(denoiser_config)
         self.sampler = instantiate_from_config(sampler_config) if sampler_config is not None else None
         self.is_guided = True
-        if sampler_config is not None and sampler_config["params"].get("guider_config") is None:
+        if self.sampler and "IdentityGuider" in sampler_config["params"]["guider_config"]["target"]:
             self.is_guided = False
+        if self.sampler is not None:
+            config_guider = sampler_config["params"]["guider_config"]
+            sampler_config["params"]["guider_config"] = None
+            self.sampler_no_guidance = instantiate_from_config(sampler_config)
+            sampler_config["params"]["guider_config"] = config_guider
         self.conditioner = instantiate_from_config(default(conditioner_config, UNCONDITIONAL_CONFIG))
         self.scheduler_config = scheduler_config
         self._init_first_stage(first_stage_config)
@@ -322,6 +327,22 @@ class DiffusionEngine(pl.LightningModule):
         return samples
 
     @torch.no_grad()
+    def sample_no_guider(
+        self,
+        cond: Dict,
+        uc: Union[Dict, None] = None,
+        batch_size: int = 16,
+        shape: Union[None, Tuple, List] = None,
+        **kwargs,
+    ):
+        randn = torch.randn(batch_size, *shape).to(self.device)
+
+        denoiser = lambda input, sigma, c: self.denoiser(self.model, input, sigma, c, **kwargs)
+        samples = self.sampler_no_guidance(denoiser, randn, cond, uc=uc)
+
+        return samples
+
+    @torch.no_grad()
     def log_conditionings(self, batch: Dict, n: int) -> Dict:
         """
         Defines heuristics to log different conditionings.
@@ -479,6 +500,15 @@ class DiffusionEngine(pl.LightningModule):
                 samples = self.sample(c, shape=z.shape[1:], uc=uc, batch_size=N, **sampling_kwargs)
             samples = self.decode_first_stage(samples)
             log["samples"] = samples
+
+            # Without guidance
+            sampling_kwargs["image_only_indicator"] = torch.zeros(1, num_frames).to(self.device)
+            sampling_kwargs["num_video_frames"] = batch["num_video_frames"]
+
+            with self.ema_scope("Plotting"):
+                samples = self.sample_no_guider(c, shape=z.shape[1:], uc=uc, batch_size=N, **sampling_kwargs)
+            samples = self.decode_first_stage(samples)
+            log["samples_no_guidance"] = samples
 
         torch.cuda.empty_cache()
         return log

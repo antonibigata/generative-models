@@ -421,6 +421,9 @@ if __name__ == "__main__":
         },
     }
     default_logger_cfg = default_logger_cfgs["wandb" if opt.wandb else "csv"]
+    if "SLURM_JOB_ID" in os.environ:
+        print("The SLURM job ID for this run is {}".format(os.environ["SLURM_JOB_ID"]))
+        config["slurm_job_id"] = os.environ["SLURM_JOB_ID"]
     if opt.wandb:
         # TODO change once leaving "swiffer" config directory
         try:
