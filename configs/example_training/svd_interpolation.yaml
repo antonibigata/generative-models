@@ -9,8 +9,8 @@ model:
     ckpt_path: checkpoints/svd.safetensors
     remove_keys_from_weights: [model.diffusion_model.input_blocks.0.0.weight]
     compile_model: False
-    optimizer_config: 
-      target: deepspeed.ops.adam.DeepSpeedCPUAdam
+    # optimizer_config: 
+    #   target: deepspeed.ops.adam.DeepSpeedCPUAdam
 
     scheduler_config:
       target: sgm.lr_scheduler.LambdaLinearScheduler
