@@ -72,8 +72,7 @@ model:
         video_kernel_size: [3, 1, 1]
         fine_tuning_method: null
         audio_cond_method: cross_attention
-        unfreeze_blocks: ["input"]
-        # unfreeze_input_blocks: True # Because we changed the input block
+        unfreeze_input_blocks: True # Because we changed the input block
         # adapter_kwargs:
         #   # down_ratio: 1
         #   # adapter_type: null
@@ -208,13 +207,11 @@ model:
             sigma_max: 700.0
 
         guider_config:
-          target: sgm.modules.diffusionmodules.guiders.TrianglePredictionGuider
+          target: sgm.modules.diffusionmodules.guiders.LinearPredictionGuider
           params:
             max_scale: 2.5
             min_scale: 1.0
             num_frames: 14
-            period: [1,1]
-            period_fusing: multiply
 
     loss_fn_config:
       target: sgm.modules.diffusionmodules.loss.StandardDiffusionLoss

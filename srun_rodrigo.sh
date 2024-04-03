@@ -15,7 +15,7 @@ export WANDB_ENTITY=animator
 export NCCL_SOCKET_IFNAME=ens32
 export HYDRA_FULL_ERROR=1
 export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
-cd /data/home/rs2517/code/generative-models
+cd /data/home/rs2517/code/generative-models_old
 srun python main.py --base configs/example_training/svd_interpolation.yaml --wandb True lightning.num_nodes 8 \
     lightning.strategy=deepspeed_stage_2_offload lightning.trainer.precision=32 model.base_learning_rate=1.e-4 \
     data.params.train.datapipeline.filelist=/fsx/rs2517/data/lists/HDTF/filelist_videos_train.txt \
