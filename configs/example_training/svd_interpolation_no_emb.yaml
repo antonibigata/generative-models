@@ -9,14 +9,14 @@ model:
     ckpt_path: checkpoints/svd_no_emb.safetensors
     remove_keys_from_weights: [model.diffusion_model.input_blocks.0.0.weight, model.diffusion_model.label_emb.0.0.weight]
     compile_model: False
-    optimizer_config: 
-      target: deepspeed.ops.adam.DeepSpeedCPUAdam
+    # optimizer_config: 
+    #   target: deepspeed.ops.adam.DeepSpeedCPUAdam
 
     scheduler_config:
       target: sgm.lr_scheduler.LambdaLinearScheduler
       params:
         warm_up_steps: [1000]
-        cycle_lengths: [100000000]
+        cycle_lengths: [10000000000000]
         f_start: [1.e-6]
         f_max: [1.]
         f_min: [1.]
