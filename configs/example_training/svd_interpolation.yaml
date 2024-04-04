@@ -104,7 +104,7 @@ model:
         emb_models:
         - is_trainable: False
           input_key: cond_frames_without_noise
-          ucg_rate: 0.1
+          # ucg_rate: 0.1
           target: sgm.modules.encoders.modules.FrozenOpenCLIPImagePredictionEmbedder
           params:
             n_cond_frames: 2
@@ -128,7 +128,7 @@ model:
 
         - input_key: cond_frames
           is_trainable: False
-          ucg_rate: 0.1
+          # ucg_rate: 0.1
           target: sgm.modules.encoders.modules.VideoPredictionEmbedderWithEncoder
           params:
             disable_encoder_autocast: True
@@ -163,6 +163,7 @@ model:
 
         - input_key: audio_emb
           is_trainable: True
+          ucg_rate: 0.1
           target: sgm.modules.encoders.modules.WhisperAudioEmbedder
           params:
             merge_method: none 
@@ -352,6 +353,7 @@ lightning:
         log_first_step: True
         log_videos_kwargs:
           use_ema_scope: False
+          ucg_keys: [audio_emb]
           N: 1
           n_rows: 1
 
