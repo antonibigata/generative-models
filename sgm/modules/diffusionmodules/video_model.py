@@ -504,9 +504,9 @@ class VideoUNet(nn.Module):
         num_video_frames: Optional[int] = None,
         image_only_indicator: Optional[th.Tensor] = None,
     ):
-        assert (y is not None) == (
-            self.num_classes is not None
-        ), "must specify y if and only if the model is class-conditional -> no, relax this TODO"
+        # assert (y is not None) == (
+        #     self.num_classes is not None
+        # ), "must specify y if and only if the model is class-conditional -> no, relax this TODO"
 
         num_video_frames = num_video_frames if isinstance(num_video_frames, int) else num_video_frames[0]
         or_batch_size = x.shape[0] // num_video_frames
@@ -550,15 +550,16 @@ class VideoUNet(nn.Module):
         emb = self.time_embed(t_emb)
 
         if self.num_classes is not None:
+            assert y is not None or self.audio_cond_method == "to_time_emb"
+            if self.audio_cond_method == "to_time_emb":
+                assert audio_emb is not None
+                audio_emb = rearrange(audio_emb, "b t c -> (b t) c")
+                if y is not None:
+                    y = th.cat([y, audio_emb], dim=1)
+                else:
+                    y = audio_emb
             assert y.shape[0] == x.shape[0]
-            y = y.to(emb.dtype)
             emb = emb + self.label_emb(y)
-
-        if self.audio_cond_method == "to_time_emb":
-            assert audio_emb is not None
-            audio_emb = audio_emb.to(emb.dtype)
-            audio_emb = rearrange(audio_emb, "b t c -> (b t) c")
-            emb = emb + audio_emb
 
         h = x
         for module in self.input_blocks:

@@ -52,7 +52,7 @@ model:
     network_config:
       target: sgm.modules.diffusionmodules.video_model.VideoUNet
       params:
-        adm_in_channels: 256
+        adm_in_channels: 1280
         num_classes: sequential
         use_checkpoint: True
         in_channels: 9
@@ -71,7 +71,7 @@ model:
         merge_strategy: learned_with_images
         video_kernel_size: [3, 1, 1]
         fine_tuning_method: null
-        audio_cond_method: cross_attention
+        audio_cond_method: to_time_emb
         unfreeze_blocks: ["input"] # Because we changed the input block
         # adapter_kwargs:
         #   # down_ratio: 1
@@ -147,18 +147,18 @@ model:
                 lossconfig:
                   target: torch.nn.Identity
 
-        - input_key: cond_aug
-          is_trainable: False
-          target: sgm.modules.encoders.modules.ConcatTimestepEmbedderND
-          params:
-            outdim: 256
+        # - input_key: cond_aug
+        #   is_trainable: False
+        #   target: sgm.modules.encoders.modules.ConcatTimestepEmbedderND
+        #   params:
+        #     outdim: 256
 
         - input_key: audio_emb
           is_trainable: True
           target: sgm.modules.encoders.modules.WhisperAudioEmbedder
           params:
-            merge_method: none 
-            linear_dim: 1024
+            merge_method: mean 
+            linear_dim: null
 
     first_stage_config:
       target: sgm.models.autoencoder.AutoencodingEngine
@@ -275,11 +275,12 @@ data:
         from_audio_embedding: True
         load_all_possible_indexes: True
         audio_emb_type: whisper
-        cond_noise: [-3.0, 0.5]
-        # cond_noise: 0.
+        # cond_noise: [-3.0, 0.5]
+        cond_noise: 0.
         motion_id: 125
         data_mean: null
         data_std: null
+        use_latent_condition: True
 
       loader:
         batch_size: 1
@@ -346,7 +347,7 @@ lightning:
           n_rows: 1
 
   trainer:
-    devices: 4
+    devices: -1
     benchmark: False
     num_sanity_val_steps: 1
     accumulate_grad_batches: 1
