@@ -79,6 +79,7 @@ class VideoDataset(Dataset):
         cond_noise=[-3.0, 0.5],
         motion_id=255.0,
         virtual_increase=1,
+        is_xl=False,
     ):
         self.audio_folder = audio_folder
         self.landmark_folder = landmark_folder
@@ -89,6 +90,7 @@ class VideoDataset(Dataset):
         self.get_difference_score = get_difference_score
         self.cond_noise = cond_noise
         self.motion_id = motion_id
+        self.is_xl = is_xl
 
         self.filelist = []
         self.audio_filelist = []
@@ -343,9 +345,14 @@ class VideoDataset(Dataset):
             out_data["cond_aug"] = cond_noise
         # out_data["motion_bucket_id"] = torch.tensor([self.motion_id])
         # out_data["fps_id"] = torch.tensor([self.video_rate - 1])
-        out_data["txt"] = "An astronaut is floating in space"
+        out_data["txt"] = "a photo of"
         # out_data["num_video_frames"] = self.num_frames
         # out_data["image_only_indicator"] = torch.zeros(self.num_frames)
+        if self.is_xl:
+            out_data["original_size_as_tuple"] = torch.tensor([self.resize_size, self.resize_size])
+            out_data["crop_coords_top_left"] = torch.tensor([0, 0])
+            out_data["target_size_as_tuple"] = torch.tensor([self.resize_size, self.resize_size])
+
         return out_data
 
 

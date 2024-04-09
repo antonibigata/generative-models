@@ -7,8 +7,8 @@ model:
     scale_factor: 0.18215
     # scale_factor: 0.13025
     disable_first_stage_autocast: True
-    ckpt_path: checkpoints/v1-5-pruned-emaonly.safetensors
-    remove_keys_from_weights: [model.diffusion_model.input_blocks.0.0.weight]
+    ckpt_path: checkpoints/epicphotogasm_amateurreallife.safetensors
+    # remove_keys_from_weights: [model.diffusion_model.input_blocks.0.0.weight]
     compile_model: False
 
     # scheduler_config:

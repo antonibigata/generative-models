@@ -219,8 +219,11 @@ model:
         batch2model_keys:
           - image_only_indicator
           - num_video_frames
-        loss_weighting_config:
-          target: sgm.modules.diffusionmodules.loss_weighting.EpsWeighting
+        # loss_weighting_config:
+        #   target: sgm.modules.diffusionmodules.loss_weighting.EpsWeighting
+        target: sgm.modules.diffusionmodules.loss_weighting.EDMWeighting
+          params:
+            sigma_data: 0.5
         sigma_sampler_config:
           target: sgm.modules.diffusionmodules.sigma_sampling.EDMSampling
           params:

@@ -42,7 +42,8 @@ VERSION2SPECS = {
         "f": 8,
         "is_legacy": False,
         "config": "configs/inference/sd_xl_base.yaml",
-        "ckpt": "checkpoints/sd_xl_base_1.0.safetensors",
+        "ckpt": "checkpoints/leosamsHelloworldXL_helloworldXL50GPT4V.safetensors",
+        # "ckpt": "checkpoints/sd_xl_base_1.0.safetensors",
     },
     "SDXL-base-0.9": {
         "H": 1024,
@@ -60,7 +61,7 @@ VERSION2SPECS = {
         "f": 8,
         "is_legacy": True,
         "config": "configs/inference/sd_2_1.yaml",
-        "ckpt": "checkpoints/v2-1_512-ema-pruned.safetensors",
+        "ckpt": "checkpoints/v2-1_512-ema-pruned-renamed.safetensors",
     },
     "SD-2.1-768": {
         "H": 768,
@@ -78,7 +79,7 @@ VERSION2SPECS = {
         "f": 8,
         "is_legacy": True,
         "config": "configs/inference/sd_1_5.yaml",
-        "ckpt": "checkpoints/v1-5-pruned-emaonly.safetensors",
+        "ckpt": "checkpoints/leosamsFilmgirlUltra_ultraBaseModel.safetensors",
     },
     "SDXL-refiner-0.9": {
         "H": 1024,

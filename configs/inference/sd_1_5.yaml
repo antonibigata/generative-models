@@ -58,3 +58,22 @@ model:
           dropout: 0.0
         lossconfig:
           target: torch.nn.Identity
+
+
+    sampler_config:
+      target: sgm.modules.diffusionmodules.sampling.EulerEDMSampler
+      params:
+        num_steps: 50
+        # s_churn: 0.
+        # s_tmin: 0.
+        # s_tmax: 999.
+        # s_noise: 1.
+        discretization_config:
+          target: sgm.modules.diffusionmodules.discretizer.LegacyDDPMDiscretization
+          # params:
+          #   sigma_max: 700.0
+
+        guider_config:
+          target: sgm.modules.diffusionmodules.guiders.VanillaCFG
+          params:
+            scale: 7.5
