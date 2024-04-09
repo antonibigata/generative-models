@@ -223,7 +223,7 @@ model:
         #   target: sgm.modules.diffusionmodules.loss_weighting.EpsWeighting
         target: sgm.modules.diffusionmodules.loss_weighting.EDMWeighting
           params:
-            sigma_data: 0.5
+            sigma_data: 1.
         sigma_sampler_config:
           target: sgm.modules.diffusionmodules.sigma_sampling.EDMSampling
           params:
