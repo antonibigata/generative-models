@@ -3,24 +3,28 @@ model:
   target: sgm.models.diffusion.DiffusionEngine
   params:
     input_key: latents
-    no_log_keys: [audio_emb, fps_id, motion_bucket_id, cond_aug]
+    no_log_keys: [audio_emb, fps_id, motion_bucket_id, cond_aug, txt]
     scale_factor: 0.18215
     # scale_factor: 0.13025
     disable_first_stage_autocast: True
-    ckpt_path: checkpoints/epicphotogasm_amateurreallife.safetensors
+    separate_unet_ckpt: checkpoints/unet_1_5.pt
+    ckpt_path: checkpoints/leosamsFilmgirlUltra_ultraBaseModel_renamed.safetensors
     # remove_keys_from_weights: [model.diffusion_model.input_blocks.0.0.weight]
+    # remove_keys_from_unet_weights: [conv_in.weight]
     compile_model: False
 
-    # scheduler_config:
-    #   target: sgm.lr_scheduler.LambdaLinearScheduler
-    #   params:
-    #     warm_up_steps: [10000]
-    #     cycle_lengths: [10000000000000]
-    #     f_start: [1.e-6]
-    #     f_max: [1.]
-    #     f_min: [1.]
+    scheduler_config:
+      target: sgm.lr_scheduler.LambdaLinearScheduler
+      params:
+        warm_up_steps: [1000]
+        cycle_lengths: [10000000000000]
+        f_start: [1.e-6]
+        f_max: [1.]
+        f_min: [1.]
 
+    only_train_ipadapter: True
     use_lora: false
+    # to_unfreeze: ["conv_in", "down_blocks"]
     lora_config:
       search_class_str: Linear
       target_replace_module: null
@@ -29,6 +33,14 @@ model:
       loras: null  # path to lora .pt
       exclude_layers: []
       verbose: False
+
+    network_wrapper: 
+      target: sgm.modules.diffusionmodules.wrappers.StabilityWrapper
+      params:
+        use_ipadapter: True
+        ipadapter_model: ip-adapter_sd15.bin
+        adapter_scale: 1.
+        n_adapters: 2
 
     denoiser_config:
       target: sgm.modules.diffusionmodules.denoiser.DiscreteDenoiser
@@ -41,40 +53,132 @@ model:
           target: sgm.modules.diffusionmodules.discretizer.LegacyDDPMDiscretization
 
     network_config:
-      target: sgm.modules.diffusionmodules.openaimodel.UNetModel
+      target: sgm.modules.diffusionmodules.diffuser_unet.UNet2DConditionModel
       params:
-        use_checkpoint: True
         in_channels: 4
+        act_fn: silu
+        attention_head_dim: 8
+        block_out_channels: [
+          320,
+          640,
+          1280,
+          1280
+        ]
+        center_input_sample: false
+        cross_attention_dim: 768
+        down_block_types: [
+          CrossAttnDownBlock2D,
+          CrossAttnDownBlock2D,
+          CrossAttnDownBlock2D,
+          DownBlock2D
+        ]
+        downsample_padding: 1
+        flip_sin_to_cos: true
+        freq_shift: 0
+        layers_per_block: 2
+        mid_block_scale_factor: 1
+        norm_eps: 1e-05
+        norm_num_groups: 32
         out_channels: 4
-        model_channels: 320
-        attention_resolutions: [4, 2, 1]
-        num_res_blocks: 2
-        channel_mult: [1, 2, 4, 4]
-        num_head_channels: 64
-        use_linear_in_transformer: False
-        transformer_depth: 1
-        context_dim: 768
-        fine_tuning_method: null
-        unfreeze_input_blocks: ["input"] # Because we changed the input block
-        spatial_transformer_attn_type: softmax-xformers
-        # audio_cond_method: cross_attention
+        sample_size: 64
+        up_block_types: [
+          UpBlock2D,
+          CrossAttnUpBlock2D,
+          CrossAttnUpBlock2D,
+          CrossAttnUpBlock2D
+        ]
+        audio_cond_method: null
+        audio_emb_dim: 1280
 
     conditioner_config:
       target: sgm.modules.GeneralConditioner
       params:
         emb_models:
-          # - is_trainable: False
-          #   input_key: txt
-          #   target: sgm.modules.encoders.modules.FrozenOpenCLIPEmbedder
-          #   params:
-          #     freeze: true
-          #     layer: penultimate
-
           - is_trainable: False
             input_key: txt
+            # ucg_rate: 0.1
             target: sgm.modules.encoders.modules.FrozenCLIPEmbedder
             params:
               layer: last
+              null_text_path: /vol/paramonos2/projects/antoni/code/Personal/generative-models/checkpoints/null_txt.pt
+              # layer_idx: 11
+          # - is_trainable: False
+          #   input_key: txt
+          #   target: sgm.modules.encoders.modules.FrozenCLIPImagePredictionEmbedder
+          #   params:
+          #     n_cond_frames: 1
+          #     n_copies: 1
+          #     clip_embedding_config:
+          #       target: sgm.modules.encoders.modules.FrozenCLIPImageEmbedder
+          #       params:
+          #         freeze: True
+          #         version: openai/clip-vit-large-patch14
+          #         subfolder: ""
+
+          - is_trainable: False
+            input_key: landmarks
+            ucg_rate: 0.1
+            target: sgm.modules.encoders.modules.FrozenCLIPImagePredictionEmbedder
+            params:
+              n_cond_frames: 1
+              n_copies: 1
+              give_cond_type: "landmarks"
+              clip_embedding_config:
+                target: sgm.modules.encoders.modules.FrozenCLIPImageEmbedder
+                params:
+                  freeze: True
+                  get_hidden_states: False
+
+          - is_trainable: False
+            input_key: cond_frames_without_noise
+            ucg_rate: 0.1
+            target: sgm.modules.encoders.modules.FrozenCLIPImagePredictionEmbedder
+            params:
+              n_cond_frames: 1
+              n_copies: 1
+              give_cond_type: "image_embeds"
+              clip_embedding_config:
+                target: sgm.modules.encoders.modules.FrozenCLIPImageEmbedder
+                params:
+                  freeze: True
+                  get_hidden_states: False
+
+          # - input_key: cond_frames
+          #   is_trainable: False
+          #   ucg_rate: 0.1
+          #   target: sgm.modules.encoders.modules.IdentityEncoder
+            # params:
+            #   disable_encoder_autocast: True
+            #   n_cond_frames: 1
+            #   n_copies: 1
+            #   is_ae: True
+            #   encoder_config:
+            #     target: sgm.models.autoencoder.AutoencoderKLModeOnly
+            #     params:
+            #       embed_dim: 4
+            #       monitor: val/rec_loss
+            #       ddconfig:
+            #         attn_type: vanilla-xformers
+            #         double_z: True
+            #         z_channels: 4
+            #         resolution: 256
+            #         in_channels: 3
+            #         out_ch: 3
+            #         ch: 128
+            #         ch_mult: [1, 2, 4, 4]
+            #         num_res_blocks: 2
+            #         attn_resolutions: []
+            #         dropout: 0.0
+            #       lossconfig:
+            #         target: torch.nn.Identity
+
+          # - input_key: audio_emb
+          #   is_trainable: True
+          #   ucg_rate: 0.1
+          #   target: sgm.modules.encoders.modules.WhisperAudioEmbedder
+          #   params:
+          #     merge_method: mean 
+          #     linear_dim: 1024
 
     first_stage_config:
       target: sgm.models.autoencoder.AutoencoderKL
@@ -121,7 +225,7 @@ model:
     sampler_config:
           target: sgm.modules.diffusionmodules.sampling.EulerEDMSampler
           params:
-            num_steps: 50
+            num_steps: 30
             # s_churn: 0.
             # s_tmin: 0.
             # s_tmax: 999.
@@ -134,7 +238,7 @@ model:
             guider_config:
               target: sgm.modules.diffusionmodules.guiders.VanillaCFG
               params:
-                scale: 7.5
+                scale: 1.4
 
 data:
   target: sgm.data.video_image_datamodule.VideoDataModule
@@ -163,9 +267,11 @@ data:
         # data_std: null
         additional_audio_frames: 2
         virtual_increase: 10000
+        use_latent_condition: True
+        get_landmarks: True
 
       loader:
-        batch_size: 64
+        batch_size: 24
         num_workers: 8
         drop_last: True
         pin_memory: True
@@ -192,13 +298,13 @@ lightning:
         increase_log_steps: False
         log_first_step: True
         log_images_kwargs:
-          ucg_keys: [txt]
+          ucg_keys: [cond_frames_without_noise, landmarks]
           use_ema_scope: False
           N: 4
           n_rows: 2
 
   trainer:
-    devices: 1
+    devices: -1
     benchmark: False
     num_sanity_val_steps: 1
     accumulate_grad_batches: 1

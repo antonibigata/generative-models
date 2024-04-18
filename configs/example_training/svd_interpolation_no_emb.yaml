@@ -220,7 +220,7 @@ model:
           - image_only_indicator
           - num_video_frames
         loss_weighting_config:
-        #   target: sgm.modules.diffusionmodules.loss_weighting.EpsWeighting
+          # target: sgm.modules.diffusionmodules.loss_weighting.EpsWeighting
           target: sgm.modules.diffusionmodules.loss_weighting.VWeighting
         sigma_sampler_config:
           target: sgm.modules.diffusionmodules.sigma_sampling.EDMSampling

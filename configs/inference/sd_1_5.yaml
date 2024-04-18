@@ -2,7 +2,9 @@ model:
   target: sgm.models.diffusion.DiffusionEngine
   params:
     scale_factor: 0.18215
+    separate_unet_ckpt: ../checkpoints/unet_1_5.pt
     disable_first_stage_autocast: True
+    # remove_keys_from_weights: [conv_in.weight]
 
     denoiser_config:
       target: sgm.modules.diffusionmodules.denoiser.DiscreteDenoiser
@@ -14,20 +16,50 @@ model:
         discretization_config:
           target: sgm.modules.diffusionmodules.discretizer.LegacyDDPMDiscretization
 
-    network_config:
-      target: sgm.modules.diffusionmodules.openaimodel.UNetModel
+    network_wrapper: 
+      target: sgm.modules.diffusionmodules.wrappers.StabilityWrapper
       params:
-        use_checkpoint: True
+        use_ipadapter: True
+        ipadapter_model: ip-adapter_sd15.bin
+        adapter_scale: 1.
+        n_adapters: 2
+        skip_text_emb: False
+
+    network_config:
+      target: sgm.modules.diffusionmodules.diffuser_unet.UNet2DConditionModel
+      params:
         in_channels: 4
+        act_fn: silu
+        attention_head_dim: 8
+        block_out_channels: [
+          320,
+          640,
+          1280,
+          1280
+        ]
+        center_input_sample: false
+        cross_attention_dim: 768
+        down_block_types: [
+          CrossAttnDownBlock2D,
+          CrossAttnDownBlock2D,
+          CrossAttnDownBlock2D,
+          DownBlock2D
+        ]
+        downsample_padding: 1
+        flip_sin_to_cos: true
+        freq_shift: 0
+        layers_per_block: 2
+        mid_block_scale_factor: 1
+        norm_eps: 1e-05
+        norm_num_groups: 32
         out_channels: 4
-        model_channels: 320
-        attention_resolutions: [4, 2, 1]
-        num_res_blocks: 2
-        channel_mult: [1, 2, 4, 4]
-        num_head_channels: 64
-        use_linear_in_transformer: False
-        transformer_depth: 1
-        context_dim: 768
+        sample_size: 64
+        up_block_types: [
+          UpBlock2D,
+          CrossAttnUpBlock2D,
+          CrossAttnUpBlock2D,
+          CrossAttnUpBlock2D
+        ]
 
     conditioner_config:
       target: sgm.modules.GeneralConditioner
@@ -38,7 +70,46 @@ model:
             target: sgm.modules.encoders.modules.FrozenCLIPEmbedder
             params:
               layer: last
+              null_text_path: /vol/paramonos2/projects/antoni/code/Personal/generative-models/checkpoints/null_txt.pt
               # layer_idx: 11
+          # - is_trainable: False
+          #   input_key: txt
+          #   target: sgm.modules.encoders.modules.FrozenCLIPImagePredictionEmbedder
+          #   params:
+          #     n_cond_frames: 1
+          #     n_copies: 1
+          #     clip_embedding_config:
+          #       target: sgm.modules.encoders.modules.FrozenCLIPImageEmbedder
+          #       params:
+          #         freeze: True
+          #         version: openai/clip-vit-large-patch14
+          #         subfolder: ""
+
+          - is_trainable: False
+            input_key: landmarks
+            target: sgm.modules.encoders.modules.FrozenCLIPImagePredictionEmbedder
+            params:
+              n_cond_frames: 1
+              n_copies: 1
+              give_cond_type: "landmarks"
+              clip_embedding_config:
+                target: sgm.modules.encoders.modules.FrozenCLIPImageEmbedder
+                params:
+                  freeze: True
+                  get_hidden_states: False
+
+          - is_trainable: False
+            input_key: img
+            target: sgm.modules.encoders.modules.FrozenCLIPImagePredictionEmbedder
+            params:
+              n_cond_frames: 1
+              n_copies: 1
+              give_cond_type: "image_embeds"
+              clip_embedding_config:
+                target: sgm.modules.encoders.modules.FrozenCLIPImageEmbedder
+                params:
+                  freeze: True
+                  get_hidden_states: False
 
     first_stage_config:
       target: sgm.models.autoencoder.AutoencoderKL
@@ -76,4 +147,4 @@ model:
         guider_config:
           target: sgm.modules.diffusionmodules.guiders.VanillaCFG
           params:
-            scale: 7.5
+            scale: 1.4

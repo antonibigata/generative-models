@@ -19,33 +19,10 @@ from audiomentations import Compose, AddGaussianNoise, PitchShift
 from skimage.metrics import structural_similarity as ssim
 from safetensors.torch import load_file
 
+from sgm.data.data_utils import trim_pad_audio, ssim_to_bin, create_landmarks_image
+
 torchaudio.set_audio_backend("sox_io")
 decord.bridge.set_bridge("torch")
-
-
-def trim_pad_audio(audio, sr, max_len_sec=None, max_len_raw=None):
-    len_file = audio.shape[-1]
-
-    if max_len_sec or max_len_raw:
-        max_len = max_len_raw if max_len_raw is not None else int(max_len_sec * sr)
-        if len_file < int(max_len):
-            # dummy = np.zeros((1, int(max_len_sec * sr) - len_file))
-            # extened_wav = np.concatenate((audio_data, dummy[0]))
-            extened_wav = torch.nn.functional.pad(audio, (0, int(max_len) - len_file), "constant")
-        else:
-            extened_wav = audio[:, : int(max_len)]
-    else:
-        extened_wav = audio
-
-    return extened_wav
-
-
-def ssim_to_bin(ssim_score):
-    # Normalize the SSIM score to a 0-100 scale
-    normalized_diff_ssim = (1 - ((ssim_score + 1) / 2)) * 100
-    # Assign to one of the 100 bins
-    bin_index = float(min(np.floor(normalized_diff_ssim), 99))
-    return bin_index
 
 
 # Similar to regular video dataset but trades flexibility for speed
@@ -56,7 +33,7 @@ class VideoDataset(Dataset):
         resize_size=None,
         audio_folder="Audio",
         video_folder="CroppedVideos",
-        landmark_folder="lmks",
+        landmarks_folder=None,
         video_extension=".avi",
         audio_extension=".wav",
         num_frames=16,
@@ -80,9 +57,13 @@ class VideoDataset(Dataset):
         motion_id=255.0,
         virtual_increase=1,
         is_xl=False,
+        use_latent_condition=False,
+        get_landmarks=False,
     ):
         self.audio_folder = audio_folder
-        self.landmark_folder = landmark_folder
+        landmarks_folder = video_folder if landmarks_folder is None else landmarks_folder
+        self.landmarks_folder = landmarks_folder
+        self.get_landmarks = get_landmarks
         self.num_frames = num_frames
         self.from_audio_embedding = from_audio_embedding
         self.allow_all_possible_permutations = allow_all_possible_permutations
@@ -90,10 +71,12 @@ class VideoDataset(Dataset):
         self.get_difference_score = get_difference_score
         self.cond_noise = cond_noise
         self.motion_id = motion_id
+        self.latent_condition = use_latent_condition
         self.is_xl = is_xl
 
         self.filelist = []
         self.audio_filelist = []
+        self.landmark_filelist = [] if get_landmarks else None
         missing_audio = 0
         with open(filelist, "r") as files:
             for f in files.readlines():
@@ -110,6 +93,10 @@ class VideoDataset(Dataset):
                     continue
                 self.filelist += [f]
                 self.audio_filelist += [audio_path]
+
+                if self.get_landmarks:
+                    landmark_path = f.replace(video_folder, landmarks_folder).replace(video_extension, ".npy")
+                    self.landmark_filelist += [landmark_path]
 
         self.resize_size = resize_size
         self.scale_audio = scale_audio
@@ -140,9 +127,12 @@ class VideoDataset(Dataset):
 
         self.load_all_possible_indexes = load_all_possible_indexes
         if load_all_possible_indexes:
-            self._indexes = self._get_indexes(self.filelist, self.audio_filelist)
+            self._indexes = self._get_indexes(self.filelist, self.audio_filelist, self.landmark_filelist)
         else:
-            self._indexes = list(zip(self.filelist, self.audio_filelist))
+            if self.get_landmarks:
+                self._indexes = list(zip(self.filelist, self.audio_filelist, self.landmark_filelist))
+            else:
+                self._indexes = list(zip(self.filelist, self.audio_filelist, [None] * len(self.filelist)))
         self.total_len = len(self._indexes)
 
         # Get metadata about video and audio
@@ -179,6 +169,11 @@ class VideoDataset(Dataset):
         audio = trim_pad_audio(audio, self.audio_rate, max_len_sec=max_len_sec)
         return audio[0]
 
+    def _load_landmarks(self, filename, original_size, index):
+        landmarks = np.load(filename)[index]
+        landmarks = create_landmarks_image(landmarks, original_size, target_size=(224, 224), point_size=2)
+        return (torch.from_numpy(landmarks) / 255.0) * 2 - 1
+
     def get_audio_indexes(self, main_index, n_audio_frames, max_len):
         # Get indexes for audio from both sides of the main index
         audio_ids = []
@@ -192,10 +187,10 @@ class VideoDataset(Dataset):
 
     def _get_frames_and_audio(self, idx):
         if self.load_all_possible_indexes:
-            indexes, video_file, audio_file = self._indexes[idx]
+            indexes, video_file, audio_file, land_file = self._indexes[idx]
             vr = decord.VideoReader(video_file)
         else:
-            video_file, audio_file = self._indexes[idx]
+            video_file, audio_file, land_file = self._indexes[idx]
             vr = decord.VideoReader(video_file)
             len_video = len(vr)
             init_index = np.random.randint(0, len_video)
@@ -208,6 +203,7 @@ class VideoDataset(Dataset):
         # Cond frame idx
         predict_index = indexes[-1]
         audio_indexes = self.get_audio_indexes(predict_index, self.additional_audio_frames, len(vr))
+        # print(audio_indexes, indexes)
 
         audio_frames = None
 
@@ -230,18 +226,23 @@ class VideoDataset(Dataset):
             frame = vr[predict_index].float()
             clean_cond = vr[init_index].float()
 
+        or_w, or_h = clean_cond.shape[0], clean_cond.shape[1]
+        landmarks = None
+        if self.get_landmarks:
+            landmarks = self._load_landmarks(land_file, (or_w, or_h), predict_index)
+
         if not self.from_audio_embedding:
             raw_audio = self._load_audio(
                 audio_file, max_len_sec=frames.shape[1] / self.video_rate, start=indexes[0] / self.video_rate
             )
             audio = raw_audio
-            audio_frames = rearrange(audio, "(f s) -> f s", s=self.samples_per_frame)
+            audio_frames = rearrange(audio, "(f s) -> f s", s=self.samples_per_frame)[audio_indexes]
         else:
             raw_audio = self._load_audio(
                 audio_file, max_len_sec=frames.shape[1] / self.video_rate, start=indexes[0] / self.video_rate
             )
             audio = torch.load(audio_file.split(".")[0] + f"_{self.audio_emb_type}_emb.pt")
-            audio_frames = audio[indexes, :]
+            audio_frames = audio[audio_indexes, :]
 
         diff_score = None
         if self.get_difference_score:
@@ -250,8 +251,8 @@ class VideoDataset(Dataset):
             diff_score = ssim(frame.numpy(), cond.numpy(), channel_axis=2, data_range=1)
             diff_score = ssim_to_bin(diff_score)
 
-        if audio_frames is None:
-            audio_frames = rearrange(audio, "(f s) -> f s", s=self.samples_per_frame)[audio_indexes]
+        # if audio_frames is None:
+        #     audio_frames = rearrange(audio, "(f s) -> f s", s=self.samples_per_frame)[audio_indexes]
 
         if self.scale_audio:
             audio_frames = (audio_frames / audio_frames.max()) * 2 - 1
@@ -265,7 +266,8 @@ class VideoDataset(Dataset):
         else:
             clean_cond = rearrange(clean_cond, "h w c -> c h w")
             clean_cond = self.scale_and_crop((clean_cond / 255.0) * 2 - 1)
-            # noisy_cond = clean_cond
+            if not self.latent_condition:
+                noisy_cond = clean_cond
 
         target = frame.unsqueeze(1)
 
@@ -276,7 +278,9 @@ class VideoDataset(Dataset):
             noisy_cond = noisy_cond + self.cond_noise * torch.randn_like(noisy_cond)
             cond_noise = self.cond_noise
 
-        return clean_cond, noisy_cond, target, audio_frames, raw_audio, diff_score, cond_noise
+        # print("audio_frames", audio_frames.shape)
+
+        return clean_cond, noisy_cond, target, landmarks, audio_frames, raw_audio, diff_score, cond_noise
 
     def _get_indexes(self, video_filelist, audio_filelist):
         indexes = []
@@ -319,8 +323,8 @@ class VideoDataset(Dataset):
         return self.maybe_augment(video).squeeze(0)
 
     def __getitem__(self, idx):
-        clean_cond, noisy_cond, target, audio, raw_audio, diff_score, cond_noise = self._get_frames_and_audio(
-            idx % len(self._indexes)
+        clean_cond, noisy_cond, target, landmarks, audio, raw_audio, diff_score, cond_noise = (
+            self._get_frames_and_audio(idx % len(self._indexes))
         )
 
         out_data = {}
@@ -341,13 +345,17 @@ class VideoDataset(Dataset):
         if noisy_cond is not None:
             out_data["cond_frames"] = noisy_cond
         out_data["cond_frames_without_noise"] = clean_cond
+        # out_data["cond_frames_without_noise"] = clean_cond
         if cond_noise is not None:
             out_data["cond_aug"] = cond_noise
         # out_data["motion_bucket_id"] = torch.tensor([self.motion_id])
         # out_data["fps_id"] = torch.tensor([self.video_rate - 1])
-        out_data["txt"] = "a photo of"
+        out_data["txt"] = "a portrait of a person"
         # out_data["num_video_frames"] = self.num_frames
         # out_data["image_only_indicator"] = torch.zeros(self.num_frames)
+        out_data["num_video_frames"] = 1
+        if landmarks is not None:
+            out_data["landmarks"] = landmarks
         if self.is_xl:
             out_data["original_size_as_tuple"] = torch.tensor([self.resize_size, self.resize_size])
             out_data["crop_coords_top_left"] = torch.tensor([0, 0])

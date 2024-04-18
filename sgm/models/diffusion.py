@@ -9,6 +9,7 @@ from omegaconf import ListConfig, OmegaConf
 from safetensors.torch import load_file as load_safetensors
 from torch.optim.lr_scheduler import LambdaLR
 from einops import rearrange
+from diffusers.models.attention_processor import IPAdapterAttnProcessor2_0
 
 from ..modules import UNCONDITIONAL_CONFIG
 from ..modules.autoencoding.temporal_ae import VideoDecoder
@@ -35,6 +36,7 @@ class DiffusionEngine(pl.LightningModule):
         network_wrapper: Union[None, str, Dict, ListConfig, OmegaConf] = None,
         ckpt_path: Union[None, str] = None,
         remove_keys_from_weights: Union[None, List, Tuple] = None,
+        remove_keys_from_unet_weights: Union[None, List, Tuple] = None,
         use_ema: bool = False,
         ema_decay_rate: float = 0.9999,
         scale_factor: float = 1.0,
@@ -46,7 +48,11 @@ class DiffusionEngine(pl.LightningModule):
         compile_model: bool = False,
         en_and_decode_n_samples_a_time: Optional[int] = None,
         use_lora: Optional[bool] = False,
+        only_train_ipadapter: Optional[bool] = False,
+        to_unfreeze: Optional[List[str]] = [],
+        freeze_time: Optional[bool] = False,
         lora_config: Optional[Dict] = None,
+        separate_unet_ckpt: Optional[str] = None,
     ):
         super().__init__()
 
@@ -93,10 +99,19 @@ class DiffusionEngine(pl.LightningModule):
 
         if ckpt_path is not None:
             self.init_from_ckpt(ckpt_path, remove_keys_from_weights=remove_keys_from_weights)
+            if separate_unet_ckpt is not None:
+                sd = torch.load(separate_unet_ckpt)["state_dict"]
+                if remove_keys_from_unet_weights is not None:
+                    for k in list(sd.keys()):
+                        for remove_key in remove_keys_from_unet_weights:
+                            if remove_key in k:
+                                del sd[k]
+                self.model.diffusion_model.load_state_dict(sd, strict=False)
 
         self.en_and_decode_n_samples_a_time = en_and_decode_n_samples_a_time
 
         if use_lora:
+            assert not only_train_ipadapter, "Cannot use both Lora and IPAdapter at the same time"
             # for p in self.model.parameters():
             #     p.requires_grad = False
             search_class_str = lora_config.pop("search_class_str", "Linear")
@@ -124,6 +139,39 @@ class DiffusionEngine(pl.LightningModule):
             #     target_modules=module_names,
             # )
             # self.model = LoraModel(self.model, lora_config, "bite")
+
+        if freeze_time:
+            for name, p in self.named_parameters():
+                if "time_" in name:
+                    print("Freezing", name)
+                    p.requires_grad = False
+
+        if only_train_ipadapter:
+            assert not use_lora, "Cannot use both Lora and IPAdapter at the same time"
+            # Freeze the model
+            for p in self.model.parameters():
+                p.requires_grad = False
+            # Unfreeze the adapter projection layer
+            for p in self.model.diffusion_model.encoder_hid_proj.parameters():
+                p.requires_grad = True
+            # Unfreeze the cross-attention layer
+            for att_layer in self.model.diffusion_model.attn_processors.values():
+                if isinstance(att_layer, IPAdapterAttnProcessor2_0):
+                    for p in att_layer.parameters():
+                        p.requires_grad = True
+
+            for name, p in self.named_parameters():
+                if p.requires_grad:
+                    print(name)
+
+        if to_unfreeze:
+            for name in to_unfreeze:
+                for p in getattr(self.model.diffusion_model, name).parameters():
+                    p.requires_grad = True
+
+            for name, p in self.named_parameters():
+                if p.requires_grad:
+                    print(name)
 
     def init_from_ckpt(self, path: str, remove_keys_from_weights: Optional[Union[List, Tuple]] = None) -> None:
         if path.endswith("ckpt"):

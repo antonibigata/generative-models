@@ -1,8 +1,7 @@
 import torch
 
 from ..modules.attention import *
-from ..modules.diffusionmodules.util import (AlphaBlender, linear,
-                                             timestep_embedding)
+from ..modules.diffusionmodules.util import AlphaBlender, linear, timestep_embedding
 
 
 class TimeMixSequential(nn.Sequential):
@@ -252,17 +251,18 @@ class SpatialVideoTransformer(SpatialTransformer):
         if self.use_linear:
             x = self.proj_in(x)
 
-        num_frames = torch.arange(timesteps, device=x.device, dtype=x.dtype)
-        num_frames = repeat(num_frames, "t -> b t", b=x.shape[0] // timesteps)
-        num_frames = rearrange(num_frames, "b t -> (b t)")
-        t_emb = timestep_embedding(
-            num_frames,
-            self.in_channels,
-            repeat_only=False,
-            max_period=self.max_time_embed_period,
-        )
-        emb = self.time_pos_embed(t_emb)
-        emb = emb[:, None, :]
+        if timesteps != 1:
+            num_frames = torch.arange(timesteps, device=x.device, dtype=x.dtype)
+            num_frames = repeat(num_frames, "t -> b t", b=x.shape[0] // timesteps)
+            num_frames = rearrange(num_frames, "b t -> (b t)")
+            t_emb = timestep_embedding(
+                num_frames,
+                self.in_channels,
+                repeat_only=False,
+                max_period=self.max_time_embed_period,
+            )
+            emb = self.time_pos_embed(t_emb)
+            emb = emb[:, None, :]
 
         for it_, (block, mix_block) in enumerate(zip(self.transformer_blocks, self.time_stack)):
             x = block(
@@ -270,15 +270,16 @@ class SpatialVideoTransformer(SpatialTransformer):
                 context=spatial_context,
             )
 
-            x_mix = x
-            x_mix = x_mix + emb
+            if timesteps != 1:
+                x_mix = x
+                x_mix = x_mix + emb
 
-            x_mix = mix_block(x_mix, context=time_context, timesteps=timesteps)
-            x = self.time_mixer(
-                x_spatial=x,
-                x_temporal=x_mix,
-                image_only_indicator=image_only_indicator,
-            )
+                x_mix = mix_block(x_mix, context=time_context, timesteps=timesteps)
+                x = self.time_mixer(
+                    x_spatial=x,
+                    x_temporal=x_mix,
+                    image_only_indicator=image_only_indicator,
+                )
         if self.use_linear:
             x = self.proj_out(x)
         x = rearrange(x, "b (h w) c -> b c h w", h=h, w=w)

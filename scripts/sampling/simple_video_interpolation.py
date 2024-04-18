@@ -34,6 +34,7 @@ def create_interpolation_inputs(video, audio, num_frames, video_emb=None, overla
     video_chunks = []
     audio_chunks = []
     video_emb_chunks = []
+    gt_chunks = []
     for i in range(0, video.shape[0], num_frames - overlap):
         first = video[i]
         try:
@@ -50,13 +51,14 @@ def create_interpolation_inputs(video, audio, num_frames, video_emb=None, overla
 
         cond = torch.stack([first, last], dim=1)  # [C, 2, H, W]
         video_chunks.append(cond)
+        gt_chunks.append(video[i : i + num_frames])
         if video_emb is not None:
             cond_emb = torch.stack([video_emb[i], video_emb[i + num_frames - 1]], dim=1)
             video_emb_chunks.append(cond_emb)
         if audio is not None:
             audio_chunks.append(audio[i : i + num_frames])
 
-    return video_chunks, audio_chunks, video_emb_chunks
+    return gt_chunks, video_chunks, audio_chunks, video_emb_chunks
 
 
 def get_audio_embeddings(audio_path: str, audio_rate: int = 16000, fps: int = 25):
@@ -231,7 +233,9 @@ def sample(
                     f"WARNING: Your image is of size {h}x{w} which is not divisible by 64. We are resizing to {height}x{width}!"
                 )
 
-        conditions_list, audio_list, emb_list = create_interpolation_inputs(model_input, audio, num_frames, video_emb)
+        gt_chunks, conditions_list, audio_list, emb_list = create_interpolation_inputs(
+            model_input, audio, num_frames, video_emb
+        )
         # if h % 64 != 0 or w % 64 != 0:
         #     width, height = map(lambda x: x - x % 64, (w, h))
         #     width = min(width, 1024)
@@ -240,6 +244,7 @@ def sample(
         # video = model.encode_first_stage(video.cuda())
 
         samples_list = []
+        gt_list = []
         for i in tqdm(range(len(conditions_list)), desc="Autoregressive", total=len(conditions_list)):
             condition = conditions_list[i]
             audio_cond = audio_list[i].unsqueeze(0).to(device)
@@ -324,16 +329,20 @@ def sample(
                     # samples = embed_watermark(samples)
                     # samples = filter(samples)
                     if i != len(conditions_list) - 1:
+                        gt_list.append(torch.clamp((gt_chunks[i][:-1] + 1.0) / 2.0, min=0.0, max=1.0))
                         samples_list.append(samples[:-1])  # Remove last frame to avoid overlap
                     else:
                         samples_list.append(samples)  # Keep last frame of last chunk
+                        gt_list.append(torch.clamp((gt_chunks[i] + 1.0) / 2.0, min=0.0, max=1.0))
                     # samples_list.append(samples)
 
         samples = torch.concatenate(samples_list)
+        gt = torch.concatenate(gt_list)
 
         os.makedirs(output_folder, exist_ok=True)
         base_count = len(glob(os.path.join(output_folder, "*.mp4")))
         video_path = os.path.join(output_folder, f"{base_count:06d}.mp4")
+        video_path_gt = os.path.join(output_folder, f"{base_count:06d}_gt.mp4")
         # writer = cv2.VideoWriter(
         #     video_path,
         #     cv2.VideoWriter_fourcc(*"MP4V"),
@@ -341,6 +350,7 @@ def sample(
         #     (samples.shape[-1], samples.shape[-2]),
         # )
         vid = (rearrange(samples, "t c h w -> t c h w") * 255).cpu().numpy().astype(np.uint8)
+        gt_vid = (rearrange(gt, "t c h w -> t c h w") * 255).cpu().numpy().astype(np.uint8)
         # for frame in vid:
         #     frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
         #     writer.write(frame)
@@ -356,6 +366,17 @@ def sample(
             save_path=video_path,
             keep_intermediate=False,
         )
+
+        save_audio_video(
+            gt_vid,
+            audio=raw_audio,
+            frame_rate=fps_id + 1,
+            sample_rate=16000,
+            save_path=video_path_gt,
+            keep_intermediate=False,
+        )
+
+        print(f"Saved video to {video_path}")
 
 
 def get_unique_embedder_keys_from_conditioner(conditioner):

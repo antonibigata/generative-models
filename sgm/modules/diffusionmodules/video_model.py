@@ -74,6 +74,9 @@ class VideoResBlock(ResBlock):
     ) -> th.Tensor:
         x = super().forward(x, emb)
 
+        if num_video_frames == 1:
+            return x
+
         x_mix = rearrange(x, "(b t) c h w -> b c t h w", t=num_video_frames)
         x = rearrange(x, "(b t) c h w -> b c t h w", t=num_video_frames)
 
@@ -510,7 +513,7 @@ class VideoUNet(nn.Module):
 
         num_video_frames = num_video_frames if isinstance(num_video_frames, int) else num_video_frames[0]
         or_batch_size = x.shape[0] // num_video_frames
-        if image_only_indicator.shape[0] != or_batch_size:
+        if image_only_indicator is not None and image_only_indicator.shape[0] != or_batch_size:
             # TODO: fix this
             image_only_indicator = repeat(image_only_indicator, "b ... -> (b t) ...", t=2)
 

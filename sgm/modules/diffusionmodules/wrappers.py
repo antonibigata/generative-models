@@ -2,6 +2,8 @@ import torch
 import torch.nn as nn
 from packaging import version
 from einops import repeat, rearrange
+from diffusers.utils import _get_model_file
+from diffusers.models.modeling_utils import load_state_dict
 
 OPENAIUNETWRAPPER = "sgm.modules.diffusionmodules.wrappers.OpenAIWrapper"
 
@@ -26,7 +28,7 @@ class OpenAIWrapper(IdentityWrapper):
         if len(cond_cat.shape) and cond_cat.shape[0] and x.shape[0] != cond_cat.shape[0]:
             cond_cat = repeat(cond_cat, "b c h w -> b c t h w", t=x.shape[0] // cond_cat.shape[0])
             cond_cat = rearrange(cond_cat, "b c t h w -> (b t) c h w")
-            x = torch.cat((x, cond_cat), dim=1)
+        x = torch.cat((x, cond_cat), dim=1)
         return self.diffusion_model(
             x,
             timesteps=t,
@@ -35,6 +37,70 @@ class OpenAIWrapper(IdentityWrapper):
             audio_emb=c.get("audio_emb", None),
             **kwargs,
         )
+
+
+class StabilityWrapper(IdentityWrapper):
+    def __init__(
+        self,
+        diffusion_model,
+        compile_model: bool = False,
+        use_ipadapter: bool = False,
+        ipadapter_model: str = "ip-adapter_sd15.bin",
+        adapter_scale: float = 1.0,
+        n_adapters: int = 1,
+        skip_text_emb: bool = False,
+        # pass_image_emb_to_hidden_states: bool = False,
+    ):
+        super().__init__(diffusion_model, compile_model)
+        self.use_ipadapter = use_ipadapter
+        # self.pass_image_emb_to_hidden_states = pass_image_emb_to_hidden_states
+
+        if use_ipadapter:
+            model_file = _get_model_file(
+                "h94/IP-Adapter",
+                weights_name=ipadapter_model,  # ip-adapter_sd15.bin
+                # cache_dir="/vol/paramonos2/projects/antoni/.cache",
+                subfolder="models",
+            )
+            state_dict = load_state_dict(model_file)
+            state_dict = [load_state_dict(model_file)] * n_adapters
+            print(f"Loading IP-Adapter weights from {model_file}")
+            diffusion_model._load_ip_adapter_weights(state_dict)
+            # diffusion_model.convert_ip_adapter_attn_to_diffusers_and_load(
+            #     state_dict, skip_text_emb=skip_text_emb
+            # )  # Custom method
+            diffusion_model.set_ip_adapter_scale(adapter_scale)
+
+    def forward(self, x: torch.Tensor, t: torch.Tensor, c: dict, **kwargs) -> torch.Tensor:
+        added_cond_kwargs = None
+        if self.use_ipadapter:
+            added_cond_kwargs = {"image_embeds": c.get("image_embeds", None)}
+            landmarks = c.get("landmarks", None)
+            if landmarks is not None:
+                added_cond_kwargs["image_embeds"] = [added_cond_kwargs["image_embeds"], landmarks]
+
+        cond_cat = c.get("concat", torch.Tensor([]).type_as(x))
+        if len(cond_cat.shape) and cond_cat.shape[0]:
+            cond_cat = repeat(cond_cat, "b c h w -> b c t h w", t=x.shape[0] // cond_cat.shape[0])
+            cond_cat = rearrange(cond_cat, "b c t h w -> (b t) c h w")
+            x = torch.cat((x, cond_cat), dim=1)
+
+        # if self.pass_image_emb_to_hidden_states:
+        #     encoder_hidden_states = c.get("image_embeds", None)
+        # else:
+        # encoder_hidden_states = c.get("crossattn", None)
+
+        return self.diffusion_model(
+            x,
+            t,
+            encoder_hidden_states=c.get("crossattn", None),
+            # y=c.get("vector", None),
+            # audio_emb=c.get("audio_emb", None),
+            # stability=self.stability,
+            added_cond_kwargs=added_cond_kwargs,
+            audio_emb=c.get("audio_emb", None),
+            **kwargs,
+        )[0]
 
 
 class InterpolationWrapper(IdentityWrapper):

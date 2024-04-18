@@ -11,7 +11,14 @@ import torch.nn as nn
 from einops import rearrange, repeat
 from omegaconf import ListConfig
 from torch.utils.checkpoint import checkpoint
-from transformers import ByT5Tokenizer, CLIPTextModel, CLIPTokenizer, T5EncoderModel, T5Tokenizer
+from transformers import (
+    ByT5Tokenizer,
+    CLIPTextModel,
+    CLIPTokenizer,
+    T5EncoderModel,
+    T5Tokenizer,
+    CLIPVisionModelWithProjection,
+)
 
 from ...modules.autoencoding.regularizers import DiagonalGaussianRegularizer
 from ...modules.diffusionmodules.model import Encoder
@@ -222,6 +229,7 @@ class WhisperAudioEmbedder(AbstractEmbModel):
 
     def forward(self, x):
         # x shape: (batch_size, n_frames, 2, 1280)
+        # print(f"Audio input shape: {x.shape}")
         if self.merge_method == "mean":
             x = x.mean(dim=2)
         elif self.merge_method == "concat":
@@ -235,6 +243,9 @@ class WhisperAudioEmbedder(AbstractEmbModel):
 
         if self.linear is not None:
             x = self.linear(x)
+
+        # print(f"Audio embedding shape: {x.shape}")
+
         return x
 
 
@@ -366,21 +377,30 @@ class FrozenCLIPEmbedder(AbstractEmbModel):
         layer="last",
         layer_idx=None,
         always_return_pooled=False,
+        null_text_path=None,
     ):  # clip-vit-base-patch32
         super().__init__()
         assert layer in self.LAYERS
-        self.tokenizer = CLIPTokenizer.from_pretrained(version)
+
+        self.null_text = None
+
         self.transformer = CLIPTextModel.from_pretrained(version)
-        self.device = device
-        self.max_length = max_length
-        if freeze:
-            self.freeze()
-        self.layer = layer
-        self.layer_idx = layer_idx
-        self.return_pooled = always_return_pooled
-        if layer == "hidden":
-            assert layer_idx is not None
-            assert 0 <= abs(layer_idx) <= 12
+        if null_text_path is not None:
+            self.null_text = torch.load(null_text_path)
+        else:
+            self.tokenizer = CLIPTokenizer.from_pretrained(version)
+
+            self.device = device
+            self.max_length = max_length
+            if freeze:
+                self.freeze()
+            self.layer = layer
+            self.layer_idx = layer_idx
+            self.return_pooled = always_return_pooled
+
+            if layer == "hidden":
+                assert layer_idx is not None
+                assert 0 <= abs(layer_idx) <= 12
 
     def freeze(self):
         self.transformer = self.transformer.eval()
@@ -390,6 +410,13 @@ class FrozenCLIPEmbedder(AbstractEmbModel):
 
     @autocast
     def forward(self, text):
+        if self.null_text is not None:
+            if self.transformer is not None:
+                self.null_text = self.null_text.to(self.transformer.device)
+                self.transformer = None
+                torch.cuda.empty_cache()
+            return repeat(self.null_text, "b n c -> (b t) n c", t=len(text))
+
         batch_encoding = self.tokenizer(
             text,
             truncation=True,
@@ -412,6 +439,150 @@ class FrozenCLIPEmbedder(AbstractEmbModel):
         if self.return_pooled:
             return z, outputs.pooler_output
         return z
+
+    def encode(self, text):
+        return self(text)
+
+
+class FrozenCLIPImageEmbedder(AbstractEmbModel):
+    """
+    Uses the CLIP vision transformer encoder for images
+    """
+
+    def __init__(
+        self,
+        version="h94/IP-Adapter",
+        device="cuda",
+        max_length=77,
+        freeze=True,
+        antialias=True,
+        ucg_rate=0.0,
+        unsqueeze_dim=False,
+        repeat_to_max_len=False,
+        num_image_crops=0,
+        output_tokens=False,
+        init_device=None,
+        subfolder="models/image_encoder",
+        get_hidden_states=False,
+    ):
+        super().__init__()
+        model = CLIPVisionModelWithProjection.from_pretrained(version, subfolder=subfolder)
+        # del model.transformer
+        self.model = model
+        self.max_crops = num_image_crops
+        self.pad_to_max_len = self.max_crops > 0
+        self.repeat_to_max_len = repeat_to_max_len and (not self.pad_to_max_len)
+        self.device = device
+        self.max_length = max_length
+        self.get_hidden_states = get_hidden_states
+
+        if freeze:
+            self.freeze()
+
+        self.antialias = antialias
+
+        self.register_buffer("mean", torch.Tensor([0.48145466, 0.4578275, 0.40821073]), persistent=False)
+        self.register_buffer("std", torch.Tensor([0.26862954, 0.26130258, 0.27577711]), persistent=False)
+        self.ucg_rate = ucg_rate
+        self.unsqueeze_dim = unsqueeze_dim
+        self.stored_batch = None
+        # self.model.visual.output_tokens = output_tokens
+        self.output_tokens = output_tokens
+
+    def preprocess(self, x):
+        x = kornia.geometry.resize(
+            x,
+            (224, 224),
+            interpolation="bicubic",
+            align_corners=True,
+            antialias=True,
+        )
+        x = (x + 1.0) / 2.0
+        x = kornia.enhance.normalize(x, self.mean, self.std)
+        return x
+
+    def freeze(self):
+        self.model = self.model.eval()
+        for param in self.parameters():
+            param.requires_grad = False
+
+    @autocast
+    def forward(self, image, no_dropout=False):
+        z = self.encode_with_vision_transformer(image)
+        tokens = None
+        if self.output_tokens:
+            z, tokens = z[0], z[1]
+        z = z.to(image.dtype)
+        if self.ucg_rate > 0.0 and not no_dropout and not (self.max_crops > 0):
+            z = torch.bernoulli((1.0 - self.ucg_rate) * torch.ones(z.shape[0], device=z.device))[:, None] * z
+            if tokens is not None:
+                tokens = (
+                    expand_dims_like(
+                        torch.bernoulli((1.0 - self.ucg_rate) * torch.ones(tokens.shape[0], device=tokens.device)),
+                        tokens,
+                    )
+                    * tokens
+                )
+
+        if self.unsqueeze_dim:
+            z = z[:, None, :]
+        if self.output_tokens:
+            assert not self.repeat_to_max_len
+            assert not self.pad_to_max_len
+            return tokens, z
+        if self.repeat_to_max_len:
+            if z.dim() == 2:
+                z_ = z[:, None, :]
+            else:
+                z_ = z
+            return repeat(z_, "b 1 d -> b n d", n=self.max_length), z
+        elif self.pad_to_max_len:
+            assert z.dim() == 3
+            z_pad = torch.cat(
+                (
+                    z,
+                    torch.zeros(
+                        z.shape[0],
+                        self.max_length - z.shape[1],
+                        z.shape[2],
+                        device=z.device,
+                    ),
+                ),
+                1,
+            )
+            return z_pad, z_pad[:, 0, ...]
+        return z
+
+    def encode_with_vision_transformer(self, img):
+        # if self.max_crops > 0:
+        #    img = self.preprocess_by_cropping(img)
+        if img.dim() == 5:
+            assert self.max_crops == img.shape[1]
+            img = rearrange(img, "b n c h w -> (b n) c h w")
+        img = self.preprocess(img)
+        if not self.output_tokens:
+            # assert not self.model.visual.output_tokens
+            if self.get_hidden_states:
+                x = self.model(img, output_hidden_states=True).hidden_states[-2]
+            else:
+                x = self.model(img).image_embeds
+            tokens = None
+        else:
+            # assert self.model.visual.output_tokens
+            x, tokens = self.model(img).image_embeds
+        if self.max_crops > 0:
+            x = rearrange(x, "(b n) d -> b n d", n=self.max_crops)
+            # drop out between 0 and all along the sequence axis
+            x = torch.bernoulli((1.0 - self.ucg_rate) * torch.ones(x.shape[0], x.shape[1], 1, device=x.device)) * x
+            if tokens is not None:
+                tokens = rearrange(tokens, "(b n) t d -> b t (n d)", n=self.max_crops)
+                print(
+                    f"You are running very experimental token-concat in {self.__class__.__name__}. "
+                    f"Check what you are doing, and then remove this message."
+                )
+        if self.output_tokens:
+            return x, tokens
+        return x
 
     def encode(self, text):
         return self(text)
@@ -1034,5 +1205,38 @@ class FrozenOpenCLIPImagePredictionEmbedder(AbstractEmbModel):
         vid = self.open_clip(vid)
         vid = rearrange(vid, "(b t) d -> b t d", t=self.n_cond_frames)
         vid = repeat(vid, "b t d -> (b s) t d", s=self.n_copies)
+
+        return vid
+
+
+class FrozenCLIPImagePredictionEmbedder(AbstractEmbModel):
+    def __init__(
+        self,
+        clip_embedding_config: Dict,
+        n_cond_frames: int,
+        n_copies: int,
+        give_cond_type: str = None,
+    ):
+        super().__init__()
+
+        self.n_cond_frames = n_cond_frames
+        self.n_copies = n_copies
+        if give_cond_type is not None:
+            self.cond_type = give_cond_type
+        self.clip = instantiate_from_config(clip_embedding_config)
+
+    def forward(self, vid):
+        if vid.ndim == 5:
+            vid = rearrange(vid, "b c t h w -> (b t) c h w")
+        vid = self.clip(vid)
+
+        if vid.dim() == 2:
+            vid = rearrange(vid, "(b t) d -> b t d", t=self.n_cond_frames)
+            vid = repeat(vid, "b t d -> (b s) t d", s=self.n_copies)
+        elif vid.dim() == 3:
+            vid = rearrange(vid, "(b t) d c -> b t d c", t=self.n_cond_frames)
+            vid = repeat(vid, "b t d c -> (b s) t d c", s=self.n_copies).squeeze(1)
+        else:
+            raise ValueError(f"Unsupported input shape {vid.shape}")
 
         return vid

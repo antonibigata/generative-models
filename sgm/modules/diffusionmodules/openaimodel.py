@@ -824,7 +824,7 @@ class UNetModel(nn.Module):
         self,
         x: th.Tensor,
         timesteps: Optional[th.Tensor] = None,
-        context: Optional[th.Tensor] = None,
+        encoder_hidden_states: Optional[th.Tensor] = None,
         y: Optional[th.Tensor] = None,
         audio_emb: Optional[th.Tensor] = None,
         **kwargs,
@@ -837,6 +837,7 @@ class UNetModel(nn.Module):
         :param y: an [N] Tensor of labels, if class-conditional.
         :return: an [N x C x ...] Tensor of outputs.
         """
+        context = encoder_hidden_states
         assert (y is not None) == (
             self.num_classes is not None
         ), "must specify y if and only if the model is class-conditional"
