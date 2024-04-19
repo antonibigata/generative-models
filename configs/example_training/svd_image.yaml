@@ -231,8 +231,8 @@ model:
           params:
             # p_mean: 0.7
             # p_std: 1.6
-            p_mean: -1.2
-            p_std: 1.
+            p_mean: 1
+            p_std: 1.2
 
 data:
   target: sgm.data.video_image_datamodule.VideoDataModule
