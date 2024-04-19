@@ -371,6 +371,7 @@ if __name__ == "__main__":
     lightning_config = config.pop("lightning", OmegaConf.create())
     # merge trainer cli with config
     trainer_config = lightning_config.get("trainer", OmegaConf.create())
+    print(f"Trainer config: {trainer_config}")
 
     # default to gpu
     trainer_config["accelerator"] = "gpu"
@@ -482,8 +483,8 @@ if __name__ == "__main__":
     # default to ddp if not further specified
     default_strategy_config = {
         "target": "pytorch_lightning.strategies.DDPStrategy",
-        "timeout": 60,
-        "num_nodes": lightning_config.trainer.num_nodes,
+        # "timeout": 60,
+        # "num_nodes": lightning_config.trainer.num_nodes,
         # "process_group_backend": "gloo",
         # "bite": "chybre",
     }
@@ -653,6 +654,8 @@ if __name__ == "__main__":
         model.learning_rate = base_lr
         print("++++ NOT USING LR SCALING ++++")
         print(f"Setting learning rate to {model.learning_rate:.2e}")
+
+    print("Num nodes: ", lightning_config.trainer.num_nodes)
 
     # allow checkpointing via USR1
     def melk(*args, **kwargs):
