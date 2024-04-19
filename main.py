@@ -483,6 +483,7 @@ if __name__ == "__main__":
     default_strategy_config = {
         "target": "pytorch_lightning.strategies.DDPStrategy",
         "timeout": 60,
+        "num_nodes": lightning_config.num_nodes,
         # "process_group_backend": "gloo",
         # "bite": "chybre",
     }

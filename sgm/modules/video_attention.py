@@ -159,6 +159,7 @@ class SpatialVideoTransformer(SpatialTransformer):
         disable_self_attn=False,
         disable_temporal_crossattention=False,
         max_time_embed_period: int = 10000,
+        skip_time=False,
     ):
         super().__init__(
             in_channels,
@@ -175,6 +176,7 @@ class SpatialVideoTransformer(SpatialTransformer):
         self.time_depth = time_depth
         self.depth = depth
         self.max_time_embed_period = max_time_embed_period
+        self.skip_time = skip_time
 
         time_mix_d_head = d_head
         n_time_mix_heads = n_heads
@@ -251,7 +253,7 @@ class SpatialVideoTransformer(SpatialTransformer):
         if self.use_linear:
             x = self.proj_in(x)
 
-        if timesteps != 1:
+        if not self.skip_time:
             num_frames = torch.arange(timesteps, device=x.device, dtype=x.dtype)
             num_frames = repeat(num_frames, "t -> b t", b=x.shape[0] // timesteps)
             num_frames = rearrange(num_frames, "b t -> (b t)")
@@ -270,7 +272,7 @@ class SpatialVideoTransformer(SpatialTransformer):
                 context=spatial_context,
             )
 
-            if timesteps != 1:
+            if not self.skip_time:
                 x_mix = x
                 x_mix = x_mix + emb
 

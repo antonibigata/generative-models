@@ -552,7 +552,10 @@ class DiffusionEngine(pl.LightningModule):
 
         if sample:
             n = 2 if self.is_guided else 1
-            sampling_kwargs["image_only_indicator"] = torch.zeros(n, num_frames).to(self.device)
+            if num_frames == 1:
+                sampling_kwargs["image_only_indicator"] = torch.ones(n, num_frames).to(self.device)
+            else:
+                sampling_kwargs["image_only_indicator"] = torch.zeros(n, num_frames).to(self.device)
             sampling_kwargs["num_video_frames"] = batch["num_video_frames"]
 
             with self.ema_scope("Plotting"):
@@ -561,7 +564,10 @@ class DiffusionEngine(pl.LightningModule):
             log["samples"] = samples
 
             # Without guidance
-            sampling_kwargs["image_only_indicator"] = torch.zeros(1, num_frames).to(self.device)
+            if num_frames == 1:
+                sampling_kwargs["image_only_indicator"] = torch.ones(1, num_frames).to(self.device)
+            else:
+                sampling_kwargs["image_only_indicator"] = torch.zeros(1, num_frames).to(self.device)
             sampling_kwargs["num_video_frames"] = batch["num_video_frames"]
 
             with self.ema_scope("Plotting"):

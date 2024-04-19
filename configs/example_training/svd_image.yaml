@@ -22,6 +22,7 @@ model:
         f_min: [1.]
 
     freeze_time: true
+    to_unfreeze: ["time_embed"]
 
     # LoRA
     use_lora: False
@@ -54,7 +55,7 @@ model:
     network_config:
       target: sgm.modules.diffusionmodules.video_model.VideoUNet
       params:
-        adm_in_channels: 1280
+        adm_in_channels: 0
         num_classes: sequential
         use_checkpoint: True
         in_channels: 8
@@ -73,8 +74,11 @@ model:
         merge_strategy: learned_with_images
         video_kernel_size: [3, 1, 1]
         fine_tuning_method: null
-        audio_cond_method: to_time_emb
+        audio_cond_method: to_time_emb_image
+        additional_audio_frames: 2
+        audio_dim: 1280
         unfreeze_blocks: [] # Because we changed the input block
+        skip_time: true
         # adapter_kwargs:
         #   # down_ratio: 1
         #   # adapter_type: null
@@ -255,7 +259,7 @@ data:
         motion_id: 60
         # data_mean: null
         # data_std: null
-        additional_audio_frames: 0
+        additional_audio_frames: 2
         virtual_increase: 10000
         use_latent_condition: True
 

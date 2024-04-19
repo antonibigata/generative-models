@@ -31,6 +31,7 @@ class VideoResBlock(ResBlock):
         use_checkpoint: bool = False,
         up: bool = False,
         down: bool = False,
+        skip_time: bool = False,
     ):
         super().__init__(
             channels,
@@ -64,6 +65,7 @@ class VideoResBlock(ResBlock):
             merge_strategy=merge_strategy,
             rearrange_pattern="b t -> b 1 t 1 1",
         )
+        self.skip_time = skip_time
 
     def forward(
         self,
@@ -74,8 +76,8 @@ class VideoResBlock(ResBlock):
     ) -> th.Tensor:
         x = super().forward(x, emb)
 
-        if num_video_frames == 1:
-            return x
+        # if self.skip_time:
+        #     return x
 
         x_mix = rearrange(x, "(b t) c h w -> b c t h w", t=num_video_frames)
         x = rearrange(x, "(b t) c h w -> b c t h w", t=num_video_frames)
@@ -124,6 +126,9 @@ class VideoUNet(nn.Module):
         unfreeze_blocks: Optional[List[str]] = None,
         adapter_kwargs: Optional[dict] = {},
         audio_cond_method: str = None,
+        audio_dim: Optional[int] = 0,
+        additional_audio_frames: Optional[int] = 0,
+        skip_time: bool = False,
     ):
         super().__init__()
         assert context_dim is not None
@@ -136,6 +141,11 @@ class VideoUNet(nn.Module):
 
         if num_head_channels == -1:
             assert num_heads != -1
+
+        audio_multiplier = additional_audio_frames * 2 + 1
+        audio_dim = audio_dim * audio_multiplier
+        if "to_time_emb_image" == audio_cond_method:
+            adm_in_channels += audio_dim
 
         self.adapter = None
         self.audio_cond_method = audio_cond_method
@@ -235,6 +245,7 @@ class VideoUNet(nn.Module):
                 disable_self_attn=disabled_sa,
                 disable_temporal_crossattention=disable_temporal_crossattention,
                 max_time_embed_period=max_ddpm_temb_period,
+                skip_time=skip_time,
             )
 
         def get_resblock(
@@ -264,6 +275,7 @@ class VideoUNet(nn.Module):
                 use_scale_shift_norm=use_scale_shift_norm,
                 down=down,
                 up=up,
+                skip_time=skip_time,
             )
 
         for level, mult in enumerate(channel_mult):
@@ -553,10 +565,17 @@ class VideoUNet(nn.Module):
         emb = self.time_embed(t_emb)
 
         if self.num_classes is not None:
-            assert y is not None or self.audio_cond_method == "to_time_emb"
+            assert y is not None or "to_time_emb" in self.audio_cond_method
             if self.audio_cond_method == "to_time_emb":
                 assert audio_emb is not None
                 audio_emb = rearrange(audio_emb, "b t c -> (b t) c")
+                if y is not None:
+                    y = th.cat([y, audio_emb], dim=1)
+                else:
+                    y = audio_emb
+            elif self.audio_cond_method == "to_time_emb_image":
+                assert audio_emb is not None
+                audio_emb = rearrange(audio_emb, "b t c -> b (t c)")
                 if y is not None:
                     y = th.cat([y, audio_emb], dim=1)
                 else:
@@ -565,7 +584,9 @@ class VideoUNet(nn.Module):
             emb = emb + self.label_emb(y)
 
         h = x
+
         for module in self.input_blocks:
+            # print(image_only_indicator.shape, num_video_frames, h.shape)
             h = module(
                 h,
                 emb,
