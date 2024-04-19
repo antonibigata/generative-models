@@ -3,10 +3,10 @@ import sys
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
-from scripts.util.audio.Whisper import Whisper
-from scripts.util.audio.WavLM import WavLM_wrapper
+# from scripts.util.audio.WavLM import WavLM_wrapper
 import torch
 import torch.nn as nn
+from scripts.util.audio.Whisper import Whisper
 
 
 def default(value, default):
@@ -36,16 +36,12 @@ class AudioWrapper(nn.Module):
         # audio_embeddings = model(audio_frames.unsqueeze(0).cuda())
 
         # Save audio embeddings
-        assert (
-            audio_embeddings.shape[1] == audio_frames.shape[0]
-        ), f"{audio_embeddings.shape[1]} != {audio_frames.shape[0]}"
+        assert audio_embeddings.shape[1] == audio_frames.shape[0], f"{audio_embeddings.shape[1]} != {audio_frames.shape[0]}"
 
         return audio_embeddings
 
     def wavlm_encoding(self, audio_frames):
         audio_embeddings = self.model(audio_frames.unsqueeze(0))
 
-        assert (
-            audio_embeddings.shape[1] == audio_frames.shape[0]
-        ), f"{audio_embeddings.shape[1]} != {audio_frames.shape[0]}"
+        assert audio_embeddings.shape[1] == audio_frames.shape[0], f"{audio_embeddings.shape[1]} != {audio_frames.shape[0]}"
         return audio_embeddings

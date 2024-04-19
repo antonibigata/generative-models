@@ -71,58 +71,61 @@ def main():
     # model.disable_slicing()
 
     for video_file in tqdm(video_files, desc="Generating latent vectors"):
-        video_file = str(video_file)
+        try:
+            video_file = str(video_file)
 
-        is_safe = "safetensors" if not args.save_as_tensor else "pt"
+            is_safe = "safetensors" if not args.save_as_tensor else "pt"
 
-        out_file = Path(video_file).stem + f"_{args.diffusion_type}_{args.resolution}" + f"_latent.{is_safe}"
-        out_path = Path(video_file).parent / out_file
-        out_path = Path(str(out_path).replace(args.in_dir, args.out_dir))
-        os.makedirs(str(out_path.parent), exist_ok=True)
+            out_file = Path(video_file).stem + f"_{args.diffusion_type}_{args.resolution}" + f"_latent.{is_safe}"
+            out_path = Path(video_file).parent / out_file
+            out_path = Path(str(out_path).replace(args.in_dir, args.out_dir))
+            os.makedirs(str(out_path.parent), exist_ok=True)
 
-        if out_path.exists() and not args.force_recompute:
-            continue
+            if out_path.exists() and not args.force_recompute:
+                continue
 
-        if args.only_missing:
-            missing += 1
-            continue
+            if args.only_missing:
+                missing += 1
+                continue
 
-        def encode_video(video):
-            video = rearrange(video, "t h w c -> c t h w")
-            vid_rez = min(video.shape[-1], video.shape[-2])
-            # to_rez = min(default(args.resolution, vid_rez), vid_rez)
-            to_rez = default(args.resolution, vid_rez)
-            video = process_image(video, to_rez)
-            encoded = rearrange(model.encode_video(video.cuda().unsqueeze(0)).squeeze(0), "c t h w -> t c h w")
-            return encoded
+            def encode_video(video):
+                video = rearrange(video, "t h w c -> c t h w")
+                vid_rez = min(video.shape[-1], video.shape[-2])
+                # to_rez = min(default(args.resolution, vid_rez), vid_rez)
+                to_rez = default(args.resolution, vid_rez)
+                video = process_image(video, to_rez)
+                encoded = rearrange(model.encode_video(video.cuda().unsqueeze(0)).squeeze(0), "c t h w -> t c h w")
+                return encoded
 
-        # Run the model
-        with torch.no_grad():
-            if args.chunk_size is not None:
-                encoded = []
-                video_reader = decord.VideoReader(video_file)
-                for i in tqdm(range(0, len(video_reader), args.chunk_size), leave=False, desc="Chunking"):
-                    video = video_reader.get_batch(range(i, min(i + args.chunk_size, len(video_reader))))
-                    encoded_chunk = encode_video(video)
-                    encoded.append(encoded_chunk)
-                # Process the last chunk
-                if i < len(video_reader):
-                    video = video_reader.get_batch(range(i, len(video_reader)))
-                    encoded_chunk = encode_video(video)
-                    encoded.append(encoded_chunk)
-                encoded = torch.cat(encoded, dim=0)
+            # Run the model
+            with torch.no_grad():
+                if args.chunk_size is not None:
+                    encoded = []
+                    video_reader = decord.VideoReader(video_file)
+                    for i in tqdm(range(0, len(video_reader), args.chunk_size), leave=False, desc="Chunking"):
+                        video = video_reader.get_batch(range(i, min(i + args.chunk_size, len(video_reader))))
+                        encoded_chunk = encode_video(video)
+                        encoded.append(encoded_chunk)
+                    # Process the last chunk
+                    if i < len(video_reader):
+                        video = video_reader.get_batch(range(i, len(video_reader)))
+                        encoded_chunk = encode_video(video)
+                        encoded.append(encoded_chunk)
+                    encoded = torch.cat(encoded, dim=0)
+                else:
+                    video_reader = decord.VideoReader(video_file)
+                    video = video_reader.get_batch(range(len(video_reader)))
+                    encoded = encode_video(video)
+
+            # Create output path in same directory as video
+
+            # Save the latent vector
+            if args.save_as_tensor:
+                torch.save(encoded.cpu(), out_path)
             else:
-                video_reader = decord.VideoReader(video_file)
-                video = video_reader.get_batch(range(len(video_reader)))
-                encoded = encode_video(video)
-
-        # Create output path in same directory as video
-
-        # Save the latent vector
-        if args.save_as_tensor:
-            torch.save(encoded.cpu(), out_path)
-        else:
-            save_file({"latents": encoded.cpu(), "init_rez": torch.tensor(video.shape[-2:])}, out_path)
+                save_file({"latents": encoded.cpu(), "init_rez": torch.tensor(video.shape[-2:])}, out_path)
+        except:
+            print(f"Failed for file {video_file}")
 
     print(f"Missing: {missing}")
 
