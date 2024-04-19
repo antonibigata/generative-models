@@ -3,23 +3,23 @@ Script to generate latent vectors from a video file.
 """
 
 import argparse
-
-from pathlib import Path
-import torch
 import os
 import sys
+from pathlib import Path
 
+import torch
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
-from scripts.util.vae_wrapper import VaeWrapper
+import random
+
+import decord
 
 # from torchvision.io import read_video
 from einops import rearrange
-from tqdm import tqdm
-import decord
 from safetensors.torch import save_file
-import random
+from scripts.util.vae_wrapper import VaeWrapper
+from tqdm import tqdm
 
 
 def default(value, default):
@@ -40,6 +40,8 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--filelist", type=str, required=True, nargs="+")
     parser.add_argument("--model_path", type=str, default="stabilityai/stable-diffusion-x4-upscaler")
+    parser.add_argument("--in_dir", type=str)
+    parser.add_argument("--out_dir", type=str)
     parser.add_argument("--resolution", type=int, default=None)
     parser.add_argument("--chunk_size", type=int, default=None)
     parser.add_argument("--diffusion_type", type=str, default="stable")
@@ -75,6 +77,9 @@ def main():
 
         out_file = Path(video_file).stem + f"_{args.diffusion_type}_{args.resolution}" + f"_latent.{is_safe}"
         out_path = Path(video_file).parent / out_file
+        out_path = Path(str(out_path).replace(args.in_dir, args.out_dir))
+        os.makedirs(str(out_path.parent), exist_ok=True)
+
         if out_path.exists() and not args.force_recompute:
             continue
 
