@@ -16,7 +16,7 @@ export NCCL_SOCKET_IFNAME=ens32
 export HYDRA_FULL_ERROR=1
 export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
 cd /data/home/rs2517/code/generative-models
-srun python main.py --base configs/example_training/svd_image.yaml --wandb True lightning.num_nodes 8 \
+srun python main.py --base configs/example_training/svd_image.yaml --wandb True lightning.trainer.num_nodes 8 \
     lightning.trainer.precision=bf16-mixed model.base_learning_rate=1.e-4 \
     data.params.train.datapipeline.filelist=/fsx/rs2517/data/lists/HDTF/filelist_videos_train.txt \
     lightning.trainer.devices=8 lightning.trainer.accumulate_grad_batches=1 data.params.train.datapipeline.virtual_increase=100000 \
