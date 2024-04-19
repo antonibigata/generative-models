@@ -15,7 +15,7 @@ import random
 
 from tqdm import tqdm
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 from sgm.util import trim_pad_audio
 from scripts.util.audio_wrapper import AudioWrapper
 

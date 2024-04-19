@@ -1,8 +1,16 @@
-from src.models.components.audio.Whisper import Whisper
-from src.models.components.audio.WavLM import WavLM_wrapper
+import os
+import sys
+
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
+
+from scripts.util.audio.Whisper import Whisper
+from scripts.util.audio.WavLM import WavLM_wrapper
 import torch
 import torch.nn as nn
-from src.utils.utils import default
+
+
+def default(value, default):
+    return default if value is None else value
 
 
 class AudioWrapper(nn.Module):
