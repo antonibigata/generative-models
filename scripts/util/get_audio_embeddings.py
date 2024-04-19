@@ -19,6 +19,26 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../.
 from sgm.util import trim_pad_audio
 from scripts.util.audio_wrapper import AudioWrapper
 
+
+def make_into_multiple_of(x, multiple, dim=0):
+    """
+    Make the torch tensor into a multiple of the given number.
+    """
+    if x.shape[dim] % multiple != 0:
+        x = torch.cat(
+            [
+                x,
+                torch.zeros(
+                    *x.shape[:dim],
+                    multiple - (x.shape[dim] % multiple),
+                    *x.shape[dim + 1 :],
+                ).to(x.device),
+            ],
+            dim=dim,
+        )
+    return x
+
+
 argparser = argparse.ArgumentParser()
 argparser.add_argument("--audio_path", type=str, default="data/audio_files.txt")
 argparser.add_argument("--model_type", type=str, default="whisper", help="Model type: whisper or wavlm")
@@ -100,8 +120,9 @@ def get_audio_embeddings(audio_path, output_path, model_size, fps):
         if sr != audio_rate:
             audio = torchaudio.functional.resample(audio, orig_freq=sr, new_freq=audio_rate)[0]
         audio = audio.mean(0, keepdim=True)
-        # audio = make_into_multiple_of(audio, samples_per_frame, dim=0)
+
         audio = trim_pad_audio(audio, audio_rate, max_len_sec=max_len_sec)[0]
+        audio = make_into_multiple_of(audio, samples_per_frame, dim=0)
         audio_frames = rearrange(audio, "(f s) -> f s", s=samples_per_frame)
         assert audio_frames.shape[0] == frames.shape[0], f"{audio_frames.shape} != {frames.shape}"
         # if audio_frames.shape[0] % 2 != 0:
