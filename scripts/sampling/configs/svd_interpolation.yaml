@@ -186,10 +186,14 @@ model:
         #     num_frames: 14
 
         guider_config:
-          target: sgm.modules.diffusionmodules.guiders.IdentityGuider
-          params:
-            chybre: 0.0
+          # target: sgm.modules.diffusionmodules.guiders.IdentityGuider
+          # params:
+          #   chybre: 0.0
             # num_frames: 14
+          target: sgm.modules.diffusionmodules.guiders.MultipleCondVanilla
+          params:
+            scales: [1., 0.5]
+            condition_names: [[cond_frames, cond_frames_without_noise], audio_emb]
 
         # guider_config:
         #   target: sgm.modules.diffusionmodules.guiders.TrianglePredictionGuider

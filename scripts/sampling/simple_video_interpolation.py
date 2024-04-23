@@ -435,6 +435,8 @@ def load_model(
 
     if "IdentityGuider" in config.model.params.sampler_config.params.guider_config.target:
         n_batch = 1
+    elif "MultipleCondVanilla" in config.model.params.sampler_config.params.guider_config.target:
+        n_batch = 3
     else:
         n_batch = 2  # Conditional and unconditional
     if device == "cuda":

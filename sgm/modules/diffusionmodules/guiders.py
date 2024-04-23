@@ -40,6 +40,53 @@ class VanillaCFG(Guider):
         return torch.cat([x] * 2), torch.cat([s] * 2), c_out
 
 
+class MultipleCondVanilla(Guider):
+    def __init__(self, scales, condition_names) -> None:
+        assert len(scales) == len(condition_names)
+        self.scales = scales
+        self.condition_names = condition_names
+        self.n_conditions = len(scales)
+
+    def __call__(self, x: torch.Tensor, sigma: torch.Tensor) -> torch.Tensor:
+        outs = x.chunk(self.n_conditions + 1)
+        x_full_cond = outs[0]
+        x_pred = (1 + sum(self.scales)) * x_full_cond
+        for i, scale in enumerate(self.scales):
+            x_pred -= scale * outs[i + 1]
+        return x_pred
+
+    def prepare_inputs(self, x, s, c, uc):
+        c_out = dict()
+
+        # The first element is the full condition
+        for k in c:
+            if k in ["vector", "crossattn", "concat", "audio_emb", "image_embeds", "landmarks"]:
+                c_out[k] = c[k]
+            else:
+                assert c[k] == uc[k]
+                c_out[k] = c[k]
+
+        # The rest are the conditions removed from the full condition
+        for cond_name in self.condition_names:
+            if not isinstance(cond_name, list):
+                cond_name = [cond_name]
+            for k in c:
+                if k in ["vector", "crossattn", "concat", "audio_emb", "image_embeds", "landmarks"]:
+                    c_out[k] = torch.cat((c_out[k], uc[k] if k in cond_name else c[k]), 0)
+
+        # for k, v in c_out.items():
+        #     if isinstance(v, torch.Tensor):
+        #         print(k, v.shape)
+
+        # print(
+        #     torch.cat([x] * (self.n_conditions + 1)).shape,
+        #     torch.cat([s] * (self.n_conditions + 1)).shape,
+        #     self.n_conditions,
+        # )
+
+        return torch.cat([x] * (self.n_conditions + 1)), torch.cat([s] * (self.n_conditions + 1)), c_out
+
+
 class IdentityGuider(Guider):
     def __init__(self, *args, **kwargs):
         # self.num_frames = num_frames

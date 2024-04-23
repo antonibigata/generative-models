@@ -76,7 +76,7 @@ model:
         fine_tuning_method: null
         audio_cond_method: to_time_emb_image
         additional_audio_frames: 2
-        audio_dim: 1280
+        audio_dim: 768
         unfreeze_blocks: [] # Because we changed the input block
         skip_time: true
         # adapter_kwargs:
@@ -161,6 +161,7 @@ model:
 
         - input_key: audio_emb
           is_trainable: True
+          ucg_rate: 0.1
           target: sgm.modules.encoders.modules.WhisperAudioEmbedder
           params:
             merge_method: mean 
@@ -253,7 +254,7 @@ data:
         from_audio_embedding: True
         load_all_possible_indexes: False
         allow_all_possible_permutations: False
-        audio_emb_type: whisper
+        audio_emb_type: wav2vec2
         # cond_noise: [-3.0, 0.5]
         cond_noise: 0.
         motion_id: 60
@@ -323,6 +324,7 @@ lightning:
         increase_log_steps: False
         log_first_step: True
         log_videos_kwargs:
+          ucg_keys: [cond_frames_without_noise, audio_emb]
           use_ema_scope: False
           N: 1
           n_rows: 1

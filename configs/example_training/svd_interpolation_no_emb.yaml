@@ -52,7 +52,7 @@ model:
     network_config:
       target: sgm.modules.diffusionmodules.video_model.VideoUNet
       params:
-        adm_in_channels: 1280
+        adm_in_channels: 0
         num_classes: sequential
         use_checkpoint: True
         in_channels: 9
@@ -72,6 +72,8 @@ model:
         video_kernel_size: [3, 1, 1]
         fine_tuning_method: null
         audio_cond_method: to_time_emb
+        additional_audio_frames: 0
+        audio_dim: 768
         unfreeze_blocks: ["input"] # Because we changed the input block
         # adapter_kwargs:
         #   # down_ratio: 1
@@ -155,6 +157,7 @@ model:
 
         - input_key: audio_emb
           is_trainable: True
+          ucg_rate: 0.1
           target: sgm.modules.encoders.modules.WhisperAudioEmbedder
           params:
             merge_method: mean 
@@ -275,7 +278,7 @@ data:
         latent_scale: 1  # For backwards compatibility
         from_audio_embedding: True
         load_all_possible_indexes: True
-        audio_emb_type: whisper
+        audio_emb_type: wav2vec2
         # cond_noise: [-3.0, 0.5]
         cond_noise: 0.
         motion_id: 125
@@ -343,6 +346,7 @@ lightning:
         increase_log_steps: False
         log_first_step: True
         log_videos_kwargs:
+          ucg_keys: [cond_frames, cond_frames_without_noise, audio_emb]
           use_ema_scope: False
           N: 1
           n_rows: 1

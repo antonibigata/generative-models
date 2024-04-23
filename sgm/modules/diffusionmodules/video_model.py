@@ -144,7 +144,7 @@ class VideoUNet(nn.Module):
 
         audio_multiplier = additional_audio_frames * 2 + 1
         audio_dim = audio_dim * audio_multiplier
-        if "to_time_emb_image" == audio_cond_method:
+        if "to_time_emb" in audio_cond_method:
             adm_in_channels += audio_dim
 
         self.adapter = None
