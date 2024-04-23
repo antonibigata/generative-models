@@ -189,6 +189,7 @@ class VideoDataset(Dataset):
         if self.load_all_possible_indexes:
             indexes, video_file, audio_file, land_file = self._indexes[idx]
             vr = decord.VideoReader(video_file)
+            len_video = len(vr)
         else:
             video_file, audio_file, land_file = self._indexes[idx]
             vr = decord.VideoReader(video_file)
@@ -233,13 +234,13 @@ class VideoDataset(Dataset):
 
         if not self.from_audio_embedding:
             raw_audio = self._load_audio(
-                audio_file, max_len_sec=frames.shape[1] / self.video_rate, start=indexes[0] / self.video_rate
+                audio_file, max_len_sec=len_video / self.video_rate, start=indexes[0] / self.video_rate
             )
             audio = raw_audio
             audio_frames = rearrange(audio, "(f s) -> f s", s=self.samples_per_frame)[audio_indexes]
         else:
             raw_audio = self._load_audio(
-                audio_file, max_len_sec=frames.shape[1] / self.video_rate, start=indexes[0] / self.video_rate
+                audio_file, max_len_sec=len_video / self.video_rate, start=indexes[0] / self.video_rate
             )
             audio = torch.load(audio_file.split(".")[0] + f"_{self.audio_emb_type}_emb.pt")
             audio_frames = audio[audio_indexes, :]
@@ -335,7 +336,7 @@ class VideoDataset(Dataset):
 
         if audio is not None:
             out_data["audio_emb"] = audio
-            out_data["raw_audio"] = raw_audio
+            # out_data["raw_audio"] = raw_audio
 
         if self.use_latent:
             input_key = "latents"
