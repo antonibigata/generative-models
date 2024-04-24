@@ -213,16 +213,20 @@ class VideoDataset(Dataset):
     def _get_frames_and_audio(self, idx):
         if self.load_all_possible_indexes:
             indexes, video_file, audio_file = self._indexes[idx]
+            if self.audio_in_video:
+                vr = decord.AVReader(video_file, sample_rate=self.audio_rate)
+            else:
+                vr = decord.VideoReader(video_file)
+            len_video = len(vr)
         else:
             video_file, audio_file = self._indexes[idx]
-
-        if self.audio_in_video:
-            vr = decord.AVReader(video_file, sample_rate=self.audio_rate)
-        else:
-            vr = decord.VideoReader(video_file)
-        len_video = len(vr)
-        start_idx = np.random.randint(0, len_video - self.num_frames)
-        indexes = list(range(start_idx, start_idx + self.num_frames))
+            if self.audio_in_video:
+                vr = decord.AVReader(video_file, sample_rate=self.audio_rate)
+            else:
+                vr = decord.VideoReader(video_file)
+            len_video = len(vr)
+            start_idx = np.random.randint(0, len_video - self.num_frames)
+            indexes = list(range(start_idx, start_idx + self.num_frames))
 
         raw_audio = None
         if self.audio_in_video:
@@ -272,7 +276,7 @@ class VideoDataset(Dataset):
         if self.mode == "prediction":
             if self.use_latent:
                 if self.audio_in_video:
-                    clean_cond = frames_video[indexes[0]].unsqueeze(0).permute(3, 0, 1, 2).float()
+                    clean_cond = frames_video[0].unsqueeze(0).permute(3, 0, 1, 2).float()
                 else:
                     clean_cond = vr[indexes[0]].unsqueeze(0).permute(3, 0, 1, 2).float()
                 clean_cond = self.scale_and_crop((clean_cond / 255.0) * 2 - 1).squeeze(0)
@@ -287,7 +291,7 @@ class VideoDataset(Dataset):
             if self.use_latent:
                 # vr = decord.VideoReader(video_file) if vr is None else vr
                 if self.audio_in_video:
-                    clean_cond = frames_video[[indexes[0], indexes[-1]]].permute(3, 0, 1, 2).float()
+                    clean_cond = frames_video[[0, -1]].permute(3, 0, 1, 2).float()
                 else:
                     clean_cond = vr.get_batch([indexes[0], indexes[-1]]).permute(3, 0, 1, 2).float()
                 clean_cond = self.scale_and_crop((clean_cond / 255.0) * 2 - 1)
