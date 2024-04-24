@@ -8,9 +8,7 @@ from ...modules.diffusionmodules.util import make_beta_schedule
 from ...util import append_zero
 
 
-def generate_roughly_equally_spaced_steps(
-    num_substeps: int, max_step: int
-) -> np.ndarray:
+def generate_roughly_equally_spaced_steps(num_substeps: int, max_step: int) -> np.ndarray:
     return np.linspace(max_step - 1, 0, num_substeps, endpoint=False).astype(int)[::-1]
 
 
@@ -39,6 +37,34 @@ class EDMDiscretization(Discretization):
         return sigmas
 
 
+class AYSDiscretization(Discretization):
+    def __init__(self):
+        self.sigma_min = 0.002
+        self.sigma_max = 700.0
+        self.base_sigmas = np.array([700.00, 54.5, 15.886, 7.977, 4.248, 1.789, 0.981, 0.403, 0.173, 0.034, 0.002])
+
+    def loglinear_interp(self, t_steps, num_steps):
+        """
+        Performs log-linear interpolation of a given array of decreasing numbers.
+        """
+        xs = np.linspace(0, 1, len(t_steps))
+        ys = np.log(t_steps[::-1])
+
+        new_xs = np.linspace(0, 1, num_steps)
+        new_ys = np.interp(new_xs, xs, ys)
+
+        interped_ys = np.exp(new_ys)[::-1].copy()
+        return interped_ys
+
+    def get_sigmas(self, n, device="cpu"):
+        assert n >= 10, "Number of timesteps must be greater than 10 for AYS discretization."
+        if n > 10:
+            sigmas = self.loglinear_interp(self.base_sigmas, n)
+        else:
+            sigmas = self.base_sigmas
+        return torch.from_numpy(sigmas).to(device)
+
+
 class LegacyDDPMDiscretization(Discretization):
     def __init__(
         self,
@@ -48,9 +74,7 @@ class LegacyDDPMDiscretization(Discretization):
     ):
         super().__init__()
         self.num_timesteps = num_timesteps
-        betas = make_beta_schedule(
-            "linear", num_timesteps, linear_start=linear_start, linear_end=linear_end
-        )
+        betas = make_beta_schedule("linear", num_timesteps, linear_start=linear_start, linear_end=linear_end)
         alphas = 1.0 - betas
         self.alphas_cumprod = np.cumprod(alphas, axis=0)
         self.to_torch = partial(torch.tensor, dtype=torch.float32)

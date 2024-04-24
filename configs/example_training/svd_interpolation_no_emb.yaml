@@ -269,6 +269,8 @@ data:
         video_folder: cropped_videos_original
         video_extension: .mp4
         audio_extension: .wav
+        latent_folder: null
+        audio_in_video: False
         audio_rate: 16000
         num_frames: 14
         need_cond: True

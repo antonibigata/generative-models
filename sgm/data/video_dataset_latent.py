@@ -51,6 +51,8 @@ class VideoDataset(Dataset):
         video_extension=".avi",
         audio_extension=".wav",
         audio_rate=16000,
+        latent_folder=None,
+        audio_in_video=False,
         # fps=25,
         num_frames=5,
         need_cond=True,
@@ -89,6 +91,8 @@ class VideoDataset(Dataset):
         self.data_mean = data_mean
         self.data_std = data_std
         self.motion_id = motion_id
+        self.latent_folder = latent_folder if latent_folder is not None else video_folder
+        self.audio_in_video = audio_in_video
 
         self.filelist = []
         self.audio_filelist = []
@@ -97,7 +101,7 @@ class VideoDataset(Dataset):
             for f in files.readlines():
                 f = f.rstrip()
                 audio_path = f.replace(video_folder, audio_folder).replace(video_extension, audio_extension)
-                if not os.path.exists(audio_path):
+                if not self.audio_in_video and not os.path.exists(audio_path):
                     missing_audio += 1
                     print("Missing audio file: ", audio_path)
                     if missing_audio > max_missing_audio_files:
@@ -162,7 +166,7 @@ class VideoDataset(Dataset):
     def __len__(self):
         return self.total_len
 
-    def _load_audio(self, filename, max_len_sec, start=None):
+    def _load_audio(self, filename, max_len_sec, start=None, indexes=None):
         audio, sr = sf.read(
             filename,
             start=math.ceil(start * self.audio_rate),
@@ -178,6 +182,28 @@ class VideoDataset(Dataset):
         audio = trim_pad_audio(audio, self.audio_rate, max_len_sec=max_len_sec)
         return audio[0]
 
+    def ensure_shape(self, tensors):
+        target_length = self.samples_per_frame
+        processed_tensors = []
+        for tensor in tensors:
+            current_length = tensor.shape[1]
+            diff = current_length - target_length
+            assert abs(diff) <= 5, f"Expected shape {target_length}, but got {current_length}"
+            if diff < 0:
+                # Calculate how much padding is needed
+                padding_needed = target_length - current_length
+                # Pad the tensor
+                padded_tensor = F.pad(tensor, (0, padding_needed))
+                processed_tensors.append(padded_tensor)
+            elif diff > 0:
+                # Trim the tensor
+                trimmed_tensor = tensor[:, :target_length]
+                processed_tensors.append(trimmed_tensor)
+            else:
+                # If it's already the correct size
+                processed_tensors.append(tensor)
+        return torch.cat(processed_tensors)
+
     def normalize_latents(self, latents):
         if self.data_mean is not None:
             # Normalize latents to 0 mean and 0.5 std
@@ -187,66 +213,57 @@ class VideoDataset(Dataset):
     def _get_frames_and_audio(self, idx):
         if self.load_all_possible_indexes:
             indexes, video_file, audio_file = self._indexes[idx]
-            vr = None
         else:
             video_file, audio_file = self._indexes[idx]
-            vr = decord.VideoReader(video_file)
-            len_video = len(vr)
-            start_idx = np.random.randint(0, len_video - self.num_frames)
-            indexes = list(range(start_idx, start_idx + self.num_frames))
 
-        # audio_frames = None
+        if self.audio_in_video:
+            vr = decord.AVReader(video_file, sample_rate=self.audio_rate)
+        else:
+            vr = decord.VideoReader(video_file)
+        len_video = len(vr)
+        start_idx = np.random.randint(0, len_video - self.num_frames)
+        indexes = list(range(start_idx, start_idx + self.num_frames))
+
+        raw_audio = None
+        if self.audio_in_video:
+            raw_audio, frames_video = vr.get_batch(indexes)
+            raw_audio = rearrange(self.ensure_shape(raw_audio), "f s -> (f s)")
         if self.use_latent and self.precomputed_latent:
-            frames = load_file(video_file.replace(self.video_ext, f"_{self.latent_type}_512_latent.safetensors"))[
-                "latents"
-            ][indexes, :, :, :]
+            latent_file = video_file.replace(self.video_ext, f"_{self.latent_type}_512_latent.safetensors").replace(
+                self.video_folder, self.latent_folder
+            )
+            frames = load_file(latent_file)["latents"][indexes, :, :, :]
 
             if frames.shape[-1] != 64:
                 print(f"Frames shape: {frames.shape}, video file: {video_file}")
 
             frames = rearrange(frames, "t c h w -> c t h w") * self.latent_scale
             frames = self.normalize_latents(frames)
-            # if not self.from_audio_embedding:
-            #     audio = self._load_audio(
-            #         audio_file, max_len_sec=frames.shape[1] / self.video_rate, start=indexes[0] / self.video_rate
-            #     )
-            # else:
-            #     audio = torch.load(audio_file.split(".")[0] + f"_{self.audio_emb_type}_emb.pt")
-            #     try:
-            #         audio_frames = audio[indexes, :]
-            #     except IndexError as e:
-            #         print(f"Index error for {audio_file}")
-            #         print(f"Audio shape: {audio.shape}")
-            #         print(f"Indexes: {indexes}")
-            #         print(
-            #             f"Frames shape: {torch.load(video_file.replace(self.video_ext, f'_{self.latent_type}_latent.pt')).shape}"
-            #         )
-            #         raise e
         else:
-            vr = decord.VideoReader(video_file) if vr is None else vr
-            frames = vr.get_batch(indexes).permute(3, 0, 1, 2).float()
+            if self.audio_in_video:
+                frames = frames_video.permute(3, 0, 1, 2).float()
+            else:
+                frames = vr.get_batch(indexes).permute(3, 0, 1, 2).float()
 
-        if not self.from_audio_embedding:
+        if raw_audio is None:
+            # Audio is not in video
             raw_audio = self._load_audio(
-                audio_file, max_len_sec=frames.shape[1] / self.video_rate, start=indexes[0] / self.video_rate
+                audio_file,
+                max_len_sec=frames.shape[1] / self.video_rate,
+                start=indexes[0] / self.video_rate,
+                indexes=indexes,
             )
+        if not self.from_audio_embedding:
             audio = raw_audio
             audio_frames = rearrange(audio, "(f s) -> f s", s=self.samples_per_frame)
         else:
-            raw_audio = self._load_audio(
-                audio_file, max_len_sec=frames.shape[1] / self.video_rate, start=indexes[0] / self.video_rate
-            )
             audio = torch.load(audio_file.split(".")[0] + f"_{self.audio_emb_type}_emb.pt")
             audio_frames = audio[indexes, :]
 
-        # if audio_frames is None:
-        #     audio_frames = rearrange(audio, "(f s) -> f s", s=self.samples_per_frame)
-
-        # audio_frames = audio_frames.T
         audio_frames = audio_frames[1:] if self.need_cond else audio_frames  # Remove audio of first frame
 
-        if self.scale_audio:
-            audio_frames = (audio_frames / audio_frames.max()) * 2 - 1
+        # if self.scale_audio:
+        #     audio_frames = (audio_frames / audio_frames.max()) * 2 - 1
 
         if not self.use_latent or (self.use_latent and not self.precomputed_latent):
             frames = self.scale_and_crop((frames / 255.0) * 2 - 1)
@@ -254,8 +271,10 @@ class VideoDataset(Dataset):
         target = frames[:, 1:] if self.need_cond else frames
         if self.mode == "prediction":
             if self.use_latent:
-                vr = decord.VideoReader(video_file) if vr is None else vr
-                clean_cond = vr[indexes[0]].unsqueeze(0).permute(3, 0, 1, 2).float()
+                if self.audio_in_video:
+                    clean_cond = frames_video[indexes[0]].unsqueeze(0).permute(3, 0, 1, 2).float()
+                else:
+                    clean_cond = vr[indexes[0]].unsqueeze(0).permute(3, 0, 1, 2).float()
                 clean_cond = self.scale_and_crop((clean_cond / 255.0) * 2 - 1).squeeze(0)
                 if self.latent_condition:
                     noisy_cond = target[:, 0]
@@ -266,8 +285,11 @@ class VideoDataset(Dataset):
                 noisy_cond = clean_cond
         elif self.mode == "interpolation":
             if self.use_latent:
-                vr = decord.VideoReader(video_file) if vr is None else vr
-                clean_cond = vr.get_batch([indexes[0], indexes[-1]]).permute(3, 0, 1, 2).float()
+                # vr = decord.VideoReader(video_file) if vr is None else vr
+                if self.audio_in_video:
+                    clean_cond = frames_video[[indexes[0], indexes[-1]]].permute(3, 0, 1, 2).float()
+                else:
+                    clean_cond = vr.get_batch([indexes[0], indexes[-1]]).permute(3, 0, 1, 2).float()
                 clean_cond = self.scale_and_crop((clean_cond / 255.0) * 2 - 1)
                 if self.latent_condition:
                     noisy_cond = torch.stack([frames[:, 0], frames[:, -1]], dim=1)

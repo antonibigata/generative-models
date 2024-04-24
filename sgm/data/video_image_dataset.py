@@ -36,9 +36,11 @@ class VideoDataset(Dataset):
         landmarks_folder=None,
         video_extension=".avi",
         audio_extension=".wav",
+        audio_in_video=False,
         num_frames=16,
         additional_audio_frames=0,
         audio_rate=16000,
+        latent_folder=None,
         max_missing_audio_files=10,
         from_audio_embedding=False,
         scale_audio=False,
@@ -73,6 +75,8 @@ class VideoDataset(Dataset):
         self.motion_id = motion_id
         self.latent_condition = use_latent_condition
         self.is_xl = is_xl
+        self.latent_folder = latent_folder if latent_folder is not None else video_folder
+        self.audio_in_video = audio_in_video
 
         self.filelist = []
         self.audio_filelist = []
@@ -85,7 +89,7 @@ class VideoDataset(Dataset):
                 if dataset_name in exclude_dataset:
                     continue
                 audio_path = f.replace(video_folder, audio_folder).replace(video_extension, audio_extension)
-                if not os.path.exists(audio_path):
+                if not self.audio_in_video and not os.path.exists(audio_path):
                     missing_audio += 1
                     print("Missing audio file: ", audio_path)
                     if missing_audio > max_missing_audio_files:
@@ -185,14 +189,42 @@ class VideoDataset(Dataset):
         audio_ids += [max_len - 1] * max(main_index + n_audio_frames - max_len + 1, 0)
         return audio_ids
 
+    def ensure_shape(self, tensors):
+        target_length = self.samples_per_frame
+        processed_tensors = []
+        for tensor in tensors:
+            current_length = tensor.shape[1]
+            diff = current_length - target_length
+            assert abs(diff) <= 5, f"Expected shape {target_length}, but got {current_length}"
+            if diff < 0:
+                # Calculate how much padding is needed
+                padding_needed = target_length - current_length
+                # Pad the tensor
+                padded_tensor = F.pad(tensor, (0, padding_needed))
+                processed_tensors.append(padded_tensor)
+            elif diff > 0:
+                # Trim the tensor
+                trimmed_tensor = tensor[:, :target_length]
+                processed_tensors.append(trimmed_tensor)
+            else:
+                # If it's already the correct size
+                processed_tensors.append(tensor)
+        return torch.cat(processed_tensors)
+
     def _get_frames_and_audio(self, idx):
         if self.load_all_possible_indexes:
             indexes, video_file, audio_file, land_file = self._indexes[idx]
-            vr = decord.VideoReader(video_file)
+            if self.audio_in_video:
+                vr = decord.AVReader(video_file, sample_rate=self.audio_rate)
+            else:
+                vr = decord.VideoReader(video_file)
             len_video = len(vr)
         else:
             video_file, audio_file, land_file = self._indexes[idx]
-            vr = decord.VideoReader(video_file)
+            if self.audio_in_video:
+                vr = decord.AVReader(video_file, sample_rate=self.audio_rate)
+            else:
+                vr = decord.VideoReader(video_file)
             len_video = len(vr)
             init_index = np.random.randint(0, len_video)
             predict_index = np.random.randint(0, len_video)
@@ -207,12 +239,17 @@ class VideoDataset(Dataset):
         # print(audio_indexes, indexes)
 
         audio_frames = None
+        raw_audio = None
+        if self.audio_in_video:
+            raw_audio, _ = vr.get_batch(audio_indexes)
+            vr = vr._AVReader__video_reader
+            raw_audio = rearrange(self.ensure_shape(raw_audio), "f s -> (f s)")
 
         if self.use_latent:
-            # try:
-            frames = load_file(video_file.replace(self.video_ext, f"_{self.latent_type}_512_latent.safetensors"))[
-                "latents"
-            ]
+            latent_file = video_file.replace(self.video_ext, f"_{self.latent_type}_512_latent.safetensors").replace(
+                self.video_folder, self.latent_folder
+            )
+            frames = load_file(latent_file)["latents"]
             frame = frames[predict_index, :, :, :]
             cond = frames[init_index]
             # except FileNotFoundError:
@@ -224,24 +261,22 @@ class VideoDataset(Dataset):
             clean_cond = vr[init_index].float()
 
         else:
-            frame = vr[predict_index].float()
-            clean_cond = vr[init_index].float()
+            frame, clean_cond = vr.get_batch([predict_index, init_index]).float()
+            # clean_cond = vr[init_index].float()
 
         or_w, or_h = clean_cond.shape[0], clean_cond.shape[1]
         landmarks = None
         if self.get_landmarks:
             landmarks = self._load_landmarks(land_file, (or_w, or_h), predict_index)
 
-        if not self.from_audio_embedding:
+        if raw_audio is None:
             raw_audio = self._load_audio(
                 audio_file, max_len_sec=len_video / self.video_rate, start=indexes[0] / self.video_rate
             )
+        if not self.from_audio_embedding:
             audio = raw_audio
             audio_frames = rearrange(audio, "(f s) -> f s", s=self.samples_per_frame)[audio_indexes]
         else:
-            raw_audio = self._load_audio(
-                audio_file, max_len_sec=len_video / self.video_rate, start=indexes[0] / self.video_rate
-            )
             audio = torch.load(audio_file.split(".")[0] + f"_{self.audio_emb_type}_emb.pt")
             audio_frames = audio[audio_indexes, :]
 
