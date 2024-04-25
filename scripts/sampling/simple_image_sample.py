@@ -83,7 +83,7 @@ def sample(
     num_frames: Optional[int] = None,
     num_steps: Optional[int] = None,
     resize_size: Optional[int] = None,
-    version: str = "sd_2_1",
+    version: str = "svd_image",
     fps_id: int = 25,
     motion_bucket_id: int = 127,
     cond_aug: float = 0.02,
@@ -104,32 +104,15 @@ def sample(
     image file in folder `input_path`. If you run out of VRAM, try decreasing `decoding_t`.
     """
 
-    # if version == "svd":
-    #     num_frames = default(num_frames, 14)
-    #     num_steps = default(num_steps, 25)
-    #     output_folder = default(output_folder, "outputs/simple_video_sample/svd/")
-    #     # model_config = "scripts/sampling/configs/svd.yaml"
-    # elif version == "svd_xt":
-    #     num_frames = default(num_frames, 25)
-    #     num_steps = default(num_steps, 30)
-    #     output_folder = default(output_folder, "outputs/simple_video_sample/svd_xt/")
-    #     # model_config = "scripts/sampling/configs/svd_xt.yaml"
-    # elif version == "svd_image_decoder":
-    #     num_frames = default(num_frames, 14)
-    #     num_steps = default(num_steps, 25)
-    #     output_folder = default(output_folder, "outputs/simple_video_sample/svd_image_decoder/")
-    #     # model_config = "scripts/sampling/configs/svd_image_decoder.yaml"
-    # elif version == "svd_xt_image_decoder":
-    #     num_frames = default(num_frames, 25)
-    #     num_steps = default(num_steps, 30)
-    #     output_folder = default(output_folder, "outputs/simple_video_sample/svd_xt_image_decoder/")
-    #     # model_config = "scripts/sampling/configs/svd_xt_image_decoder.yaml"
-    # else:
-    #     raise ValueError(f"Version {version} does not exist.")
     if version == "sd_2_1":
         num_frames = default(num_frames, 14)
         output_folder = default(output_folder, "outputs/simple_image_sample/sd_2_1/")
         model_config = "scripts/sampling/configs/sd_2_1.yaml"
+        n_audio_frames = 2
+    elif version == "svd_image":
+        num_frames = default(num_frames, 14)
+        output_folder = default(output_folder, "outputs/simple_image_sample/svd_image/")
+        model_config = "scripts/sampling/configs/svd_image.yaml"
         n_audio_frames = 2
 
     if use_latent:
@@ -293,7 +276,7 @@ def sample(
 
                     additional_model_inputs = {}
                     # additional_model_inputs["image_only_indicator"] = torch.zeros(n_batch, num_frames).to(device)
-                    # additional_model_inputs["num_video_frames"] = batch["num_video_frames"]
+                    additional_model_inputs["num_video_frames"] = batch["num_video_frames"]
 
                     def denoiser(input, sigma, c):
                         return model.denoiser(model.model, input, sigma, c, **additional_model_inputs)
@@ -349,8 +332,8 @@ def get_batch(keys, value_dict, N, T, device):
         else:
             batch[key] = value_dict[key]
 
-    if T is not None:
-        batch["num_video_frames"] = T
+    # if T is not None:
+    batch["num_video_frames"] = 1
 
     for key in batch.keys():
         if key not in batch_uc and isinstance(batch[key], torch.Tensor):

@@ -76,8 +76,8 @@ class VideoResBlock(ResBlock):
     ) -> th.Tensor:
         x = super().forward(x, emb)
 
-        # if self.skip_time:
-        #     return x
+        if self.skip_time:
+            return x
 
         x_mix = rearrange(x, "(b t) c h w -> b c t h w", t=num_video_frames)
         x = rearrange(x, "(b t) c h w -> b c t h w", t=num_video_frames)
