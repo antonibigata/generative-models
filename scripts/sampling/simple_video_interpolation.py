@@ -445,6 +445,10 @@ def load_model(
     else:
         model = instantiate_from_config(config.model).to(device).eval()
 
+    # import thunder
+
+    # model = thunder.jit(model)
+
     # filter = DeepFloydDataFiltering(verbose=False, device=device)
     return model, filter, n_batch
 

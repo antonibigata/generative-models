@@ -53,6 +53,7 @@ class DiffusionEngine(pl.LightningModule):
         freeze_time: Optional[bool] = False,
         lora_config: Optional[Dict] = None,
         separate_unet_ckpt: Optional[str] = None,
+        use_thunder: Optional[bool] = False,
     ):
         super().__init__()
 
@@ -172,6 +173,11 @@ class DiffusionEngine(pl.LightningModule):
             for name, p in self.named_parameters():
                 if p.requires_grad:
                     print(name)
+
+        if use_thunder:
+            import thunder
+
+            self.model.diffusion_model = thunder.jit(self.model.diffusion_model)
 
     def init_from_ckpt(self, path: str, remove_keys_from_weights: Optional[Union[List, Tuple]] = None) -> None:
         if path.endswith("ckpt"):
