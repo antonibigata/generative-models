@@ -2,7 +2,7 @@ from typing import Dict, List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
-from einops import rearrange
+from einops import rearrange, repeat
 
 from ...modules.autoencoding.lpips.loss.lpips import LPIPS
 from ...modules.encoders.modules import GeneralConditioner
@@ -87,7 +87,8 @@ class StandardDiffusionLoss(nn.Module):
     def get_loss(self, model_output, target, w):
         if target.ndim == 5:
             target = rearrange(target, "b c t h w -> (b t) c h w")
-            w = rearrange(w, "b c t h w -> (b t) c h w")
+            B = w.shape[0]
+            w = repeat(w, "b () () () () -> (b t) () () ()", t=target.shape[0] // B)
             # model_output = rearrange(model_output, "b c t h w -> (b t) c h w")
             # w = rearrange(w, "b ... -> b t ...")
 

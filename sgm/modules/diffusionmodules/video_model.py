@@ -200,14 +200,18 @@ class VideoUNet(nn.Module):
                 )
 
             elif self.num_classes == "sequential":
-                assert adm_in_channels is not None
-                self.label_emb = nn.Sequential(
-                    nn.Sequential(
-                        linear(adm_in_channels, time_embed_dim),
-                        nn.SiLU(),
-                        linear(time_embed_dim, time_embed_dim),
+                if adm_in_channels > 0:
+                    assert adm_in_channels is not None
+                    self.label_emb = nn.Sequential(
+                        nn.Sequential(
+                            linear(adm_in_channels, time_embed_dim),
+                            nn.SiLU(),
+                            linear(time_embed_dim, time_embed_dim),
+                        )
                     )
-                )
+                else:
+                    # Disabling the label embedding
+                    self.num_classes = None
             else:
                 raise ValueError()
 
@@ -227,6 +231,7 @@ class VideoUNet(nn.Module):
             context_dim=None,
             use_checkpoint=False,
             disabled_sa=False,
+            audio_context_dim=None,
         ):
             return SpatialVideoTransformer(
                 ch,
@@ -234,6 +239,7 @@ class VideoUNet(nn.Module):
                 dim_head,
                 depth=depth,
                 context_dim=context_dim,
+                audio_context_dim=audio_context_dim,
                 time_context_dim=time_context_dim,
                 dropout=dropout,
                 ff_in=extra_ff_mix_layer,
@@ -310,6 +316,7 @@ class VideoUNet(nn.Module):
                             dim_head,
                             depth=transformer_depth[level],
                             context_dim=context_dim,
+                            audio_context_dim=audio_dim if "cross_attention" in audio_cond_method else None,
                             use_checkpoint=use_checkpoint,
                             disabled_sa=False,
                         )
@@ -375,6 +382,7 @@ class VideoUNet(nn.Module):
                 dim_head,
                 depth=transformer_depth_middle,
                 context_dim=context_dim,
+                audio_context_dim=audio_dim if "cross_attention" in audio_cond_method else None,
                 use_checkpoint=use_checkpoint,
             ),
             get_resblock(
@@ -432,6 +440,7 @@ class VideoUNet(nn.Module):
                             dim_head,
                             depth=transformer_depth[level],
                             context_dim=context_dim,
+                            audio_context_dim=audio_dim if "cross_attention" in audio_cond_method else None,
                             use_checkpoint=use_checkpoint,
                             disabled_sa=False,
                         )
@@ -488,27 +497,6 @@ class VideoUNet(nn.Module):
                     for param in self.label_emb.parameters():
                         param.requires_grad = True
 
-        # if fine_tuning_method == "lora":
-        #     inject_trainable_lora(self, **adapter_kwargs)
-        # filters = adapter_kwargs.pop("filters")
-        # module_names = get_module_names(self, filters=filters, all_modules_in_filter=True)
-        # lora_config = LoraConfig(
-        #     **adapter_kwargs,
-        #     target_modules=module_names,
-        # )
-        # self = LoraModel(self, lora_config, "bite")
-
-        # if freeze_network:
-        #     print("freezing network")
-        #     # Freeze everything except the last layer
-        #     for param in self.parameters():
-        #         param.requires_grad = False
-        #     for param in self.out.parameters():
-        #         param.requires_grad = True
-        # self.dum_param = nn.Parameter(th.zeros(1))
-        # print(self)
-        # exit()
-
     def forward(
         self,
         x: th.Tensor,
@@ -543,8 +531,10 @@ class VideoUNet(nn.Module):
 
         if self.audio_cond_method == "cross_attention":
             assert audio_emb is not None
-            audio_emb = rearrange(audio_emb, "b t d c -> (b t) d c")
-            context = th.cat([context, audio_emb], dim=1)
+            if audio_emb.ndim == 4:
+                audio_emb = rearrange(audio_emb, "b t d c -> b (t d) c")
+
+        #     context = th.cat([context, audio_emb], dim=1)
 
         if self.audio_cond_method == "cross_time":
             assert audio_emb is not None
@@ -592,6 +582,7 @@ class VideoUNet(nn.Module):
                 h,
                 emb,
                 context=context,
+                audio_context=audio_emb if "cross_attention" in self.audio_cond_method else None,
                 image_only_indicator=image_only_indicator,
                 time_context=time_context,
                 num_video_frames=num_video_frames,
@@ -601,6 +592,7 @@ class VideoUNet(nn.Module):
             h,
             emb,
             context=context,
+            audio_context=audio_emb if "cross_attention" in self.audio_cond_method else None,
             image_only_indicator=image_only_indicator,
             time_context=time_context,
             num_video_frames=num_video_frames,
@@ -614,6 +606,7 @@ class VideoUNet(nn.Module):
                 h,
                 emb,
                 context=context,
+                audio_context=audio_emb if "cross_attention" in self.audio_cond_method else None,
                 image_only_indicator=image_only_indicator,
                 time_context=time_context,
                 num_video_frames=num_video_frames,

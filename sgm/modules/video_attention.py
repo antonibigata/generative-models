@@ -151,7 +151,9 @@ class SpatialVideoTransformer(SpatialTransformer):
         timesteps=None,
         merge_strategy: str = "fixed",
         merge_factor: float = 0.5,
+        merge_audio_factor: float = 5.0,  # Almost 0 audio at first
         time_context_dim=None,
+        audio_context_dim=None,
         ff_in=False,
         checkpoint=False,
         time_depth=1,
@@ -207,6 +209,29 @@ class SpatialVideoTransformer(SpatialTransformer):
             ]
         )
 
+        self.audio_stack = None
+        if audio_context_dim is not None:
+            self.audio_stack = nn.ModuleList(
+                [
+                    VideoTransformerBlock(
+                        inner_dim,
+                        n_time_mix_heads,
+                        time_mix_d_head,
+                        dropout=dropout,
+                        context_dim=audio_context_dim,
+                        timesteps=timesteps,
+                        checkpoint=checkpoint,
+                        ff_in=ff_in,
+                        inner_dim=time_mix_inner_dim,
+                        attn_mode=attn_mode,
+                        disable_self_attn=disable_self_attn,
+                        disable_temporal_crossattention=disable_temporal_crossattention or self.skip_time,
+                    )
+                    for _ in range(self.depth)
+                ]
+            )
+            self.audio_mixer = AlphaBlender(alpha=merge_audio_factor, merge_strategy=merge_strategy)
+
         assert len(self.time_stack) == len(self.transformer_blocks)
 
         self.use_spatial_context = use_spatial_context
@@ -226,6 +251,7 @@ class SpatialVideoTransformer(SpatialTransformer):
         x: torch.Tensor,
         context: Optional[torch.Tensor] = None,
         time_context: Optional[torch.Tensor] = None,
+        audio_context: Optional[torch.Tensor] = None,
         timesteps: Optional[int] = None,
         image_only_indicator: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
@@ -237,7 +263,6 @@ class SpatialVideoTransformer(SpatialTransformer):
 
         if self.use_spatial_context:
             assert context.ndim == 3, f"n dims of spatial context should be 3 but are {context.ndim}"
-
             time_context = context
             time_context_first_timestep = time_context[::timesteps]
             time_context = repeat(time_context_first_timestep, "b ... -> (b n) ...", n=h * w)
@@ -245,6 +270,11 @@ class SpatialVideoTransformer(SpatialTransformer):
             time_context = repeat(time_context, "b ... -> (b n) ...", n=h * w)
             if time_context.ndim == 2:
                 time_context = rearrange(time_context, "b c -> b 1 c")
+
+        if audio_context is not None:
+            audio_context = repeat(audio_context, "b ... -> (b n) ...", n=h * w)
+            if audio_context.ndim == 2:
+                audio_context = rearrange(audio_context, "b c -> b 1 c")
 
         x = self.norm(x)
         if not self.use_linear:
@@ -282,6 +312,14 @@ class SpatialVideoTransformer(SpatialTransformer):
                     x_temporal=x_mix,
                     image_only_indicator=image_only_indicator,
                 )
+
+            if self.audio_stack is not None:
+                audio_mix_block = self.audio_stack[it_]
+                x_audio = x
+                # x_audio = x_audio + emb
+                x_audio = audio_mix_block(x_audio, context=audio_context, timesteps=timesteps)
+                x = self.audio_mixer(x, x_audio, image_only_indicator=image_only_indicator)
+
         if self.use_linear:
             x = self.proj_out(x)
         x = rearrange(x, "b (h w) c -> b c h w", h=h, w=w)

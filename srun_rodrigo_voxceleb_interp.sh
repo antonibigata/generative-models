@@ -25,4 +25,5 @@ srun python main.py --base configs/example_training/svd_interpolation_no_emb.yam
     data.params.train.datapipeline.latent_folder=/fsx/rs2517/data/voxceleb2_sd_latent \
     data.params.train.datapipeline.audio_in_video=True \
     data.params.train.datapipeline.load_all_possible_indexes=False \
-    lightning.trainer.devices=8 lightning.trainer.accumulate_grad_batches=4
+    lightning.trainer.devices=8 lightning.trainer.accumulate_grad_batches=4 \
+    model.params.network_config.params.audio_dim=1280 

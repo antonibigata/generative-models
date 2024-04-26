@@ -77,6 +77,7 @@ class TimestepEmbedSequential(nn.Sequential, TimestepBlock):
         x: th.Tensor,
         emb: th.Tensor,
         context: Optional[th.Tensor] = None,
+        audio_context: Optional[th.Tensor] = None,
         image_only_indicator: Optional[th.Tensor] = None,
         time_context: Optional[int] = None,
         num_video_frames: Optional[int] = None,
@@ -95,6 +96,7 @@ class TimestepEmbedSequential(nn.Sequential, TimestepBlock):
                     x,
                     context,
                     time_context,
+                    audio_context,
                     num_video_frames,
                     image_only_indicator,
                 )
