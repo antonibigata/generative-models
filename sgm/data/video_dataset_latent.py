@@ -354,7 +354,11 @@ class VideoDataset(Dataset):
         return self.maybe_augment(video)
 
     def __getitem__(self, idx):
-        clean_cond, noisy_cond, target, audio, raw_audio, cond_noise = self._get_frames_and_audio(idx)
+        try:
+            clean_cond, noisy_cond, target, audio, raw_audio, cond_noise = self._get_frames_and_audio(idx)
+        except Exception as e:
+            print(f"Error with index {idx}: {e}")
+            return self.__getitem__(np.random.randint(0, len(self)))
         out_data = {}
         # out_data = {"cond": cond, "video": target, "audio": audio, "video_file": video_file}
 
