@@ -142,6 +142,7 @@ class VideoUNet(nn.Module):
         if num_head_channels == -1:
             assert num_heads != -1
 
+        self.additional_audio_frames = additional_audio_frames
         audio_multiplier = additional_audio_frames * 2 + 1
         audio_dim = audio_dim * audio_multiplier
         if "to_time_emb" in audio_cond_method:
