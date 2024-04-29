@@ -21,7 +21,7 @@ model:
         f_max: [1.]
         f_min: [1.]
 
-    freeze_time: false
+    to_freeze: []
     to_unfreeze: []
 
     # LoRA

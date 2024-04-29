@@ -50,7 +50,7 @@ class DiffusionEngine(pl.LightningModule):
         use_lora: Optional[bool] = False,
         only_train_ipadapter: Optional[bool] = False,
         to_unfreeze: Optional[List[str]] = [],
-        freeze_time: Optional[bool] = False,
+        to_freeze: Optional[List[str]] = [],
         lora_config: Optional[Dict] = None,
         separate_unet_ckpt: Optional[str] = None,
         use_thunder: Optional[bool] = False,
@@ -141,11 +141,20 @@ class DiffusionEngine(pl.LightningModule):
             # )
             # self.model = LoraModel(self.model, lora_config, "bite")
 
-        if freeze_time:
-            for name, p in self.named_parameters():
-                if "time_" in name:
-                    print("Freezing", name)
-                    p.requires_grad = False
+        if to_freeze:
+            for name, p in self.model.diffusion_model.named_parameters():
+                for layer in to_freeze:
+                    if layer[0] == "!":
+                        if layer[1:] not in name:
+                            print("Freezing", name)
+                            p.requires_grad = False
+                    else:
+                        if layer in name:
+                            print("Freezing", name)
+                            p.requires_grad = False
+                # if "time_" in name:
+                #     print("Freezing", name)
+                #     p.requires_grad = False
 
         if only_train_ipadapter:
             assert not use_lora, "Cannot use both Lora and IPAdapter at the same time"

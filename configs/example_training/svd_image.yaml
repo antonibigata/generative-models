@@ -21,7 +21,7 @@ model:
         f_max: [1.]
         f_min: [1.]
 
-    freeze_time: true
+    to_freeze: ["time_"]
     to_unfreeze: ["time_embed"]
 
     # LoRA
@@ -221,7 +221,7 @@ model:
     loss_fn_config:
       target: sgm.modules.diffusionmodules.loss.StandardDiffusionLoss
       params:
-        lambda_lower: 2.
+        lambda_lower: 1.
         batch2model_keys:
           - image_only_indicator
           - num_video_frames

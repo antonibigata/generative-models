@@ -20,5 +20,5 @@ srun python main.py --base configs/example_training/svd_interpolation_no_emb.yam
     lightning.strategy=deepspeed_stage_1 lightning.trainer.precision=32 model.base_learning_rate=3.e-5 \
     data.params.train.datapipeline.filelist=/fsx/rs2517/data/lists/HDTF/filelist_videos_train.txt \
     lightning.trainer.devices=8 lightning.trainer.accumulate_grad_batches=4 \
-    model.params.network_config.params.audio_cond_method=cross_attention \
-    model.params.freeze_time=true 'model.params.to_unfreeze=["time_embed"]' \
+    model.params.network_config.params.audio_cond_method=to_time_emb \
+    model.params.network_config.params.in_channels=8 model.params.network_wrapper.params.add_mask=False 'model.params.remove_keys_from_weights=[model.diffusion_model.label_emb.0.0.weight]' \
