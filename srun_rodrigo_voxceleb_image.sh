@@ -27,4 +27,4 @@ srun python main.py --base configs/example_training/svd_image.yaml --wandb True 
     data.params.train.datapipeline.load_all_possible_indexes=False \
     model.params.network_config.params.audio_dim=1280 \
     data.params.train.loader.num_workers=4 \
-    lightning.trainer.devices=8 lightning.trainer.accumulate_grad_batches=1 data.params.train.datapipeline.virtual_increase=100000 \
+    lightning.trainer.devices=8 lightning.trainer.accumulate_grad_batches=1 data.params.train.datapipeline.virtual_increase=1 \

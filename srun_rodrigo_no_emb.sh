@@ -21,4 +21,6 @@ srun python main.py --base configs/example_training/svd_interpolation_no_emb.yam
     data.params.train.datapipeline.filelist=/fsx/rs2517/data/lists/HDTF/filelist_videos_train.txt \
     lightning.trainer.devices=8 lightning.trainer.accumulate_grad_batches=4 \
     model.params.network_config.params.audio_cond_method=to_time_emb \
-    model.params.network_config.params.in_channels=8 model.params.network_wrapper.params.add_mask=False 'model.params.remove_keys_from_weights=[model.diffusion_model.label_emb.0.0.weight]' \
+    data.params.train.datapipeline.audio_emb_type=whisper \
+    model.params.network_config.params.audio_dim=1280 \
+    model.ckpt_path=/data/home/rs2517/code/generative-models/logs/2024-04-26T18-26-41_example_training-svd_interpolation_no_emb/checkpoints/last.ckpt/checkpoint/mp_rank_00_model_states.pt \

@@ -7,7 +7,7 @@ model:
     scale_factor: 0.18215
     disable_first_stage_autocast: True
     ckpt_path: checkpoints/svd_no_emb.safetensors
-    remove_keys_from_weights: [model.diffusion_model.input_blocks.0.0.weight, model.diffusion_model.label_emb.0.0.weight]
+    # remove_keys_from_weights: [model.diffusion_model.input_blocks.0.0.weight, model.diffusion_model.label_emb.0.0.weight]
     compile_model: False
     # optimizer_config: 
     #   target: deepspeed.ops.adam.DeepSpeedCPUAdam
@@ -76,7 +76,7 @@ model:
         fine_tuning_method: null
         audio_cond_method: to_time_emb
         additional_audio_frames: 0
-        audio_dim: 768
+        audio_dim: 1280
         unfreeze_blocks: ["input"] # Because we changed the input block
         # adapter_kwargs:
         #   # down_ratio: 1
