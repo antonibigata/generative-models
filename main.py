@@ -545,7 +545,7 @@ if __name__ == "__main__":
         # },
         "model_summary": {
             "target": "pytorch_lightning.callbacks.ModelSummary",
-            "params": {"max_depth": -1},
+            "params": {"max_depth": 1},
         },
         "learning_rate_logger": {
             "target": "pytorch_lightning.callbacks.LearningRateMonitor",
