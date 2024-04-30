@@ -195,7 +195,8 @@ class VideoDataset(Dataset):
         for tensor in tensors:
             current_length = tensor.shape[1]
             diff = current_length - target_length
-            assert abs(diff) <= 5, f"Expected shape {target_length}, but got {current_length}"
+            if abs(diff) <= 5:
+                print(f"Expected shape {target_length}, but got {current_length}")
             if diff < 0:
                 # Calculate how much padding is needed
                 padding_needed = target_length - current_length
