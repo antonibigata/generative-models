@@ -5,8 +5,8 @@ model:
     input_key: latents
     scale_factor: 0.18215
     disable_first_stage_autocast: True
-    ckpt_path: checkpoints/svd_no_emb.safetensors
-    remove_keys_from_weights: [model.diffusion_model.label_emb.0.0.weight]
+    ckpt_path: /vol/bitbucket/abigata/mp_rank_00_model_states.pt
+    # remove_keys_from_weights: [model.diffusion_model.label_emb.0.0.weight]
 
     # LoRA
     use_lora: False
@@ -166,4 +166,4 @@ model:
         guider_config:
           target: sgm.modules.diffusionmodules.guiders.VanillaCFG
           params:
-            scale: 2.
+            scale: 3.
