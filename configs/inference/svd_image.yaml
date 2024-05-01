@@ -5,7 +5,7 @@ model:
     input_key: latents
     scale_factor: 0.18215
     disable_first_stage_autocast: True
-    ckpt_path: /data2/Experiments/generative_models/mp_rank_00_model_states.safetensors
+    ckpt_path: /vol/bitbucket/abigata/mp_rank_00_model_states.safetensors
     # remove_keys_from_weights: [model.diffusion_model.label_emb.0.0.weight]
 
     # LoRA

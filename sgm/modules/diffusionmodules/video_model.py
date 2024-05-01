@@ -505,7 +505,7 @@ class VideoUNet(nn.Module):
         y: Optional[th.Tensor] = None,
         audio_emb: Optional[th.Tensor] = None,
         time_context: Optional[th.Tensor] = None,
-        num_video_frames: Optional[int] = None,
+        num_video_frames: Optional[int] = 1,
         image_only_indicator: Optional[th.Tensor] = None,
     ):
         # assert (y is not None) == (

@@ -123,6 +123,10 @@ def sample(
     model_config: Optional[str] = None,
     max_seconds: Optional[int] = None,
     lora_path: Optional[str] = None,
+    force_uc_zero_embeddings=[
+        "cond_frames",
+        "cond_frames_without_noise",
+    ],
 ):
     """
     Simple script to generate a single sample conditioned on an image `input_path` or multiple images, one for each
@@ -293,10 +297,7 @@ def sample(
                     c, uc = model.conditioner.get_unconditional_conditioning(
                         batch,
                         batch_uc=batch_uc,
-                        force_uc_zero_embeddings=[
-                            "cond_frames",
-                            "cond_frames_without_noise",
-                        ],
+                        force_uc_zero_embeddings=force_uc_zero_embeddings,
                     )
 
                     for k in ["crossattn"]:

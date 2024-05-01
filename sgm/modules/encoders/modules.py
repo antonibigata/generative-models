@@ -1117,12 +1117,16 @@ class VideoPredictionEmbedderWithEncoder(AbstractEmbModel):
         scale_factor: float = 1.0,
         disable_encoder_autocast: bool = False,
         en_and_decode_n_samples_a_time: Optional[int] = None,
+        load_encoder: bool = True,
     ):
         super().__init__()
 
         self.n_cond_frames = n_cond_frames
         self.n_copies = n_copies
-        self.encoder = instantiate_from_config(encoder_config)
+        if load_encoder:
+            self.encoder = instantiate_from_config(encoder_config)
+        else:
+            self.encoder = None
         self.sigma_sampler = (
             instantiate_from_config(sigma_sampler_config) if sigma_sampler_config is not None else None
         )

@@ -26,6 +26,7 @@ from sgm.modules.diffusionmodules.guiders import (
     LinearPredictionGuider,
     TrianglePredictionGuider,
     VanillaCFG,
+    MultipleCondVanilla,
 )
 from sgm.modules.diffusionmodules.sampling import (
     DPMPP2MSampler,
@@ -205,9 +206,7 @@ def perform_save_locally(save_path, samples):
     samples = embed_watermark(samples)
     for sample in samples:
         sample = 255.0 * rearrange(sample.cpu().numpy(), "c h w -> h w c")
-        Image.fromarray(sample.astype(np.uint8)).save(
-            os.path.join(save_path, f"{base_count:09}.png")
-        )
+        Image.fromarray(sample.astype(np.uint8)).save(os.path.join(save_path, f"{base_count:09}.png"))
         base_count += 1
 
 
@@ -224,21 +223,14 @@ def init_save_locally(_dir, init_value: bool = False):
 def get_guider(options, key):
     guider = st.sidebar.selectbox(
         f"Discretization #{key}",
-        [
-            "VanillaCFG",
-            "IdentityGuider",
-            "LinearPredictionGuider",
-            "TrianglePredictionGuider",
-        ],
+        ["VanillaCFG", "IdentityGuider", "LinearPredictionGuider", "TrianglePredictionGuider", "MultipleCondVanilla"],
         options.get("guider", 0),
     )
 
     additional_guider_kwargs = options.pop("additional_guider_kwargs", {})
 
     if guider == "IdentityGuider":
-        guider_config = {
-            "target": "sgm.modules.diffusionmodules.guiders.IdentityGuider"
-        }
+        guider_config = {"target": "sgm.modules.diffusionmodules.guiders.IdentityGuider"}
     elif guider == "VanillaCFG":
         scale = st.number_input(
             f"cfg-scale #{key}",
@@ -298,6 +290,29 @@ def get_guider(options, key):
                 **additional_guider_kwargs,
             },
         }
+    elif guider == "MultipleCondVanilla":
+        scales = st.text_input("Enter scales (comma-separated, e.g., 0.5, 1.5, 2.5):")
+
+        try:
+            # Convert the input string to a list of floats
+            scales = [float(x.strip()) for x in scales.split(",")]
+            st.write("Entered scales:", scales)
+        except ValueError:
+            # Handle cases where conversion to float fails (e.g., invalid input)
+            if scales:  # Only show the error if there's some input
+                st.error("Please make sure all entries are valid numbers.")
+
+        condition_names = st.text_input("Enter condition names (comma-separated, e.g., 'txt, image_embeds'):")
+        condition_names = [x.strip() for x in condition_names.split(",")]
+
+        guider_config = {
+            "target": "sgm.modules.diffusionmodules.guiders.MultipleCondVanilla",
+            "params": {
+                "scales": scales,
+                "condition_names": condition_names,
+            },
+        }
+
     else:
         raise NotImplementedError
     return guider_config
@@ -314,13 +329,9 @@ def init_sampling(
 
     num_rows, num_cols = 1, 1
     if specify_num_samples:
-        num_cols = st.number_input(
-            f"num cols #{key}", value=num_cols, min_value=1, max_value=10
-        )
+        num_cols = st.number_input(f"num cols #{key}", value=num_cols, min_value=1, max_value=10)
 
-    steps = st.number_input(
-        f"steps #{key}", value=options.get("num_steps", 50), min_value=1, max_value=1000
-    )
+    steps = st.number_input(f"steps #{key}", value=options.get("num_steps", 50), min_value=1, max_value=1000)
     sampler = st.sidebar.selectbox(
         f"Sampler #{key}",
         [
@@ -338,6 +349,7 @@ def init_sampling(
         [
             "LegacyDDPMDiscretization",
             "EDMDiscretization",
+            "AYSDiscretization",
         ],
         options.get("discretization", 0),
     )
@@ -348,12 +360,8 @@ def init_sampling(
 
     sampler = get_sampler(sampler, steps, discretization_config, guider_config, key=key)
     if img2img_strength is not None:
-        st.warning(
-            f"Wrapping {sampler.__class__.__name__} with Img2ImgDiscretizationWrapper"
-        )
-        sampler.discretization = Img2ImgDiscretizationWrapper(
-            sampler.discretization, strength=img2img_strength
-        )
+        st.warning(f"Wrapping {sampler.__class__.__name__} with Img2ImgDiscretizationWrapper")
+        sampler.discretization = Img2ImgDiscretizationWrapper(sampler.discretization, strength=img2img_strength)
     if stage2strength is not None:
         sampler.discretization = Txt2NoisyDiscretizationWrapper(
             sampler.discretization, strength=stage2strength, original_steps=steps
@@ -367,12 +375,8 @@ def get_discretization(discretization, options, key=1):
             "target": "sgm.modules.diffusionmodules.discretizer.LegacyDDPMDiscretization",
         }
     elif discretization == "EDMDiscretization":
-        sigma_min = st.sidebar.number_input(
-            f"sigma_min #{key}", value=options.get("sigma_min", 0.03)
-        )  # 0.0292
-        sigma_max = st.sidebar.number_input(
-            f"sigma_max #{key}", value=options.get("sigma_max", 14.61)
-        )  # 14.6146
+        sigma_min = st.sidebar.number_input(f"sigma_min #{key}", value=options.get("sigma_min", 0.03))  # 0.0292
+        sigma_max = st.sidebar.number_input(f"sigma_max #{key}", value=options.get("sigma_max", 14.61))  # 14.6146
         rho = st.sidebar.number_input(f"rho #{key}", value=options.get("rho", 3.0))
         discretization_config = {
             "target": "sgm.modules.diffusionmodules.discretizer.EDMDiscretization",
@@ -381,6 +385,10 @@ def get_discretization(discretization, options, key=1):
                 "sigma_max": sigma_max,
                 "rho": rho,
             },
+        }
+    elif discretization == "AYSDiscretization":
+        discretization_config = {
+            "target": "sgm.modules.diffusionmodules.discretizer.AYSDiscretization",
         }
 
     return discretization_config
@@ -415,10 +423,7 @@ def get_sampler(sampler_name, steps, discretization_config, guider_config, key=1
                 s_noise=s_noise,
                 verbose=True,
             )
-    elif (
-        sampler_name == "EulerAncestralSampler"
-        or sampler_name == "DPMPP2SAncestralSampler"
-    ):
+    elif sampler_name == "EulerAncestralSampler" or sampler_name == "DPMPP2SAncestralSampler":
         s_noise = st.sidebar.number_input("s_noise", value=1.0, min_value=0.0)
         eta = st.sidebar.number_input("eta", value=1.0, min_value=0.0)
 
@@ -521,6 +526,7 @@ def do_sample(
     T=None,
     additional_batch_uc_fields=None,
     decoding_t=None,
+    gt=None,
 ):
     force_uc_zero_embeddings = default(force_uc_zero_embeddings, [])
     batch2model_input = default(batch2model_input, [])
@@ -557,9 +563,7 @@ def do_sample(
 
                 for k in c:
                     if not k == "crossattn":
-                        c[k], uc[k] = map(
-                            lambda y: y[k][: math.prod(num_samples)].to("cuda"), (c, uc)
-                        )
+                        c[k], uc[k] = map(lambda y: y[k][: math.prod(num_samples)].to("cuda"), (c, uc))
                     if k in ["crossattn", "concat"] and T is not None:
                         uc[k] = repeat(uc[k], "b ... -> b t ...", t=T)
                         uc[k] = rearrange(uc[k], "b t ... -> (b t) ...", t=T)
@@ -577,15 +581,12 @@ def do_sample(
                                 VanillaCFG,
                                 LinearPredictionGuider,
                                 TrianglePredictionGuider,
+                                MultipleCondVanilla,
                             ),
                         ):
-                            additional_model_inputs[k] = torch.zeros(
-                                num_samples[0] * 2, num_samples[1]
-                            ).to("cuda")
+                            additional_model_inputs[k] = torch.zeros(num_samples[0] * 2, num_samples[1]).to("cuda")
                         else:
-                            additional_model_inputs[k] = torch.zeros(num_samples).to(
-                                "cuda"
-                            )
+                            additional_model_inputs[k] = torch.zeros(num_samples).to("cuda")
                     else:
                         additional_model_inputs[k] = batch[k]
 
@@ -593,9 +594,7 @@ def do_sample(
                 randn = torch.randn(shape).to("cuda")
 
                 def denoiser(input, sigma, c):
-                    return model.denoiser(
-                        model.model, input, sigma, c, **additional_model_inputs
-                    )
+                    return model.denoiser(model.model, input, sigma, c, **additional_model_inputs)
 
                 load_model(model.denoiser)
                 load_model(model.model)
@@ -604,9 +603,7 @@ def do_sample(
                 unload_model(model.denoiser)
 
                 load_model(model.first_stage_model)
-                model.en_and_decode_n_samples_a_time = (
-                    decoding_t  # Decode n frames at a time
-                )
+                model.en_and_decode_n_samples_a_time = decoding_t  # Decode n frames at a time
                 samples_x = model.decode_first_stage(samples_z)
                 samples = torch.clamp((samples_x + 1.0) / 2.0, min=0.0, max=1.0)
                 unload_model(model.first_stage_model)
@@ -614,6 +611,9 @@ def do_sample(
                 if filter is not None:
                     samples = filter(samples)
 
+                if gt is not None:
+                    # gt = rearrange(gt, "b c h w -> b () c h w")
+                    samples = torch.cat([samples, torch.clamp((gt + 1.0) / 2.0, min=0.0, max=1.0)], dim=-1)
                 if T is None:
                     grid = torch.stack([samples])
                     grid = rearrange(grid, "n b c h w -> (n h) (b w) c")
@@ -653,28 +653,18 @@ def get_batch(
 
         elif key == "original_size_as_tuple":
             batch["original_size_as_tuple"] = (
-                torch.tensor([value_dict["orig_height"], value_dict["orig_width"]])
-                .to(device)
-                .repeat(math.prod(N), 1)
+                torch.tensor([value_dict["orig_height"], value_dict["orig_width"]]).to(device).repeat(math.prod(N), 1)
             )
         elif key == "crop_coords_top_left":
             batch["crop_coords_top_left"] = (
-                torch.tensor(
-                    [value_dict["crop_coords_top"], value_dict["crop_coords_left"]]
-                )
+                torch.tensor([value_dict["crop_coords_top"], value_dict["crop_coords_left"]])
                 .to(device)
                 .repeat(math.prod(N), 1)
             )
         elif key == "aesthetic_score":
-            batch["aesthetic_score"] = (
-                torch.tensor([value_dict["aesthetic_score"]])
-                .to(device)
-                .repeat(math.prod(N), 1)
-            )
+            batch["aesthetic_score"] = torch.tensor([value_dict["aesthetic_score"]]).to(device).repeat(math.prod(N), 1)
             batch_uc["aesthetic_score"] = (
-                torch.tensor([value_dict["negative_aesthetic_score"]])
-                .to(device)
-                .repeat(math.prod(N), 1)
+                torch.tensor([value_dict["negative_aesthetic_score"]]).to(device).repeat(math.prod(N), 1)
             )
 
         elif key == "target_size_as_tuple":
@@ -684,23 +674,13 @@ def get_batch(
                 .repeat(math.prod(N), 1)
             )
         elif key == "fps":
-            batch[key] = (
-                torch.tensor([value_dict["fps"]]).to(device).repeat(math.prod(N))
-            )
+            batch[key] = torch.tensor([value_dict["fps"]]).to(device).repeat(math.prod(N))
         elif key == "fps_id":
-            batch[key] = (
-                torch.tensor([value_dict["fps_id"]]).to(device).repeat(math.prod(N))
-            )
+            batch[key] = torch.tensor([value_dict["fps_id"]]).to(device).repeat(math.prod(N))
         elif key == "motion_bucket_id":
-            batch[key] = (
-                torch.tensor([value_dict["motion_bucket_id"]])
-                .to(device)
-                .repeat(math.prod(N))
-            )
+            batch[key] = torch.tensor([value_dict["motion_bucket_id"]]).to(device).repeat(math.prod(N))
         elif key == "pool_image":
-            batch[key] = repeat(value_dict[key], "1 ... -> b ...", b=math.prod(N)).to(
-                device, dtype=torch.half
-            )
+            batch[key] = repeat(value_dict[key], "1 ... -> b ...", b=math.prod(N)).to(device, dtype=torch.half)
         elif key == "cond_aug":
             batch[key] = repeat(
                 torch.tensor([value_dict["cond_aug"]]).to("cuda"),
@@ -710,20 +690,18 @@ def get_batch(
         elif key == "cond_frames":
             batch[key] = repeat(value_dict["cond_frames"], "1 ... -> b ...", b=N[0])
         elif key == "cond_frames_without_noise":
-            batch[key] = repeat(
-                value_dict["cond_frames_without_noise"], "1 ... -> b ...", b=N[0]
-            )
+            batch[key] = repeat(value_dict["cond_frames_without_noise"], "1 ... -> b ...", b=N[0])
         elif key == "polars_rad":
             batch[key] = torch.tensor(value_dict["polars_rad"]).to(device).repeat(N[0])
         elif key == "azimuths_rad":
-            batch[key] = (
-                torch.tensor(value_dict["azimuths_rad"]).to(device).repeat(N[0])
-            )
+            batch[key] = torch.tensor(value_dict["azimuths_rad"]).to(device).repeat(N[0])
         else:
             batch[key] = value_dict[key]
 
     if T is not None:
         batch["num_video_frames"] = T
+    elif key == "num_video_frames":
+        batch["num_video_frames"] = value_dict[key]
 
     for key in batch.keys():
         if key not in batch_uc and isinstance(batch[key], torch.Tensor):
@@ -789,9 +767,7 @@ def do_img2img(
                 st.info(f"all sigmas: {sigmas}")
                 st.info(f"noising sigma: {sigma}")
                 if offset_noise_level > 0.0:
-                    noise = noise + offset_noise_level * append_dims(
-                        torch.randn(z.shape[0], device=z.device), z.ndim
-                    )
+                    noise = noise + offset_noise_level * append_dims(torch.randn(z.shape[0], device=z.device), z.ndim)
                 if add_noise:
                     noised_z = z + noise * append_dims(sigma, z.ndim).cuda()
                     noised_z = noised_z / torch.sqrt(
@@ -824,9 +800,7 @@ def do_img2img(
                 return samples
 
 
-def get_resizing_factor(
-    desired_shape: Tuple[int, int], current_shape: Tuple[int, int]
-) -> float:
+def get_resizing_factor(desired_shape: Tuple[int, int], current_shape: Tuple[int, int]) -> float:
     r_bound = desired_shape[1] / desired_shape[0]
     aspect_r = current_shape[1] / current_shape[0]
     if r_bound >= 1.0:
@@ -858,9 +832,7 @@ def get_interactive_image(key=None) -> Image.Image:
         return image
 
 
-def load_img_for_prediction(
-    W: int, H: int, display=True, key=None, device="cuda"
-) -> torch.Tensor:
+def load_img_for_prediction(W: int, H: int, display=True, key=None, device="cuda") -> torch.Tensor:
     image = get_interactive_image(key=key)
     if image is None:
         return None
@@ -882,9 +854,7 @@ def load_img_for_prediction(
     top = (resize_size[0] - H) // 2
     left = (resize_size[1] - W) // 2
 
-    image = torch.nn.functional.interpolate(
-        image, resize_size, mode="area", antialias=False
-    )
+    image = torch.nn.functional.interpolate(image, resize_size, mode="area", antialias=False)
     image = TT.functional.crop(image, top=top, left=left, height=H, width=W)
 
     if display:
@@ -894,9 +864,7 @@ def load_img_for_prediction(
     return image.to(device) * 2.0 - 1.0
 
 
-def save_video_as_grid_and_mp4(
-    video_batch: torch.Tensor, save_path: str, T: int, fps: int = 5
-):
+def save_video_as_grid_and_mp4(video_batch: torch.Tensor, save_path: str, T: int, fps: int = 5):
     os.makedirs(save_path, exist_ok=True)
     base_count = len(glob(os.path.join(save_path, "*.mp4")))
 
@@ -906,9 +874,7 @@ def save_video_as_grid_and_mp4(
         save_image(vid, fp=os.path.join(save_path, f"{base_count:06d}.png"), nrow=4)
 
         video_path = os.path.join(save_path, f"{base_count:06d}.mp4")
-        vid = (
-            (rearrange(vid, "t c h w -> t h w c") * 255).cpu().numpy().astype(np.uint8)
-        )
+        vid = (rearrange(vid, "t c h w -> t h w c") * 255).cpu().numpy().astype(np.uint8)
         imageio.mimwrite(video_path, vid, fps=fps)
 
         video_path_h264 = video_path[:-4] + "_h264.mp4"

@@ -4,7 +4,7 @@ model:
     scale_factor: 0.18215
     disable_first_stage_autocast: True
     # ckpt_path: /vol/paramonos2/projects/antoni/code/Personal/generative-models/checkpoints/svd.safetensors
-    ckpt_path: /vol/bitbucket/abigata/ckpt_16_55.pt
+    ckpt_path: /data2/Experiments/generative_models/logs/2024-04-29T20-15-36_example_training-svd_interpolation_no_emb/checkpoints/last.ckpt/checkpoint/mp_rank_00_model_states.pt
     # remove_keys_from_weights: [model.diffusion_model.input_blocks.0.0.weight]
 
     denoiser_config:
@@ -188,10 +188,10 @@ model:
         #     num_frames: 14
 
         guider_config:
-          target: sgm.modules.diffusionmodules.guiders.IdentityGuider
+          target: sgm.modules.diffusionmodules.guiders.VanillaCFG
           params:
-            chybre: 0.0
-            num_frames: 14
+            scale: 2.0
+            # num_frames: 14
           # target: sgm.modules.diffusionmodules.guiders.MultipleCondVanilla
           # params:
           #   scales: [1., 0.5]

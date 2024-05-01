@@ -413,12 +413,12 @@ if __name__ == "__main__":
     print(len(dataset))
     idx = np.random.randint(0, len(dataset))
 
-    for i in range(10):
+    for i in range(len(dataset)):
         print(dataset[i][0].shape, dataset[i][1].shape)
 
-    image_identity = (dataset[idx][0].permute(1, 2, 0).numpy() + 1) / 2 * 255
-    image_other = (dataset[idx][1][:, -1].permute(1, 2, 0).numpy() + 1) / 2 * 255
-    cv2.imwrite("image_identity.png", image_identity[:, :, ::-1])
-    for i in range(25):
-        image = (dataset[idx][1][:, i].permute(1, 2, 0).numpy() + 1) / 2 * 255
-        cv2.imwrite(f"tmp_vid_dataset/image_{i}.png", image[:, :, ::-1])
+    # image_identity = (dataset[idx][0].permute(1, 2, 0).numpy() + 1) / 2 * 255
+    # image_other = (dataset[idx][1][:, -1].permute(1, 2, 0).numpy() + 1) / 2 * 255
+    # cv2.imwrite("image_identity.png", image_identity[:, :, ::-1])
+    # for i in range(25):
+    #     image = (dataset[idx][1][:, i].permute(1, 2, 0).numpy() + 1) / 2 * 255
+    #     cv2.imwrite(f"tmp_vid_dataset/image_{i}.png", image[:, :, ::-1])

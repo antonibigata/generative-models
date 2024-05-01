@@ -74,16 +74,6 @@ class MultipleCondVanilla(Guider):
                 if k in ["vector", "crossattn", "concat", "audio_emb", "image_embeds", "landmarks"]:
                     c_out[k] = torch.cat((c_out[k], uc[k] if k in cond_name else c[k]), 0)
 
-        # for k, v in c_out.items():
-        #     if isinstance(v, torch.Tensor):
-        #         print(k, v.shape)
-
-        # print(
-        #     torch.cat([x] * (self.n_conditions + 1)).shape,
-        #     torch.cat([s] * (self.n_conditions + 1)).shape,
-        #     self.n_conditions,
-        # )
-
         return torch.cat([x] * (self.n_conditions + 1)), torch.cat([s] * (self.n_conditions + 1)), c_out
 
 

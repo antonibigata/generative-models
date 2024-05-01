@@ -124,6 +124,8 @@ def get_audio_embeddings(audio_path, output_path, model_size, fps):
                 audio = (audio - audio.mean()) / torch.sqrt(audio.var() + 1e-7)
                 # print(audio.shape, max_len_sec * audio_rate)
                 audio_embeddings = model.encode_audio(audio)
+                if audio_embeddings.shape[0] - frames.shape[0] == 1:
+                    audio_embeddings = audio_embeddings[: frames.shape[0]]
             else:
                 audio = trim_pad_audio(audio, audio_rate, max_len_sec=max_len_sec)[0]
                 audio = make_into_multiple_of(audio, samples_per_frame, dim=0)
@@ -139,7 +141,8 @@ def get_audio_embeddings(audio_path, output_path, model_size, fps):
             audio_file_name = audio_file_name.replace(args.in_dir, args.out_dir)
             os.makedirs(os.path.dirname(audio_file_name), exist_ok=True)
             torch.save(audio_embeddings.squeeze(0).cpu(), audio_file_name)
-        except:
+        except Exception as e:
+            print(e)
             print(f"Failed for file {audio_file}")
 
 

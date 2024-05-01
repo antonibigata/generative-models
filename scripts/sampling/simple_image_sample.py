@@ -55,15 +55,7 @@ def get_audio_embeddings(audio_path: str, audio_rate: int = 16000, fps: int = 25
 
         if "whisper" in audio_path.lower():
             raise NotImplementedError("Whisper audio embeddings are not yet supported.")
-            # audio_model = Whisper(model_size="large-v2", fps=25)
-            # model.eval()
-            # # Get audio embeddings
-            # audio_embeddings = []
-            # for chunk in torch.split(
-            #     raw_audio, 750, dim=0
-            # ):  # 750 is the max size of the audio chunks that can be processed by the model (= 30 seconds)
-            #     audio_embeddings.append(audio_model(chunk.unsqueeze(0).cuda()))
-            # audio = torch.cat(audio_embeddings, dim=1).squeeze(0)
+
     elif audio_path is not None and audio_path.endswith(".pt"):
         audio = torch.load(audio_path)
         raw_audio_path = audio_path.replace(".pt", ".wav").replace("_whisper_emb", "")
@@ -211,6 +203,7 @@ def sample(
         emb = video_emb[0] if video_emb is not None else None
 
         samples_list = []
+        samples_list_gt = [torch.clamp((cond.unsqueeze(0) + 1.0) / 2.0, min=0.0, max=1.0)]
         for i in tqdm(
             range(num_frames - 1, len(audio), num_frames), desc="Autoregressive", total=len(audio) // num_frames
         ):
@@ -295,11 +288,18 @@ def sample(
                     video = None
 
                     samples_list.append(samples)  # Keep last frame of last chunk
+                    samples_list_gt.append(torch.clamp((model_input[i].unsqueeze(0) + 1.0) / 2.0, min=0.0, max=1.0))
                     # samples_list.append(samples)
 
         samples_list.insert(0, torch.clamp((condition + 1.0) / 2.0, min=0.0, max=1.0))
         samples = torch.concatenate(samples_list)
         samples = torchvision.utils.make_grid(samples)
+
+        samples_gt = torch.concatenate(samples_list_gt)
+        samples_gt = torchvision.utils.make_grid(samples_gt)
+
+        # Concate gt under samples
+        samples = torch.cat([samples, samples_gt], dim=1)
 
         os.makedirs(output_folder, exist_ok=True)
         base_count = len(glob(os.path.join(output_folder, "*.png")))
