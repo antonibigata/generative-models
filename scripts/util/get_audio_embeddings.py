@@ -102,7 +102,7 @@ def get_audio_embeddings(audio_path, output_path, model_size, fps):
             audio_file_name = os.path.splitext(audio_file_name)[0]
             audio_file_name = audio_file_name + f"_{args.model_type}_emb.pt"
             audio_file_name = os.path.join(os.path.dirname(audio_file), audio_file_name)
-            if os.path.exists(audio_file_name) and not args.recompute:
+            if os.path.exists(audio_file_name.replace(args.in_dir, args.out_dir)) and not args.recompute:
                 continue
 
             video_path = audio_file.replace(args.audio_folder, args.video_folder).replace(".wav", ".mp4")
