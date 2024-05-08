@@ -19,6 +19,7 @@ class StandardDiffusionLoss(nn.Module):
         offset_noise_level: float = 0.0,
         batch2model_keys: Optional[Union[str, List[str]]] = None,
         lambda_lower: float = 1.0,
+        lambda_upper: float = 1.0,
     ):
         super().__init__()
 
@@ -30,6 +31,7 @@ class StandardDiffusionLoss(nn.Module):
         self.loss_type = loss_type
         self.offset_noise_level = offset_noise_level
         self.lambda_lower = lambda_lower
+        self.lambda_upper = lambda_upper
 
         if loss_type == "lpips":
             self.lpips = LPIPS().eval()
@@ -96,6 +98,11 @@ class StandardDiffusionLoss(nn.Module):
             weight_lower = torch.ones_like(model_output, device=w.device)
             weight_lower[:, :, model_output.shape[2] // 2 :] *= self.lambda_lower
             w = weight_lower * w
+
+        if self.lambda_upper != 1.0:
+            weight_upper = torch.ones_like(model_output, device=w.device)
+            weight_upper[:, :, : model_output.shape[2] // 2] *= self.lambda_upper
+            w = weight_upper * w
 
         if self.loss_type == "l2":
             return torch.mean((w * (model_output - target) ** 2).reshape(target.shape[0], -1), 1)

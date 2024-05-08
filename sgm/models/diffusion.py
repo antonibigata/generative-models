@@ -54,6 +54,7 @@ class DiffusionEngine(pl.LightningModule):
         lora_config: Optional[Dict] = None,
         separate_unet_ckpt: Optional[str] = None,
         use_thunder: Optional[bool] = False,
+        is_dubbing: Optional[bool] = False,
     ):
         super().__init__()
 
@@ -62,6 +63,7 @@ class DiffusionEngine(pl.LightningModule):
         self.log_keys = log_keys
         self.no_log_keys = no_log_keys
         self.input_key = input_key
+        self.is_dubbing = is_dubbing
         self.optimizer_config = default(optimizer_config, {"target": "torch.optim.AdamW"})
         model = instantiate_from_config(network_config)
         if isinstance(network_wrapper, str) or network_wrapper is None:
@@ -505,11 +507,13 @@ class DiffusionEngine(pl.LightningModule):
             with self.ema_scope("Plotting"):
                 samples = self.sample(c, shape=z.shape[1:], uc=uc, batch_size=N, **sampling_kwargs)
             samples = self.decode_first_stage(samples)
+
             log["samples"] = samples
 
             with self.ema_scope("Plotting"):
                 samples = self.sample_no_guider(c, shape=z.shape[1:], uc=uc, batch_size=N, **sampling_kwargs)
             samples = self.decode_first_stage(samples)
+
             log["samples_no_guidance"] = samples
         return log
 
@@ -522,14 +526,14 @@ class DiffusionEngine(pl.LightningModule):
         ucg_keys: List[str] = None,
         **kwargs,
     ) -> Dict:
-        conditioner_input_keys = [e.input_key for e in self.conditioner.embedders]
-        if ucg_keys:
-            assert all(map(lambda x: x in conditioner_input_keys, ucg_keys)), (
-                "Each defined ucg key for sampling must be in the provided conditioner input keys,"
-                f"but we have {ucg_keys} vs. {conditioner_input_keys}"
-            )
-        else:
-            ucg_keys = conditioner_input_keys
+        # conditioner_input_keys = [e.input_key for e in self.conditioner.embedders]
+        # if ucg_keys:
+        #     assert all(map(lambda x: x in conditioner_input_keys, ucg_keys)), (
+        #         "Each defined ucg key for sampling must be in the provided conditioner input keys,"
+        #         f"but we have {ucg_keys} vs. {conditioner_input_keys}"
+        #     )
+        # else:
+        #     ucg_keys = conditioner_input_keys
         log = dict()
         batch_uc = {}
 
@@ -543,7 +547,9 @@ class DiffusionEngine(pl.LightningModule):
         c, uc = self.conditioner.get_unconditional_conditioning(
             batch,
             batch_uc=batch_uc,
-            force_uc_zero_embeddings=[
+            force_uc_zero_embeddings=ucg_keys
+            if ucg_keys is not None
+            else [
                 "cond_frames",
                 "cond_frames_without_noise",
             ],
@@ -583,6 +589,8 @@ class DiffusionEngine(pl.LightningModule):
             with self.ema_scope("Plotting"):
                 samples = self.sample(c, shape=z.shape[1:], uc=uc, batch_size=N, **sampling_kwargs)
             samples = self.decode_first_stage(samples)
+            if self.is_dubbing:
+                samples[:, :, :, : samples.shape[-2] // 2] = log["reconstructions"][:, :, :, : samples.shape[-2] // 2]
             log["samples"] = samples
 
             # Without guidance
@@ -595,6 +603,8 @@ class DiffusionEngine(pl.LightningModule):
             with self.ema_scope("Plotting"):
                 samples = self.sample_no_guider(c, shape=z.shape[1:], uc=uc, batch_size=N, **sampling_kwargs)
             samples = self.decode_first_stage(samples)
+            if self.is_dubbing:
+                samples[:, :, :, : samples.shape[-2] // 2] = log["reconstructions"][:, :, :, : samples.shape[-2] // 2]
             log["samples_no_guidance"] = samples
 
         torch.cuda.empty_cache()

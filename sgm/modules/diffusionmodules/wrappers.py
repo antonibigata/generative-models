@@ -103,6 +103,33 @@ class StabilityWrapper(IdentityWrapper):
         )[0]
 
 
+class DubbingWrapper(IdentityWrapper):
+    # def __init__(self, diffusion_model, compile_model: bool = False, masking_method="lower"):
+    #     super().__init__(diffusion_model, compile_model)
+    #     self.masking_method = masking_method
+
+    def forward(self, x: torch.Tensor, t: torch.Tensor, c: dict, **kwargs) -> torch.Tensor:
+        cond_cat = c.get("concat", torch.Tensor([]).type_as(x))
+        if len(cond_cat.shape) and cond_cat.shape[0] and x.shape[0] != cond_cat.shape[0]:
+            T = x.shape[0] // cond_cat.shape[0]
+            cond_cat = rearrange(cond_cat, "b (t c) h w -> b c t h w", t=T)
+            cond_cat = rearrange(cond_cat, "b c t h w -> (b t) c h w")
+
+        x = torch.cat((x, cond_cat), dim=1)
+        out = self.diffusion_model(
+            x,
+            timesteps=t,
+            context=c.get("crossattn", None),
+            y=c.get("vector", None),
+            audio_emb=c.get("audio_emb", None),
+            **kwargs,
+        )
+
+        # # We only learn to predict the lower half of the image
+        # out[:, :, : x.shape[-2]] = cond_cat[:, :, : x.shape[-2]]
+        return out
+
+
 class InterpolationWrapper(IdentityWrapper):
     def __init__(
         self,
