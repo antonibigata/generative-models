@@ -15,6 +15,8 @@ from torchvision.transforms import RandomHorizontalFlip
 from audiomentations import Compose, AddGaussianNoise, PitchShift
 from safetensors.torch import load_file
 
+from sgm.data.data_utils import create_masks_from_landmarks_full_size
+
 torchaudio.set_audio_backend("sox_io")
 decord.bridge.set_bridge("torch")
 
@@ -48,6 +50,7 @@ class VideoDataset(Dataset):
         resize_size=None,
         audio_folder="Audio",
         video_folder="CroppedVideos",
+        landmarks_folder=None,
         video_extension=".avi",
         audio_extension=".wav",
         audio_rate=16000,
@@ -55,6 +58,7 @@ class VideoDataset(Dataset):
         audio_in_video=False,
         # fps=25,
         num_frames=5,
+        n_cond_frames=1,
         need_cond=False,
         step=1,
         max_missing_audio_files=10,
@@ -73,6 +77,7 @@ class VideoDataset(Dataset):
         data_mean=None,
         data_std=None,
         use_latent_condition=False,
+        get_masks=False,
     ):
         self.audio_folder = audio_folder
         self.from_audio_embedding = from_audio_embedding
@@ -80,6 +85,7 @@ class VideoDataset(Dataset):
         self.cond_noise = cond_noise
         self.latent_condition = use_latent_condition
         precomputed_latent = latent_type
+        self.n_cond_frames = n_cond_frames
         # self.fps = fps
 
         assert not (exists(data_mean) ^ exists(data_std)), "Both data_mean and data_std should be provided"
@@ -93,8 +99,13 @@ class VideoDataset(Dataset):
         self.latent_folder = latent_folder if latent_folder is not None else video_folder
         self.audio_in_video = audio_in_video
 
+        landmarks_folder = video_folder if landmarks_folder is None else landmarks_folder
+        self.landmarks_folder = landmarks_folder
+        self.get_masks = get_masks
+
         self.filelist = []
         self.audio_filelist = []
+        self.landmark_filelist = [] if get_masks else None
         missing_audio = 0
         with open(filelist, "r") as files:
             for f in files.readlines():
@@ -108,6 +119,10 @@ class VideoDataset(Dataset):
                     continue
                 self.filelist += [f]
                 self.audio_filelist += [audio_path]
+
+                if self.get_masks:
+                    landmark_path = f.replace(video_folder, landmarks_folder).replace(video_extension, ".npy")
+                    self.landmark_filelist += [landmark_path]
 
         self.resize_size = resize_size
         if use_latent and not precomputed_latent:
@@ -154,13 +169,24 @@ class VideoDataset(Dataset):
         self.num_frames = num_frames
         self.load_all_possible_indexes = load_all_possible_indexes
         if load_all_possible_indexes:
-            self._indexes = self._get_indexes(self.filelist, self.audio_filelist)
+            self._indexes = self._get_indexes(self.filelist, self.audio_filelist, self.landmark_filelist)
         else:
-            self._indexes = list(zip(self.filelist, self.audio_filelist))
+            if self.get_masks:
+                self._indexes = list(zip(self.filelist, self.audio_filelist, self.landmark_filelist))
+            else:
+                self._indexes = list(zip(self.filelist, self.audio_filelist, [None] * len(self.filelist)))
+            # self._indexes = list(zip(self.filelist, self.audio_filelist))
         self.total_len = len(self._indexes)
 
     def __len__(self):
         return self.total_len
+
+    def _load_landmarks(self, filename, original_size, target_size, indexes):
+        landmarks = np.load(filename)[indexes, :]
+        mask = create_masks_from_landmarks_full_size(landmarks, original_size[0], original_size[1], offset=-0.01)
+        # Interpolate the mask to the target size
+        mask = F.interpolate(mask.unsqueeze(1).float(), size=target_size, mode="nearest")
+        return mask
 
     def _load_audio(self, filename, max_len_sec, start=None, indexes=None):
         audio, sr = sf.read(
@@ -208,14 +234,14 @@ class VideoDataset(Dataset):
 
     def _get_frames_and_audio(self, idx):
         if self.load_all_possible_indexes:
-            indexes, video_file, audio_file = self._indexes[idx]
+            indexes, video_file, audio_file, land_file = self._indexes[idx]
             if self.audio_in_video:
                 vr = decord.AVReader(video_file, sample_rate=self.audio_rate)
             else:
                 vr = decord.VideoReader(video_file)
             len_video = len(vr)
         else:
-            video_file, audio_file = self._indexes[idx]
+            video_file, audio_file, land_file = self._indexes[idx]
             if self.audio_in_video:
                 vr = decord.AVReader(video_file, sample_rate=self.audio_rate)
             else:
@@ -270,28 +296,29 @@ class VideoDataset(Dataset):
             frames = self.scale_and_crop((frames / 255.0) * 2 - 1)
 
         target = frames[:, 1:] if self.need_cond else frames
-        random_id_index = np.random.randint(0, len_video)
+        random_id_index = np.random.randint(0, len_video, size=self.n_cond_frames)
         if self.audio_in_video:
-            _, clean_cond = vr[random_id_index]
-            clean_cond = clean_cond.unsqueeze(0).permute(3, 0, 1, 2).float()
+            _, clean_cond = vr.get_batch(random_id_index)
+            clean_cond = clean_cond.permute(3, 0, 1, 2).float()
         else:
-            clean_cond = vr.get_batch([random_id_index]).permute(3, 0, 1, 2).float()
+            clean_cond = vr.get_batch(random_id_index).permute(3, 0, 1, 2).float()
+        original_size = clean_cond.shape[-2:]
         clean_cond = self.scale_and_crop((clean_cond / 255.0) * 2 - 1).squeeze(0)
         if self.use_latent:
             if self.latent_condition:
                 # Noisy cond is the taget with lower part of the face removed
                 noisy_cond = target.clone()
-                noisy_cond[:, :, noisy_cond.shape[-2] // 2 :, :] = 0
+                # noisy_cond[:, :, noisy_cond.shape[-2] // 2 :, :] = 0
             else:
                 if frames_video is not None:
                     noisy_cond = frames_video.permute(3, 0, 1, 2).float()
                 else:
                     noisy_cond = vr.get_batch(indexes).permute(3, 0, 1, 2).float()
                 noisy_cond = self.scale_and_crop((noisy_cond / 255.0) * 2 - 1)
-                noisy_cond[:, :, noisy_cond.shape[-2] // 2 :, :] = 0
+                # noisy_cond[:, :, noisy_cond.shape[-2] // 2 :, :] = 0
         else:
             noisy_cond = target.clone()
-            noisy_cond[:, :, noisy_cond.shape[-2] // 2 :, :] = 0
+            # noisy_cond[:, :, noisy_cond.shape[-2] // 2 :, :] = 0
 
         # Add noise to conditional frame
         # noisy_cond = None
@@ -304,22 +331,39 @@ class VideoDataset(Dataset):
         # else:
         #     cond_noise = None
 
-        return clean_cond, noisy_cond, target, audio_frames, raw_audio, cond_noise
+        # Maybe get mask from landmarks
+        if self.get_masks:
+            target_size = (
+                (self.resize_size, self.resize_size)
+                if not self.use_latent
+                else (self.resize_size // 8, self.resize_size // 8)
+            )
+            masks = self._load_landmarks(land_file, original_size, target_size, indexes).permute(1, 0, 2, 3)
+            resized_masks = F.interpolate(masks, size=(noisy_cond.shape[-2], noisy_cond.shape[-1]), mode="nearest")
+            noisy_cond = noisy_cond * (1 - resized_masks)
+        else:
+            masks = torch.zeros_like(noisy_cond)
+            masks[:, :, noisy_cond.shape[-2] // 2 :, :] = 1
+            noisy_cond = noisy_cond * (1 - masks)
 
-    def _get_indexes(self, video_filelist, audio_filelist):
+        return clean_cond, noisy_cond, target, masks, audio_frames, raw_audio, cond_noise
+
+    def _get_indexes(self, video_filelist, audio_filelist, landmark_filelist=None):
         indexes = []
         self.og_shape = None
-        for vid_file, audio_file in zip(video_filelist, audio_filelist):
+        for i, (vid_file, audio_file) in enumerate(zip(video_filelist, audio_filelist)):
             vr = decord.VideoReader(vid_file)
             if self.og_shape is None:
                 self.og_shape = vr[0].shape[-2]
             len_video = len(vr)
+
+            land_file = landmark_filelist[i] if self.get_masks else None
             # Short videos
             if len_video < self.num_frames:
                 continue
             else:
                 possible_indexes = list(sliding_window(range(len_video), self.num_frames))[:: self.step]
-                possible_indexes = list(map(lambda x: (x, vid_file, audio_file), possible_indexes))
+                possible_indexes = list(map(lambda x: (x, vid_file, audio_file, land_file), possible_indexes))
                 indexes.extend(possible_indexes)
         print("Indexes", len(indexes), "\n")
         return indexes
@@ -345,7 +389,7 @@ class VideoDataset(Dataset):
 
     def __getitem__(self, idx):
         try:
-            clean_cond, noisy_cond, target, audio, raw_audio, cond_noise = self._get_frames_and_audio(idx)
+            clean_cond, noisy_cond, target, masks, audio, raw_audio, cond_noise = self._get_frames_and_audio(idx)
         except Exception as e:
             print(f"Error with index {idx}: {e}")
             return self.__getitem__(np.random.randint(0, len(self)))
@@ -366,6 +410,10 @@ class VideoDataset(Dataset):
         out_data["cond_frames_without_noise"] = clean_cond
         if cond_noise is not None:
             out_data["cond_aug"] = cond_noise
+
+        if masks is not None:
+            out_data["masks"] = masks
+
         out_data["motion_bucket_id"] = torch.tensor([self.motion_id])
         out_data["fps_id"] = torch.tensor([self.video_rate - 1])
         out_data["num_video_frames"] = self.num_frames

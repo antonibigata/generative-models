@@ -7,9 +7,9 @@ model:
     scale_factor: 0.18215
     disable_first_stage_autocast: True
     ckpt_path: checkpoints/svd_no_emb.safetensors
-    remove_keys_from_weights: [model.diffusion_model.label_emb.0.0.weight]
+    remove_keys_from_weights: [model.diffusion_model.label_emb.0.0.weight, model.diffusion_model.input_blocks.0.0.weight]
     compile_model: False
-    is_dubbing: True
+    is_dubbing: False
     # optimizer_config: 
     #   target: deepspeed.ops.adam.DeepSpeedCPUAdam
 
@@ -54,7 +54,7 @@ model:
         adm_in_channels: 0
         num_classes: sequential
         use_checkpoint: True
-        in_channels: 8
+        in_channels: 9
         out_channels: 4
         model_channels: 320
         attention_resolutions: [4, 2, 1]
@@ -100,7 +100,7 @@ model:
           ucg_rate: 0.1
           target: sgm.modules.encoders.modules.FrozenOpenCLIPImagePredictionEmbedder
           params:
-            n_cond_frames: 1
+            n_cond_frames: 2
             n_copies: 1
             open_clip_embedding_config:
               target: sgm.modules.encoders.modules.FrozenOpenCLIPImageEmbedder
@@ -163,6 +163,13 @@ model:
             merge_method: mean 
             linear_dim: null
 
+        - input_key: masks
+          is_trainable: False
+          # ucg_rate: 0.1
+          target: sgm.modules.encoders.modules.IdentityEncoder
+          params:
+            cond_type: masks
+
     first_stage_config:
       target: sgm.models.autoencoder.AutoencodingEngine
       params:
@@ -219,7 +226,8 @@ model:
     loss_fn_config:
       target: sgm.modules.diffusionmodules.loss.StandardDiffusionLoss
       params:
-        lambda_upper: 0. # Remove the upper part of image from the loss
+        # lambda_upper: 1. 
+        # lambda_lower: 1.
         batch2model_keys:
           - image_only_indicator
           - num_video_frames
@@ -274,6 +282,7 @@ data:
         audio_in_video: False
         audio_rate: 16000
         num_frames: 14
+        n_cond_frames: 2
         need_cond: False
         use_latent: True
         latent_type: video
@@ -281,6 +290,7 @@ data:
         from_audio_embedding: True
         load_all_possible_indexes: True
         audio_emb_type: wav2vec2
+        get_masks: True
         # cond_noise: [-3.0, 0.5]
         cond_noise: 0.
         motion_id: 125
@@ -348,7 +358,7 @@ lightning:
         increase_log_steps: False
         log_first_step: True
         log_videos_kwargs:
-          ucg_keys: [cond_frames, cond_frames_without_noise, audio_emb]
+          ucg_keys: [cond_frames_without_noise, audio_emb]
           use_ema_scope: False
           N: 1
           n_rows: 1

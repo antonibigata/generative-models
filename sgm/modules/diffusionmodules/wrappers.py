@@ -115,6 +115,11 @@ class DubbingWrapper(IdentityWrapper):
             cond_cat = rearrange(cond_cat, "b (t c) h w -> b c t h w", t=T)
             cond_cat = rearrange(cond_cat, "b c t h w -> (b t) c h w")
 
+        masks = c.get("masks", None)
+        if masks is not None:
+            masks = rearrange(masks, "b c t h w -> (b t) c h w")
+            x = torch.cat((x, masks), dim=1)
+
         x = torch.cat((x, cond_cat), dim=1)
         out = self.diffusion_model(
             x,

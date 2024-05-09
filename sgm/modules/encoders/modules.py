@@ -210,6 +210,11 @@ class InceptionV3(nn.Module):
 
 
 class IdentityEncoder(AbstractEmbModel):
+    def __init__(self, cond_type=None):
+        super().__init__()
+        if cond_type is not None:
+            setattr(self, "cond_type", cond_type)
+
     def encode(self, x):
         return x
 

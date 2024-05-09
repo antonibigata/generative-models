@@ -2,6 +2,56 @@ import torch
 import numpy as np
 
 
+def create_masks_from_landmarks_full_size(
+    landmarks_batch, image_height, image_width, start_index=48, end_index=68, offset=0
+):
+    """
+    Efficiently creates a batch of masks using vectorized operations where each mask has ones from the highest
+    landmark in the specified range (adjusted by an offset) to the bottom of the image, and zeros otherwise.
+
+    Parameters:
+    - landmarks_batch (np.array): An array of shape (B, 68, 2) containing facial landmarks for multiple samples.
+    - image_height (int): The height of the image for which masks are created.
+    - image_width (int): The width of the image for which masks are created.
+    - start_index (int): The starting index of the range to check (inclusive).
+    - end_index (int): The ending index of the range to check (inclusive).
+    - offset (int): An offset to add or subtract from the y-coordinate of the highest landmark.
+
+    Returns:
+    - np.array: An array of masks of shape (B, image_height, image_width) for each batch.
+    """
+    # Extract the y-coordinates for the specified range across all batches
+    y_coords = landmarks_batch[:, start_index : end_index + 1, 1]
+
+    # Find the index of the minimum y-coordinate in the specified range for each batch
+    min_y_indices = np.argmin(y_coords, axis=1)
+
+    # Gather the highest landmarks' y-coordinates using the indices found
+    highest_y_coords = y_coords[np.arange(len(y_coords)), min_y_indices]
+
+    if abs(offset) < 1 and abs(offset) > 0:
+        offset = int(offset * image_height)
+
+    # Apply the offset to the highest y-coordinate
+    adjusted_y_coords = highest_y_coords + offset
+
+    # Clip the coordinates to stay within image boundaries
+    adjusted_y_coords = np.clip(adjusted_y_coords, 0, image_height - 1)
+
+    # Use broadcasting to create a mask without loops
+    # Create a range of indices from 0 to image_height - 1
+    all_indices = np.arange(image_height)
+
+    # Compare each index in 'all_indices' to each 'adjusted_y_coord' in the batch
+    # 'all_indices' has shape (image_height,), we reshape to (1, image_height) to broadcast against (B, 1)
+    mask_2d = (all_indices >= adjusted_y_coords[:, None]).astype(int)
+
+    # Extend the 2D mask to a full 3D mask of size (B, image_height, image_width)
+    full_mask = np.tile(mask_2d[:, :, np.newaxis], (1, 1, image_width))
+
+    return torch.from_numpy(full_mask)
+
+
 def scale_landmarks(landmarks, original_size, target_size):
     """
     Scale landmarks from original size to target size.
