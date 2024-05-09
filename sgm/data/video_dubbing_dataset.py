@@ -78,6 +78,7 @@ class VideoDataset(Dataset):
         data_std=None,
         use_latent_condition=False,
         get_masks=False,
+        only_predict_mouth=False,
     ):
         self.audio_folder = audio_folder
         self.from_audio_embedding = from_audio_embedding
@@ -86,6 +87,7 @@ class VideoDataset(Dataset):
         self.latent_condition = use_latent_condition
         precomputed_latent = latent_type
         self.n_cond_frames = n_cond_frames
+        self.only_predict_mouth = only_predict_mouth
         # self.fps = fps
 
         assert not (exists(data_mean) ^ exists(data_std)), "Both data_mean and data_std should be provided"
@@ -259,7 +261,8 @@ class VideoDataset(Dataset):
             latent_file = video_file.replace(self.video_ext, f"_{self.latent_type}_512_latent.safetensors").replace(
                 self.video_folder, self.latent_folder
             )
-            frames = load_file(latent_file)["latents"][indexes, :, :, :]
+            latents = load_file(latent_file)["latents"]
+            frames = latents[indexes, :, :, :]
 
             if frames.shape[-1] != 64:
                 print(f"Frames shape: {frames.shape}, video file: {video_file}")
@@ -307,9 +310,14 @@ class VideoDataset(Dataset):
         if self.use_latent:
             if self.latent_condition:
                 # Noisy cond is the taget with lower part of the face removed
-                noisy_cond = target.clone()
-                # noisy_cond[:, :, noisy_cond.shape[-2] // 2 :, :] = 0
+                if self.only_predict_mouth:
+                    noisy_cond = latents[random_id_index, :, :, :]
+                else:
+                    noisy_cond = target.clone()
             else:
+                assert (
+                    not self.only_predict_mouth
+                ), "Combination of latent_condition and only_predict_mouth not supported"
                 if frames_video is not None:
                     noisy_cond = frames_video.permute(3, 0, 1, 2).float()
                 else:
@@ -317,7 +325,10 @@ class VideoDataset(Dataset):
                 noisy_cond = self.scale_and_crop((noisy_cond / 255.0) * 2 - 1)
                 # noisy_cond[:, :, noisy_cond.shape[-2] // 2 :, :] = 0
         else:
-            noisy_cond = target.clone()
+            if self.only_predict_mouth:
+                noisy_cond = clean_cond
+            else:
+                noisy_cond = target.clone()
             # noisy_cond[:, :, noisy_cond.shape[-2] // 2 :, :] = 0
 
         # Add noise to conditional frame
@@ -410,6 +421,9 @@ class VideoDataset(Dataset):
         out_data["cond_frames_without_noise"] = clean_cond
         if cond_noise is not None:
             out_data["cond_aug"] = cond_noise
+
+        if self.only_predict_mouth:
+            out_data["gt"] = target
 
         if masks is not None:
             out_data["masks"] = masks

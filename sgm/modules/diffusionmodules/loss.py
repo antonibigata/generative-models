@@ -83,10 +83,14 @@ class StandardDiffusionLoss(nn.Module):
         noised_input = self.get_noised_input(sigmas_bc, noise, input)
 
         model_output = denoiser(network, noised_input, sigmas, cond, **additional_model_inputs)
+        mask = cond.get("mask", None)
         w = append_dims(self.loss_weighting(sigmas), input.ndim)
-        return self.get_loss(model_output, input, w)
+        return self.get_loss(model_output, input, w, mask)
 
-    def get_loss(self, model_output, target, w):
+    def get_loss(self, model_output, target, w, mask=None):
+        if mask is not None:
+            w = w * mask
+
         if target.ndim == 5:
             target = rearrange(target, "b c t h w -> (b t) c h w")
             B = w.shape[0]

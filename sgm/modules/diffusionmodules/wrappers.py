@@ -104,21 +104,26 @@ class StabilityWrapper(IdentityWrapper):
 
 
 class DubbingWrapper(IdentityWrapper):
-    # def __init__(self, diffusion_model, compile_model: bool = False, masking_method="lower"):
-    #     super().__init__(diffusion_model, compile_model)
-    #     self.masking_method = masking_method
+    def __init__(self, diffusion_model, compile_model: bool = False, mask_input=False):
+        super().__init__(diffusion_model, compile_model)
+        self.mask_input = mask_input
 
     def forward(self, x: torch.Tensor, t: torch.Tensor, c: dict, **kwargs) -> torch.Tensor:
         cond_cat = c.get("concat", torch.Tensor([]).type_as(x))
         if len(cond_cat.shape) and cond_cat.shape[0] and x.shape[0] != cond_cat.shape[0]:
             T = x.shape[0] // cond_cat.shape[0]
-            cond_cat = rearrange(cond_cat, "b (t c) h w -> b c t h w", t=T)
-            cond_cat = rearrange(cond_cat, "b c t h w -> (b t) c h w")
+            cond_cat = rearrange(cond_cat, "b (t c) h w -> (b t) c h w", t=T)
+            # cond_cat = rearrange(cond_cat, "b c t h w -> (b t) c h w")
 
         masks = c.get("masks", None)
         if masks is not None:
             masks = rearrange(masks, "b c t h w -> (b t) c h w")
-            x = torch.cat((x, masks), dim=1)
+            if self.mask_input:
+                gt = c.get("gt", torch.Tensor([]).type_as(x))
+                gt = rearrange(gt, "b c t h w -> (b t) c h w")
+                x = x * masks + gt * (1.0 - masks)
+            else:
+                x = torch.cat((x, masks), dim=1)
 
         x = torch.cat((x, cond_cat), dim=1)
         out = self.diffusion_model(
