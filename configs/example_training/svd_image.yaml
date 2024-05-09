@@ -161,7 +161,7 @@ model:
 
         - input_key: audio_emb
           is_trainable: True
-          ucg_rate: 0.1
+          ucg_rate: 0.25
           target: sgm.modules.encoders.modules.WhisperAudioEmbedder
           params:
             merge_method: mean 
