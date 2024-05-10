@@ -89,6 +89,7 @@ class StandardDiffusionLoss(nn.Module):
 
     def get_loss(self, model_output, target, w, mask=None):
         if mask is not None:
+            print(w.shape, mask.shape)
             w = w * mask
 
         if target.ndim == 5:

@@ -5,6 +5,7 @@ from einops import repeat, rearrange
 from diffusers.utils import _get_model_file
 from diffusers.models.modeling_utils import load_state_dict
 
+
 OPENAIUNETWRAPPER = "sgm.modules.diffusionmodules.wrappers.OpenAIWrapper"
 
 
@@ -110,8 +111,10 @@ class DubbingWrapper(IdentityWrapper):
 
     def forward(self, x: torch.Tensor, t: torch.Tensor, c: dict, **kwargs) -> torch.Tensor:
         cond_cat = c.get("concat", torch.Tensor([]).type_as(x))
-        if len(cond_cat.shape) and cond_cat.shape[0] and x.shape[0] != cond_cat.shape[0]:
+        if len(cond_cat.shape):
             T = x.shape[0] // cond_cat.shape[0]
+            if cond_cat.shape[1] == 4:
+                cond_cat = repeat(cond_cat, "b c h w -> b (t c) h w", t=T)
             cond_cat = rearrange(cond_cat, "b (t c) h w -> (b t) c h w", t=T)
             # cond_cat = rearrange(cond_cat, "b c t h w -> (b t) c h w")
 
@@ -119,9 +122,11 @@ class DubbingWrapper(IdentityWrapper):
         if masks is not None:
             masks = rearrange(masks, "b c t h w -> (b t) c h w")
             if self.mask_input:
-                gt = c.get("gt", torch.Tensor([]).type_as(x))
-                gt = rearrange(gt, "b c t h w -> (b t) c h w")
-                x = x * masks + gt * (1.0 - masks)
+                # gt = c.get("gt", torch.Tensor([]).type_as(x))
+                # gt = rearrange(gt, "b c t h w -> (b t) c h w")
+                # # masks = repeat(masks, "b c h w -> b (c d) h w", d=3)
+                # x = x * masks + gt * (1.0 - masks)
+                pass
             else:
                 x = torch.cat((x, masks), dim=1)
 
@@ -135,6 +140,8 @@ class DubbingWrapper(IdentityWrapper):
             **kwargs,
         )
 
+        # if self.mask_input:
+        #     out = out * masks + gt * (1.0 - masks)
         # # We only learn to predict the lower half of the image
         # out[:, :, : x.shape[-2]] = cond_cat[:, :, : x.shape[-2]]
         return out

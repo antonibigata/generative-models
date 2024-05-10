@@ -1157,8 +1157,8 @@ class VideoPredictionEmbedderWithEncoder(AbstractEmbModel):
                 self.encoder = None
                 torch.cuda.empty_cache()
 
-            vid = repeat(vid, "(b t) c h w -> b c h w", t=self.n_cond_frames)
-            # exit()
+            vid = repeat(vid, "b c h w -> (b t) c h w", t=self.n_copies)
+
             return rearrange(vid.squeeze(1), "(b t) c h w -> b (t c) h w", t=self.n_cond_frames) / 0.18215
 
         if self.sigma_sampler is not None:

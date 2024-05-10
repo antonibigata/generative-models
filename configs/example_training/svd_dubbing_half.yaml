@@ -7,7 +7,7 @@ model:
     scale_factor: 0.18215
     disable_first_stage_autocast: True
     ckpt_path: checkpoints/svd_no_emb.safetensors
-    remove_keys_from_weights: [model.diffusion_model.label_emb.0.0.weight, model.diffusion_model.input_blocks.0.0.weight]
+    remove_keys_from_weights: [model.diffusion_model.label_emb.0.0.weight]
     compile_model: False
     is_dubbing: False
     # optimizer_config: 
@@ -39,7 +39,7 @@ model:
       # search_class: both
 
     denoiser_config:
-      target: sgm.modules.diffusionmodules.denoiser.Denoiser
+      target: sgm.modules.diffusionmodules.denoiser.DenoiserDub
       params:
         scaling_config:
           target: sgm.modules.diffusionmodules.denoiser_scaling.VScalingWithEDMcNoise
@@ -47,6 +47,8 @@ model:
     # network_wrapper: sgm.modules.diffusionmodules.wrappers.IdentityWrapper
     network_wrapper: 
       target: sgm.modules.diffusionmodules.wrappers.DubbingWrapper
+      params:
+        mask_input: True
 
     network_config:
       target: sgm.modules.diffusionmodules.video_model.VideoUNet
@@ -54,7 +56,7 @@ model:
         adm_in_channels: 0
         num_classes: sequential
         use_checkpoint: True
-        in_channels: 9
+        in_channels: 8
         out_channels: 4
         model_channels: 320
         attention_resolutions: [4, 2, 1]
@@ -100,7 +102,7 @@ model:
           ucg_rate: 0.1
           target: sgm.modules.encoders.modules.FrozenOpenCLIPImagePredictionEmbedder
           params:
-            n_cond_frames: 2
+            n_cond_frames: 1
             n_copies: 1
             open_clip_embedding_config:
               target: sgm.modules.encoders.modules.FrozenOpenCLIPImageEmbedder

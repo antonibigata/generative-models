@@ -312,6 +312,7 @@ class VideoDataset(Dataset):
                 # Noisy cond is the taget with lower part of the face removed
                 if self.only_predict_mouth:
                     noisy_cond = latents[random_id_index, :, :, :]
+                    noisy_cond = rearrange(noisy_cond, "t c h w -> c t h w") * self.latent_scale
                 else:
                     noisy_cond = target.clone()
             else:
@@ -351,11 +352,13 @@ class VideoDataset(Dataset):
             )
             masks = self._load_landmarks(land_file, original_size, target_size, indexes).permute(1, 0, 2, 3)
             resized_masks = F.interpolate(masks, size=(noisy_cond.shape[-2], noisy_cond.shape[-1]), mode="nearest")
-            noisy_cond = noisy_cond * (1 - resized_masks)
+            if not self.only_predict_mouth:
+                noisy_cond = noisy_cond * (1 - resized_masks)
         else:
             masks = torch.zeros_like(noisy_cond)
             masks[:, :, noisy_cond.shape[-2] // 2 :, :] = 1
-            noisy_cond = noisy_cond * (1 - masks)
+            if not self.only_predict_mouth:
+                noisy_cond = noisy_cond * (1 - masks)
 
         return clean_cond, noisy_cond, target, masks, audio_frames, raw_audio, cond_noise
 

@@ -42,6 +42,47 @@ class Denoiser(nn.Module):
         return out * c_out + input * c_skip
 
 
+class DenoiserDub(nn.Module):
+    def __init__(self, scaling_config: Dict):
+        super().__init__()
+
+        self.scaling: DenoiserScaling = instantiate_from_config(scaling_config)
+
+    def possibly_quantize_sigma(self, sigma: torch.Tensor) -> torch.Tensor:
+        return sigma
+
+    def possibly_quantize_c_noise(self, c_noise: torch.Tensor) -> torch.Tensor:
+        return c_noise
+
+    def forward(
+        self,
+        network: nn.Module,
+        input: torch.Tensor,
+        sigma: torch.Tensor,
+        cond: Dict,
+        **additional_model_inputs,
+    ) -> torch.Tensor:
+        sigma = self.possibly_quantize_sigma(sigma)
+        if input.ndim == 5:
+            T = input.shape[2]
+            input = rearrange(input, "b c t h w -> (b t) c h w")
+            sigma = repeat(sigma, "b ... -> b t ...", t=T)
+            sigma = rearrange(sigma, "b t ... -> (b t) ...")
+        sigma_shape = sigma.shape
+        sigma = append_dims(sigma, input.ndim)
+        c_skip, c_out, c_in, c_noise = self.scaling(sigma)
+        c_noise = self.possibly_quantize_c_noise(c_noise.reshape(sigma_shape))
+        gt = cond.get("gt", torch.Tensor([]).type_as(input))
+        gt = rearrange(gt, "b c t h w -> (b t) c h w")
+        masks = cond.get("masks", None)
+        masks = rearrange(masks, "b c t h w -> (b t) c h w")
+        input = input * masks + gt * (1.0 - masks)
+        out = network(input * c_in, c_noise, cond, **additional_model_inputs)
+        out = out * c_out + input * c_skip
+        out = out * masks + gt * (1.0 - masks)
+        return out
+
+
 class DiscreteDenoiser(Denoiser):
     def __init__(
         self,
