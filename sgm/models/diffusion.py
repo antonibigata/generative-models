@@ -146,11 +146,11 @@ class DiffusionEngine(pl.LightningModule):
                 for layer in to_freeze:
                     if layer[0] == "!":
                         if layer[1:] not in name:
-                            print("Freezing", name)
+                            # print("Freezing", name)
                             p.requires_grad = False
                     else:
                         if layer in name:
-                            print("Freezing", name)
+                            # print("Freezing", name)
                             p.requires_grad = False
                 # if "time_" in name:
                 #     print("Freezing", name)
@@ -170,18 +170,18 @@ class DiffusionEngine(pl.LightningModule):
                     for p in att_layer.parameters():
                         p.requires_grad = True
 
-            for name, p in self.named_parameters():
-                if p.requires_grad:
-                    print(name)
+            # for name, p in self.named_parameters():
+            #     if p.requires_grad:
+            #         print(name)
 
         if to_unfreeze:
             for name in to_unfreeze:
                 for p in getattr(self.model.diffusion_model, name).parameters():
                     p.requires_grad = True
 
-            for name, p in self.named_parameters():
-                if p.requires_grad:
-                    print(name)
+            # for name, p in self.named_parameters():
+            #     if p.requires_grad:
+            #         print(name)
 
         if use_thunder:
             import thunder
