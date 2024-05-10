@@ -133,6 +133,7 @@ model:
             n_cond_frames: 1
             n_copies: 1
             is_ae: True
+            load_encoder: False
             encoder_config:
               target: sgm.models.autoencoder.AutoencoderKLModeOnly
               params:
