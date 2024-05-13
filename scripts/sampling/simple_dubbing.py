@@ -16,49 +16,41 @@ from tqdm import tqdm
 from torchvision.io import read_video, write_video
 import torchaudio
 from safetensors.torch import load_file as load_safetensors
+import torch.nn.functional as F
 
 # from scripts.util.detection.nsfw_and_watermark_dectection import DeepFloydDataFiltering
-from sgm.inference.helpers import embed_watermark
 from sgm.util import default, instantiate_from_config, trim_pad_audio, get_raw_audio, save_audio_video
+from sgm.data.data_utils import create_masks_from_landmarks_full_size
 
 # from sgm.models.components.audio.Whisper import Whisper
 
 
-def create_interpolation_inputs(video, audio, num_frames, video_emb=None, overlap=1):
+def create_interpolation_inputs(video, audio, landmarks, num_frames, video_emb=None, overlap=1):
     # Interpolation is every num_frames, we need to create the inputs for the model
     # We need to create a list of inputs, each input is a tuple of ([first, last], audio)
     # The first and last are the first and last frames of the interpolation
 
     # Break video into chunks of num_frames with overlap 1
     assert video.shape[0] == audio.shape[0], "Video and audio must have the same number of frames"
-    video_chunks = []
+    masks_chunks = []
     audio_chunks = []
     video_emb_chunks = []
     gt_chunks = []
     for i in range(0, video.shape[0], num_frames - overlap):
-        first = video[i]
-        try:
-            last = video[i + num_frames - 1]
-        except IndexError:
-            break  # Last chunk is smaller than num_frames
-        # last = Grayscale(3)(last)
-        # image = Image.open(
-        #     "/vol/paramonos2/projects/antoni/code/Personal/Old/generating_laugh/bigata_antoni.png"
-        # ).convert("RGB")
-        # last = ToTensor()(image)
-        # last = Resize((512, 512))(last).cuda()
-        # last = (last / 255.0) * 2.0 - 1.0
-
-        cond = torch.stack([first, last], dim=1)  # [C, 2, H, W]
-        video_chunks.append(cond)
         gt_chunks.append(video[i : i + num_frames])
         if video_emb is not None:
-            cond_emb = torch.stack([video_emb[i], video_emb[i + num_frames - 1]], dim=1)
+            cond_emb = video_emb[i : i + num_frames]
             video_emb_chunks.append(cond_emb)
         if audio is not None:
             audio_chunks.append(audio[i : i + num_frames])
+        masks = create_masks_from_landmarks_full_size(
+            landmarks[i : i + num_frames, :], video.shape[-1], video.shape[-2], offset=-0.01
+        )
+        # Interpolate the mask to the target size
+        masks = F.interpolate(masks.unsqueeze(1).float(), size=(64, 64), mode="nearest")
+        masks_chunks.append(masks)
 
-    return gt_chunks, video_chunks, audio_chunks, video_emb_chunks
+    return gt_chunks, masks_chunks, audio_chunks, video_emb_chunks
 
 
 def get_audio_embeddings(audio_path: str, audio_rate: int = 16000, fps: int = 25):
@@ -136,22 +128,22 @@ def sample(
     if version == "svd":
         num_frames = default(num_frames, 14)
         num_steps = default(num_steps, 25)
-        output_folder = default(output_folder, "outputs/simple_video_sample/svd/")
+        output_folder = default(output_folder, "outputs/simple_dub_sample/svd/")
         # model_config = "scripts/sampling/configs/svd.yaml"
     elif version == "svd_xt":
         num_frames = default(num_frames, 25)
         num_steps = default(num_steps, 30)
-        output_folder = default(output_folder, "outputs/simple_video_sample/svd_xt/")
+        output_folder = default(output_folder, "outputs/simple_dub_sample/svd_xt/")
         # model_config = "scripts/sampling/configs/svd_xt.yaml"
     elif version == "svd_image_decoder":
         num_frames = default(num_frames, 14)
         num_steps = default(num_steps, 25)
-        output_folder = default(output_folder, "outputs/simple_video_sample/svd_image_decoder/")
+        output_folder = default(output_folder, "outputs/simple_dub_sample/svd_image_decoder/")
         # model_config = "scripts/sampling/configs/svd_image_decoder.yaml"
     elif version == "svd_xt_image_decoder":
         num_frames = default(num_frames, 25)
         num_steps = default(num_steps, 30)
-        output_folder = default(output_folder, "outputs/simple_video_sample/svd_xt_image_decoder/")
+        output_folder = default(output_folder, "outputs/simple_dub_sample/svd_xt_image_decoder/")
         # model_config = "scripts/sampling/configs/svd_xt_image_decoder.yaml"
     else:
         raise ValueError(f"Version {version} does not exist.")
@@ -215,6 +207,8 @@ def sample(
                 raw_audio = raw_audio[:max_frames] if raw_audio is not None else None
         audio = audio.cuda()
 
+        landmarks = np.load(video_path.replace(".mp4", ".npy"))
+
         h, w = video.shape[2:]
         # if degradation > 1:
         #     video = torch.nn.functional.interpolate(video, (h // degradation, w // degradation), mode="bilinear")
@@ -237,8 +231,8 @@ def sample(
                     f"WARNING: Your image is of size {h}x{w} which is not divisible by 64. We are resizing to {height}x{width}!"
                 )
 
-        gt_chunks, conditions_list, audio_list, emb_list = create_interpolation_inputs(
-            model_input, audio, num_frames, video_emb
+        gt_chunks, masks_list, audio_list, emb_list = create_interpolation_inputs(
+            model_input, audio, landmarks, num_frames, video_emb
         )
         # if h % 64 != 0 or w % 64 != 0:
         #     width, height = map(lambda x: x - x % 64, (w, h))
@@ -247,15 +241,20 @@ def sample(
         #     video = torch.nn.functional.interpolate(video, (height, width), mode="bilinear")
         # video = model.encode_first_stage(video.cuda())
 
+        # Take random index
+        idx = torch.randint(0, len(model_input), (1,)).item()
+        condition = model_input[idx].unsqueeze(0).to(device)
+        condition_emb = video_emb[idx].unsqueeze(0).to(device) if video_emb is not None else None
+
         samples_list = []
         gt_list = []
-        for i in tqdm(range(len(conditions_list)), desc="Autoregressive", total=len(conditions_list)):
-            condition = conditions_list[i]
+        for i in tqdm(range(len(masks_list)), desc="Autoregressive", total=len(masks_list)):
+            masks = masks_list[i]
             audio_cond = audio_list[i].unsqueeze(0).to(device)
-            condition = condition.unsqueeze(0).to(device)
+            # condition = condition.unsqueeze(0).to(device)
             embbedings = emb_list[i].unsqueeze(0).to(device) if emb_list is not None else None
             H, W = condition.shape[-2:]
-            assert condition.shape[1] == 3
+            # assert condition.shape[1] == 3
             F = 8
             C = 4
             shape = (num_frames, C, H // F, W // F)
@@ -277,12 +276,15 @@ def sample(
             value_dict["fps_id"] = fps_id
             value_dict["cond_aug"] = cond_aug
             value_dict["cond_frames_without_noise"] = condition
-            if embbedings is not None:
-                value_dict["cond_frames"] = embbedings + cond_aug * torch.randn_like(embbedings)
-            else:
-                value_dict["cond_frames"] = condition + cond_aug * torch.randn_like(condition)
+            value_dict["masks"] = masks
+            # if embbedings is not None:
+            #     value_dict["cond_frames"] = embbedings + cond_aug * torch.randn_like(embbedings)
+            # else:
+            #     value_dict["cond_frames"] = condition + cond_aug * torch.randn_like(condition)
+            value_dict["cond_frames"] = condition_emb
             value_dict["cond_aug"] = cond_aug
             value_dict["audio_emb"] = audio_cond
+            value_dict["gt"] = embbedings
 
             with torch.no_grad():
                 with torch.autocast(device):
@@ -329,7 +331,7 @@ def sample(
 
                     # samples = embed_watermark(samples)
                     # samples = filter(samples)
-                    if i != len(conditions_list) - 1:
+                    if i != len(masks_list) - 1:
                         gt_list.append(torch.clamp((gt_chunks[i][:-1] + 1.0) / 2.0, min=0.0, max=1.0))
                         samples_list.append(samples[:-1])  # Remove last frame to avoid overlap
                     else:
