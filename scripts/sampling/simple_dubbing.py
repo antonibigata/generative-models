@@ -37,18 +37,22 @@ def create_interpolation_inputs(video, audio, landmarks, num_frames, video_emb=N
     video_emb_chunks = []
     gt_chunks = []
     for i in range(0, video.shape[0], num_frames - overlap):
+        try:
+            last = video[i + num_frames - 1]
+        except IndexError:
+            break  # Last chunk is smaller than num_frames
+        masks = create_masks_from_landmarks_full_size(
+            landmarks[i : i + num_frames, :], video.shape[-1], video.shape[-2], offset=-0.01
+        )
         gt_chunks.append(video[i : i + num_frames])
+        # Interpolate the mask to the target size
+        masks = F.interpolate(masks.unsqueeze(1).float(), size=(64, 64), mode="nearest")
+        masks_chunks.append(masks)
         if video_emb is not None:
             cond_emb = video_emb[i : i + num_frames]
             video_emb_chunks.append(cond_emb)
         if audio is not None:
             audio_chunks.append(audio[i : i + num_frames])
-        masks = create_masks_from_landmarks_full_size(
-            landmarks[i : i + num_frames, :], video.shape[-1], video.shape[-2], offset=-0.01
-        )
-        # Interpolate the mask to the target size
-        masks = F.interpolate(masks.unsqueeze(1).float(), size=(64, 64), mode="nearest")
-        masks_chunks.append(masks)
 
     return gt_chunks, masks_chunks, audio_chunks, video_emb_chunks
 
@@ -83,7 +87,7 @@ def get_audio_embeddings(audio_path: str, audio_rate: int = 16000, fps: int = 25
             # audio = torch.cat(audio_embeddings, dim=1).squeeze(0)
     elif audio_path is not None and audio_path.endswith(".pt"):
         audio = torch.load(audio_path)
-        raw_audio_path = audio_path.replace(".pt", ".wav").replace("_whisper_emb", "")
+        raw_audio_path = audio_path.replace(".pt", ".wav").replace("_whisper_emb", "").replace("_wav2vec2_emb", "")
 
         if os.path.exists(raw_audio_path):
             raw_audio = get_raw_audio(raw_audio_path, audio_rate)
@@ -276,7 +280,7 @@ def sample(
             value_dict["fps_id"] = fps_id
             value_dict["cond_aug"] = cond_aug
             value_dict["cond_frames_without_noise"] = condition
-            value_dict["masks"] = masks
+            value_dict["masks"] = masks.unsqueeze(2).to(device)
             # if embbedings is not None:
             #     value_dict["cond_frames"] = embbedings + cond_aug * torch.randn_like(embbedings)
             # else:
@@ -284,7 +288,7 @@ def sample(
             value_dict["cond_frames"] = condition_emb
             value_dict["cond_aug"] = cond_aug
             value_dict["audio_emb"] = audio_cond
-            value_dict["gt"] = embbedings
+            value_dict["gt"] = rearrange(embbedings, "b t c h w -> b c t h w").to(device)
 
             with torch.no_grad():
                 with torch.autocast(device):
