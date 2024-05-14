@@ -4,11 +4,11 @@ model:
     scale_factor: 0.18215
     disable_first_stage_autocast: True
     # ckpt_path: /vol/paramonos2/projects/antoni/code/Personal/generative-models/checkpoints/svd.safetensors
-    ckpt_path: /vol/bitbucket/abigata/from_aws/2024-05-10T15-28-00_example_training-svd_dubbing_half/mp_rank_00_model_states.pt
+    ckpt_path: /data2/2024-05-10T15-28-00_example_training-svd_dubbing_half/mp_rank_00_model_states.pt
     # remove_keys_from_weights: [model.diffusion_model.input_blocks.0.0.weight]
 
     denoiser_config:
-      target: sgm.modules.diffusionmodules.denoiser.Denoiser
+      target: sgm.modules.diffusionmodules.denoiser.DenoiserDub
       params:
         scaling_config:
           target: sgm.modules.diffusionmodules.denoiser_scaling.VScalingWithEDMcNoise
@@ -16,6 +16,8 @@ model:
     # network_wrapper: sgm.modules.diffusionmodules.wrappers.IdentityWrapper
     network_wrapper: 
       target: sgm.modules.diffusionmodules.wrappers.DubbingWrapper
+      params:
+        mask_input: True
 
     use_lora: False
     lora_config:
@@ -122,6 +124,13 @@ model:
         #   target: sgm.modules.encoders.modules.ConcatTimestepEmbedderND
         #   params:
         #     outdim: 256
+        - input_key: gt # allows to use the ground truth as a condition
+          is_trainable: False
+          # ucg_rate: 0.1
+          target: sgm.modules.encoders.modules.IdentityEncoder
+          params:
+            cond_type: gt
+
         - input_key: masks
           is_trainable: False
           # ucg_rate: 0.1
@@ -192,7 +201,7 @@ model:
         guider_config:
           target: sgm.modules.diffusionmodules.guiders.VanillaCFG
           params:
-            scale: 2.0
+            scale: 5.0
             # num_frames: 14
           # target: sgm.modules.diffusionmodules.guiders.MultipleCondVanilla
           # params:

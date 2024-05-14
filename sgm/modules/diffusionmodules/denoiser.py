@@ -76,6 +76,7 @@ class DenoiserDub(nn.Module):
         gt = rearrange(gt, "b c t h w -> (b t) c h w")
         masks = cond.get("masks", None)
         masks = rearrange(masks, "b c t h w -> (b t) c h w")
+
         input = input * masks + gt * (1.0 - masks)
         out = network(input * c_in, c_noise, cond, **additional_model_inputs)
         out = out * c_out + input * c_skip

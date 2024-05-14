@@ -291,8 +291,8 @@ class VideoDataset(Dataset):
         # if audio_frames is None:
         #     audio_frames = rearrange(audio, "(f s) -> f s", s=self.samples_per_frame)[audio_indexes]
 
-        if self.scale_audio:
-            audio_frames = (audio_frames / audio_frames.max()) * 2 - 1
+        # if self.scale_audio:
+        #     audio_frames = (audio_frames / audio_frames.max()) * 2 - 1
 
         if not self.use_latent:
             frame = rearrange(frame, "h w c -> c h w")
