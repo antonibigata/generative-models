@@ -1,5 +1,6 @@
 import torch
 import numpy as np
+from PIL import Image, ImageDraw
 
 
 def create_masks_from_landmarks_full_size(
@@ -50,6 +51,87 @@ def create_masks_from_landmarks_full_size(
     full_mask = np.tile(mask_2d[:, :, np.newaxis], (1, 1, image_width))
 
     return torch.from_numpy(full_mask)
+
+
+def expand_polygon(polygon, expand_size):
+    """
+    Expands the polygon outward by a specified number of pixels.
+
+    Parameters:
+    - polygon (list of tuples): The polygon points as (x, y).
+    - expand_size (int): The number of pixels to expand the polygon outward.
+
+    Returns:
+    - expanded_polygon (list of tuples): The expanded polygon points as (x, y).
+    """
+    if expand_size == 0:
+        return polygon
+
+    # Calculate centroid of the polygon
+    centroid_x = sum([point[0] for point in polygon]) / len(polygon)
+    centroid_y = sum([point[1] for point in polygon]) / len(polygon)
+
+    # Expand each point outward from the centroid
+    expanded_polygon = []
+    for x, y in polygon:
+        vector_x = x - centroid_x
+        vector_y = y - centroid_y
+        length = np.sqrt(vector_x**2 + vector_y**2)
+        if length == 0:
+            expanded_polygon.append((x, y))
+        else:
+            new_x = x + expand_size * (vector_x / length)
+            new_y = y + expand_size * (vector_y / length)
+            expanded_polygon.append((int(new_x), int(new_y)))
+
+    return expanded_polygon
+
+
+def create_face_mask_from_landmarks(landmarks_batch, image_height, image_width, mask_expand=0):
+    """
+    Creates a batch of masks where each mask covers the face region using landmarks.
+
+    Parameters:
+    - landmarks_batch (np.array): An array of shape (B, 68, 2) containing facial landmarks for multiple samples.
+    - image_height (int): The height of the image for which masks are created.
+    - image_width (int): The width of the image for which masks are created.
+    - mask_expand (int): The number of pixels to expand the mask outward.
+
+    Returns:
+    - np.array: An array of masks of shape (B, image_height, image_width) for each batch.
+    """
+    # Initialize an array to hold all masks
+    masks = np.zeros((landmarks_batch.shape[0], image_height, image_width), dtype=np.uint8)
+
+    if abs(mask_expand) < 1 and abs(mask_expand) > 0:
+        mask_expand = int(mask_expand * image_height)
+
+    for i, landmarks in enumerate(landmarks_batch):
+        # Create a blank image for each mask
+        mask = Image.new("L", (image_width, image_height), 0)
+        draw = ImageDraw.Draw(mask)
+
+        # Extract relevant landmarks for the face
+        jawline_landmarks = landmarks[2:15]  # Jawline
+        # upper_face_landmarks = landmarks[17:27]  # Eyebrows and top of nose bridge
+
+        # Combine landmarks to form a polygon around the face
+        # face_polygon = np.concatenate((jawline_landmarks, upper_face_landmarks[::-1]), axis=0)
+        face_polygon = jawline_landmarks
+
+        # Convert landmarks to a list of tuples
+        face_polygon = [(int(x), int(y)) for x, y in face_polygon]
+
+        # Expand the polygon if necessary
+        expanded_polygon = expand_polygon(face_polygon, mask_expand)
+
+        # Draw the polygon and fill it
+        draw.polygon(expanded_polygon, outline=1, fill=1)
+
+        # Convert mask to numpy array and add it to the batch of masks
+        masks[i] = np.array(mask)
+
+    return torch.from_numpy(masks)
 
 
 def scale_landmarks(landmarks, original_size, target_size):

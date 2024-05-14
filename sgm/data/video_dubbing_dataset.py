@@ -15,7 +15,7 @@ from torchvision.transforms import RandomHorizontalFlip
 from audiomentations import Compose, AddGaussianNoise, PitchShift
 from safetensors.torch import load_file
 
-from sgm.data.data_utils import create_masks_from_landmarks_full_size
+from sgm.data.data_utils import create_masks_from_landmarks_full_size, create_face_mask_from_landmarks
 
 torchaudio.set_audio_backend("sox_io")
 decord.bridge.set_bridge("torch")
@@ -79,6 +79,7 @@ class VideoDataset(Dataset):
         use_latent_condition=False,
         get_masks=False,
         only_predict_mouth=False,
+        what_mask="full",
     ):
         self.audio_folder = audio_folder
         self.from_audio_embedding = from_audio_embedding
@@ -88,6 +89,7 @@ class VideoDataset(Dataset):
         precomputed_latent = latent_type
         self.n_cond_frames = n_cond_frames
         self.only_predict_mouth = only_predict_mouth
+        self.what_mask = what_mask
         # self.fps = fps
 
         assert not (exists(data_mean) ^ exists(data_std)), "Both data_mean and data_std should be provided"
@@ -185,7 +187,11 @@ class VideoDataset(Dataset):
 
     def _load_landmarks(self, filename, original_size, target_size, indexes):
         landmarks = np.load(filename)[indexes, :]
-        mask = create_masks_from_landmarks_full_size(landmarks, original_size[0], original_size[1], offset=-0.01)
+        if self.what_mask == "full":
+            mask = create_masks_from_landmarks_full_size(landmarks, original_size[0], original_size[1], offset=-0.01)
+        else:
+            mask = create_face_mask_from_landmarks(landmarks, original_size[0], original_size[1], mask_expand=0.05)
+        # mask = create_masks_from_landmarks_full_size(landmarks, original_size[0], original_size[1], offset=-0.01)
         # Interpolate the mask to the target size
         mask = F.interpolate(mask.unsqueeze(1).float(), size=target_size, mode="nearest")
         return mask

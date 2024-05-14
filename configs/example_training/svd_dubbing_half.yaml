@@ -307,6 +307,7 @@ data:
         data_std: null
         use_latent_condition: True
         only_predict_mouth: True
+        what_mask: full
 
       loader:
         batch_size: 1
