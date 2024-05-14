@@ -157,7 +157,7 @@ class VideoDataset(Dataset):
             audio = audio.T
             audio = torch.from_numpy(audio).float()
             audio = trim_pad_audio(audio, self.audio_rate, max_len_sec=max_len_sec)
-            return audio
+            return audio[0]
         audio, sr = sf.read(
             filename,
             start=math.ceil(start * self.audio_rate),
@@ -240,11 +240,11 @@ class VideoDataset(Dataset):
         # print(audio_indexes, indexes)
 
         audio_frames = None
-        raw_audio = None
-        if self.audio_in_video:
-            raw_audio, _ = vr.get_batch(audio_indexes)
-            vr = vr._AVReader__video_reader
-            raw_audio = rearrange(self.ensure_shape(raw_audio), "f s -> (f s)")
+        # raw_audio = None
+        # if self.audio_in_video:
+        #     raw_audio, _ = vr.get_batch(audio_indexes)
+        #     vr = vr._AVReader__video_reader
+        #     raw_audio = rearrange(self.ensure_shape(raw_audio), "f s -> (f s)")
 
         if self.use_latent:
             latent_file = video_file.replace(self.video_ext, f"_{self.latent_type}_512_latent.safetensors").replace(
@@ -270,11 +270,10 @@ class VideoDataset(Dataset):
         if self.get_landmarks:
             landmarks = self._load_landmarks(land_file, (or_w, or_h), predict_index)
 
-        if raw_audio is None:
-            raw_audio = self._load_audio(
-                audio_file, max_len_sec=len_video / self.video_rate, start=indexes[0] / self.video_rate
-            )
+        # if raw_audio is None:
+        #     raw_audio = self._load_audio(audio_file, max_len_sec=len_video / self.video_rate, return_all=True)
         if not self.from_audio_embedding:
+            assert False, "Not implemented"
             audio = raw_audio
             audio_frames = rearrange(audio, "(f s) -> f s", s=self.samples_per_frame)[audio_indexes]
         else:
@@ -317,7 +316,7 @@ class VideoDataset(Dataset):
 
         # print("audio_frames", audio_frames.shape)
 
-        return clean_cond, noisy_cond, target, landmarks, audio_frames, raw_audio, diff_score, cond_noise
+        return clean_cond, noisy_cond, target, landmarks, audio_frames, diff_score, cond_noise
 
     def _get_indexes(self, video_filelist, audio_filelist):
         indexes = []
@@ -360,8 +359,8 @@ class VideoDataset(Dataset):
         return self.maybe_augment(video).squeeze(0)
 
     def __getitem__(self, idx):
-        clean_cond, noisy_cond, target, landmarks, audio, raw_audio, diff_score, cond_noise = (
-            self._get_frames_and_audio(idx % len(self._indexes))
+        clean_cond, noisy_cond, target, landmarks, audio, diff_score, cond_noise = self._get_frames_and_audio(
+            idx % len(self._indexes)
         )
 
         out_data = {}
