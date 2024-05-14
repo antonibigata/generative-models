@@ -157,7 +157,7 @@ class VideoDataset(Dataset):
             audio = audio.T
             audio = torch.from_numpy(audio).float()
             audio = trim_pad_audio(audio, self.audio_rate, max_len_sec=max_len_sec)
-            return audio
+            return audio[0]
         audio, sr = sf.read(
             filename,
             start=math.ceil(start * self.audio_rate),
@@ -271,9 +271,7 @@ class VideoDataset(Dataset):
             landmarks = self._load_landmarks(land_file, (or_w, or_h), predict_index)
 
         if raw_audio is None:
-            raw_audio = self._load_audio(
-                audio_file, max_len_sec=len_video / self.video_rate, start=indexes[0] / self.video_rate
-            )
+            raw_audio = self._load_audio(audio_file, max_len_sec=len_video / self.video_rate, return_all=True)
         if not self.from_audio_embedding:
             audio = raw_audio
             audio_frames = rearrange(audio, "(f s) -> f s", s=self.samples_per_frame)[audio_indexes]
