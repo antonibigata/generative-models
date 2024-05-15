@@ -214,7 +214,7 @@ class AdaptiveTimeMask(torch.nn.Module):
 
 
 class VideoTransform:
-    def __init__(self, subset, timesteps=1000, max_noise_level=None):
+    def __init__(self, subset, timesteps=1000, max_noise_level=None, center_crop_size=88):
         if subset == "train":
             self.video_pipeline = torch.nn.Sequential(
                 # ----- diffusion noise ------ #
@@ -226,7 +226,7 @@ class VideoTransform:
                 # FunctionalModule(lambda x: (x, 0)),
                 # ------ after ------ #
                 FunctionalModule(lambda x: (x[0] / 255.0, x[1])),
-                FunctionalModule(lambda x: (torchvision.transforms.RandomCrop(88)(x[0]), x[1])),
+                FunctionalModule(lambda x: (torchvision.transforms.RandomCrop(center_crop_size)(x[0]), x[1])),
                 FunctionalModule(lambda x: (torchvision.transforms.Grayscale()(x[0]), x[1])),
                 FunctionalModule(lambda x: (AdaptiveTimeMask(10, 25)(x[0]), x[1])),
                 # FunctionalModule(lambda x: x / 255.0),
@@ -246,7 +246,7 @@ class VideoTransform:
                 # FunctionalModule(lambda x: (x, 0)),
                 # ------ after ------ #
                 FunctionalModule(lambda x: (x[0] / 255.0, x[1])),
-                FunctionalModule(lambda x: (torchvision.transforms.CenterCrop(88)(x[0]), x[1])),
+                FunctionalModule(lambda x: (torchvision.transforms.CenterCrop(center_crop_size)(x[0]), x[1])),
                 FunctionalModule(lambda x: (torchvision.transforms.Grayscale()(x[0]), x[1])),
                 # FunctionalModule(lambda x: x / 255.0),
                 # torchvision.transforms.RandomCrop(88),
@@ -257,7 +257,7 @@ class VideoTransform:
         elif subset == "val" or subset == "test":
             self.video_pipeline = torch.nn.Sequential(
                 FunctionalModule(lambda x: x / 255.0),
-                torchvision.transforms.CenterCrop(88),
+                torchvision.transforms.CenterCrop(center_crop_size),
                 torchvision.transforms.Grayscale(),
                 # torchvision.transforms.Normalize(0.421, 0.165),
             )
