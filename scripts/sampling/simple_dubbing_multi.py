@@ -4,19 +4,15 @@ from glob import glob
 from pathlib import Path
 from typing import Optional
 
-import cv2
 import numpy as np
 import torch
 from einops import rearrange, repeat
 from fire import Fire
 from omegaconf import OmegaConf
-from PIL import Image
-from torchvision.transforms import ToTensor, Grayscale, Resize
-from tqdm import tqdm
-from torchvision.io import read_video, write_video
 import torchaudio
 from safetensors.torch import load_file as load_safetensors
 import torch.nn.functional as F
+from torchvision.io import read_video
 
 # from scripts.util.detection.nsfw_and_watermark_dectection import DeepFloydDataFiltering
 from sgm.util import default, instantiate_from_config, trim_pad_audio, get_raw_audio, save_audio_video
@@ -25,42 +21,143 @@ from sgm.data.data_utils import create_masks_from_landmarks_full_size, create_fa
 # from sgm.models.components.audio.Whisper import Whisper
 
 
-def create_interpolation_inputs(video, audio, landmarks, num_frames, video_emb=None, overlap=1, what_mask="full"):
-    # Interpolation is every num_frames, we need to create the inputs for the model
-    # We need to create a list of inputs, each input is a tuple of ([first, last], audio)
-    # The first and last are the first and last frames of the interpolation
+# def create_interpolation_inputs(video, audio, landmarks, num_frames, video_emb=None, overlap=1):
+#     # Interpolation is every num_frames, we need to create the inputs for the model
+#     # We need to create a list of inputs, each input is a tuple of ([first, last], audio)
+#     # The first and last are the first and last frames of the interpolation
 
-    # Break video into chunks of num_frames with overlap 1
+#     # Break video into chunks of num_frames with overlap 1
+#     assert video.shape[0] == audio.shape[0], "Video and audio must have the same number of frames"
+#     masks_chunks = []
+#     audio_chunks = []
+#     video_emb_chunks = []
+#     gt_chunks = []
+#     for i in range(0, video.shape[0], num_frames - overlap):
+#         try:
+#             last = video[i + num_frames - 1]
+#         except IndexError:
+#             break  # Last chunk is smaller than num_frames
+#         masks = create_masks_from_landmarks_full_size(
+#             landmarks[i : i + num_frames, :], video.shape[-1], video.shape[-2], offset=-0.01
+#         )
+#         gt_chunks.append(video[i : i + num_frames])
+#         # Interpolate the mask to the target size
+#         masks = F.interpolate(masks.unsqueeze(1).float(), size=(64, 64), mode="nearest")
+#         masks_chunks.append(masks)
+#         if video_emb is not None:
+#             cond_emb = video_emb[i : i + num_frames]
+#             video_emb_chunks.append(cond_emb)
+#         if audio is not None:
+#             audio_chunks.append(audio[i : i + num_frames])
+
+#     return gt_chunks, masks_chunks, audio_chunks, video_emb_chunks
+
+
+# def merge_overlapping_segments(segments, overlap):
+#     """
+#     Merges overlapping segments where segments have shape (b, t, ...),
+#     and 'b' is the number of segments, 't' is frames per segment, and '...' are other dimensions.
+
+#     :param segments: Tensor of shape (b, t, ...)
+#     :param overlap: Integer, number of frames that overlap between consecutive segments.
+#     :return: Tensor of the merged video.
+#     """
+#     # Get the shape details
+#     b, t, *other_dims = segments.shape
+#     num_frames = (b - 1) * (t - overlap) + t  # Calculate the total number of frames in the merged video
+
+#     # Initialize the output tensor
+#     output_shape = [num_frames] + other_dims
+#     output = torch.zeros(output_shape, dtype=segments.dtype, device=segments.device)
+
+#     current_index = 0
+#     for i in range(b):
+#         end_index = current_index + t
+#         if i < b - 1:
+#             # Use only the non-overlapping part of the segment, except for the last one
+#             output[current_index : current_index + t - overlap] = rearrange(segments[i, : t - overlap], "... -> ...")
+#         else:
+#             # For the last segment, use all frames
+#             output[current_index:end_index] = rearrange(segments[i], "... -> ...")
+
+#         # Update the starting index for the next segment
+#         current_index += t - overlap if i < b - 1 else t
+
+#     return output
+
+
+def merge_overlapping_segments(segments, overlap):
+    """
+    Merges overlapping segments by averaging overlapping frames.
+    Segments have shape (b, t, ...), where 'b' is the number of segments,
+    't' is frames per segment, and '...' are other dimensions.
+
+    :param segments: Tensor of shape (b, t, ...)
+    :param overlap: Integer, number of frames that overlap between consecutive segments.
+    :return: Tensor of the merged video.
+    """
+    # Get the shape details
+    b, t, *other_dims = segments.shape
+    num_frames = (b - 1) * (t - overlap) + t  # Calculate the total number of frames in the merged video
+
+    # Initialize the output tensor and a count tensor to keep track of contributions for averaging
+    output_shape = [num_frames] + other_dims
+    output = torch.zeros(output_shape, dtype=segments.dtype, device=segments.device)
+    count = torch.zeros(output_shape, dtype=torch.float32, device=segments.device)
+
+    current_index = 0
+    for i in range(b):
+        end_index = current_index + t
+        # Add the segment to the output tensor
+        output[current_index:end_index] += rearrange(segments[i], "... -> ...")
+        # Increment the count tensor for each frame that's added
+        count[current_index:end_index] += 1
+        # Update the starting index for the next segment
+        current_index += t - overlap
+
+    # Avoid division by zero
+    count[count == 0] = 1
+    # Average the frames where there's overlap
+    print(count)
+    output /= count
+
+    return output
+
+
+def create_interpolation_inputs(video, audio, landmarks, num_frames, video_emb=None, overlap=1, what_mask="full"):
     assert video.shape[0] == audio.shape[0], "Video and audio must have the same number of frames"
     masks_chunks = []
     audio_chunks = []
     video_emb_chunks = []
     gt_chunks = []
-    for i in range(0, video.shape[0], num_frames - overlap):
-        try:
-            last = video[i + num_frames - 1]
-        except IndexError:
-            break  # Last chunk is smaller than num_frames
+
+    # Adjustment for overlap to ensure segments are created properly
+    step = num_frames - overlap
+
+    # Ensure there's at least one step forward on each iteration
+    if step < 1:
+        step = 1
+
+    for i in range(0, video.shape[0] - num_frames + 1, step):
+        segment_end = i + num_frames
         if what_mask == "full":
             masks = create_masks_from_landmarks_full_size(
-                landmarks[i : i + num_frames, :], video.shape[-1], video.shape[-2], offset=-0.01
+                landmarks[i:segment_end, :], video.shape[-1], video.shape[-2], offset=-0.01
             )
         else:
             masks = create_face_mask_from_landmarks(
-                landmarks[i : i + num_frames, :],
+                landmarks[i:segment_end, :],
                 video.shape[-1],
                 video.shape[-2],
                 mask_expand=0.05,
             )
-        gt_chunks.append(video[i : i + num_frames])
-        # Interpolate the mask to the target size
+        gt_chunks.append(video[i:segment_end])
         masks = F.interpolate(masks.unsqueeze(1).float(), size=(64, 64), mode="nearest")
         masks_chunks.append(masks)
         if video_emb is not None:
-            cond_emb = video_emb[i : i + num_frames]
-            video_emb_chunks.append(cond_emb)
+            video_emb_chunks.append(video_emb[i:segment_end])
         if audio is not None:
-            audio_chunks.append(audio[i : i + num_frames])
+            audio_chunks.append(audio[i:segment_end])
 
     return gt_chunks, masks_chunks, audio_chunks, video_emb_chunks
 
@@ -124,6 +221,8 @@ def sample(
     strength: float = 1.0,
     use_latent: bool = False,
     # degradation: int = 1,
+    overlap: int = 1,
+    what_mask: str = "full",
     model_config: Optional[str] = None,
     max_seconds: Optional[int] = None,
     lora_path: Optional[str] = None,
@@ -131,7 +230,7 @@ def sample(
         "cond_frames",
         "cond_frames_without_noise",
     ],
-    what_mask: str = "full",
+    chunk_size: int = None,
 ):
     """
     Simple script to generate a single sample conditioned on an image `input_path` or multiple images, one for each
@@ -245,115 +344,113 @@ def sample(
                 )
 
         gt_chunks, masks_list, audio_list, emb_list = create_interpolation_inputs(
-            model_input, audio, landmarks, num_frames, video_emb, what_mask=what_mask
+            model_input, audio, landmarks, num_frames, video_emb, overlap, what_mask
         )
-        # if h % 64 != 0 or w % 64 != 0:
-        #     width, height = map(lambda x: x - x % 64, (w, h))
-        #     width = min(width, 1024)
-        #     height = min(height, 576)
-        #     video = torch.nn.functional.interpolate(video, (height, width), mode="bilinear")
-        # video = model.encode_first_stage(video.cuda())
+
+        gt_chunks = torch.stack(gt_chunks)
+        gt_chunks = merge_overlapping_segments(gt_chunks, overlap)
+        gt_chunks = torch.clamp((gt_chunks + 1.0) / 2.0, min=0.0, max=1.0)
+        gt_vid = (gt_chunks * 255).cpu().numpy().astype(np.uint8)
 
         # Take random index
         idx = torch.randint(0, len(model_input), (1,)).item()
         condition = model_input[idx].unsqueeze(0).to(device)
         condition_emb = video_emb[idx].unsqueeze(0).to(device) if video_emb is not None else None
 
-        samples_list = []
-        gt_list = []
-        for i in tqdm(range(len(masks_list)), desc="Autoregressive", total=len(masks_list)):
-            masks = masks_list[i]
-            audio_cond = audio_list[i].unsqueeze(0).to(device)
-            # condition = condition.unsqueeze(0).to(device)
-            embbedings = emb_list[i].unsqueeze(0).to(device) if emb_list is not None else None
-            H, W = condition.shape[-2:]
-            # assert condition.shape[1] == 3
-            F = 8
-            C = 4
-            shape = (num_frames, C, H // F, W // F)
-            if (H, W) != (576, 1024):
-                print(
-                    "WARNING: The conditioning frame you provided is not 576x1024. This leads to suboptimal performance as model was only trained on 576x1024. Consider increasing `cond_aug`."
+        # for i in tqdm(range(len(masks_list)), desc="Autoregressive", total=len(masks_list)):
+        masks = torch.stack(masks_list)
+        audio_cond = torch.stack(audio_list).to(device)
+        # condition = condition.unsqueeze(0).to(device)
+        embbedings = torch.stack(emb_list).to(device) if emb_list is not None else None
+
+        condition = repeat(condition, "b c h w -> (b d) c h w", d=audio_cond.shape[0])
+        condition_emb = repeat(condition_emb, "b c h w -> (b d) c h w", d=audio_cond.shape[0])
+
+        H, W = condition.shape[-2:]
+        # assert condition.shape[1] == 3
+        F = 8
+        C = 4
+        shape = (num_frames * audio_cond.shape[0], C, H // F, W // F)
+        if (H, W) != (576, 1024):
+            print(
+                "WARNING: The conditioning frame you provided is not 576x1024. This leads to suboptimal performance as model was only trained on 576x1024. Consider increasing `cond_aug`."
+            )
+        if motion_bucket_id > 255:
+            print("WARNING: High motion bucket! This may lead to suboptimal performance.")
+
+        if fps_id < 5:
+            print("WARNING: Small fps value! This may lead to suboptimal performance.")
+
+        if fps_id > 30:
+            print("WARNING: Large fps value! This may lead to suboptimal performance.")
+
+        value_dict = {}
+        value_dict["motion_bucket_id"] = motion_bucket_id
+        value_dict["fps_id"] = fps_id
+        value_dict["cond_aug"] = cond_aug
+        value_dict["cond_frames_without_noise"] = condition
+        value_dict["masks"] = masks.transpose(1, 2).to(device)
+
+        value_dict["cond_frames"] = condition_emb
+        value_dict["cond_aug"] = cond_aug
+        value_dict["audio_emb"] = audio_cond
+        value_dict["gt"] = rearrange(embbedings, "b t c h w -> b c t h w").to(device)
+
+        with torch.no_grad():
+            with torch.autocast(device):
+                batch, batch_uc = get_batch(
+                    get_unique_embedder_keys_from_conditioner(model.conditioner),
+                    value_dict,
+                    [1, num_frames],
+                    T=num_frames,
+                    device=device,
                 )
-            if motion_bucket_id > 255:
-                print("WARNING: High motion bucket! This may lead to suboptimal performance.")
 
-            if fps_id < 5:
-                print("WARNING: Small fps value! This may lead to suboptimal performance.")
+                c, uc = model.conditioner.get_unconditional_conditioning(
+                    batch,
+                    batch_uc=batch_uc,
+                    force_uc_zero_embeddings=force_uc_zero_embeddings,
+                )
 
-            if fps_id > 30:
-                print("WARNING: Large fps value! This may lead to suboptimal performance.")
+                for k in ["crossattn"]:
+                    uc[k] = repeat(uc[k], "b ... -> b t ...", t=num_frames)
+                    uc[k] = rearrange(uc[k], "b t ... -> (b t) ...", t=num_frames)
+                    c[k] = repeat(c[k], "b ... -> b t ...", t=num_frames)
+                    c[k] = rearrange(c[k], "b t ... -> (b t) ...", t=num_frames)
 
-            value_dict = {}
-            value_dict["motion_bucket_id"] = motion_bucket_id
-            value_dict["fps_id"] = fps_id
-            value_dict["cond_aug"] = cond_aug
-            value_dict["cond_frames_without_noise"] = condition
-            value_dict["masks"] = masks.unsqueeze(2).to(device)
-            # if embbedings is not None:
-            #     value_dict["cond_frames"] = embbedings + cond_aug * torch.randn_like(embbedings)
-            # else:
-            #     value_dict["cond_frames"] = condition + cond_aug * torch.randn_like(condition)
-            value_dict["cond_frames"] = condition_emb
-            value_dict["cond_aug"] = cond_aug
-            value_dict["audio_emb"] = audio_cond
-            value_dict["gt"] = rearrange(embbedings, "b t c h w -> b c t h w").to(device)
+                video = torch.randn(shape, device=device)
 
-            with torch.no_grad():
-                with torch.autocast(device):
-                    batch, batch_uc = get_batch(
-                        get_unique_embedder_keys_from_conditioner(model.conditioner),
-                        value_dict,
-                        [1, num_frames],
-                        T=num_frames,
-                        device=device,
+                n_batch *= embbedings.shape[0]
+
+                additional_model_inputs = {}
+                additional_model_inputs["image_only_indicator"] = torch.zeros(n_batch, num_frames).to(device)
+                additional_model_inputs["num_video_frames"] = batch["num_video_frames"]
+
+                if chunk_size is not None:
+                    chunk_size = chunk_size * num_frames
+
+                def denoiser(input, sigma, c):
+                    return model.denoiser(
+                        model.model,
+                        input,
+                        sigma,
+                        c,
+                        num_overlap_frames=overlap,
+                        num_frames=num_frames,
+                        n_skips=n_batch,
+                        chunk_size=chunk_size,
+                        **additional_model_inputs,
                     )
 
-                    c, uc = model.conditioner.get_unconditional_conditioning(
-                        batch,
-                        batch_uc=batch_uc,
-                        force_uc_zero_embeddings=force_uc_zero_embeddings,
-                    )
+                samples_z = model.sampler(denoiser, video, cond=c, uc=uc, strength=strength)
+                samples_x = model.decode_first_stage(samples_z)
 
-                    for k in ["crossattn"]:
-                        uc[k] = repeat(uc[k], "b ... -> b t ...", t=num_frames)
-                        uc[k] = rearrange(uc[k], "b t ... -> (b t) ...", t=num_frames)
-                        c[k] = repeat(c[k], "b ... -> b t ...", t=num_frames)
-                        c[k] = rearrange(c[k], "b t ... -> (b t) ...", t=num_frames)
+                samples = torch.clamp((samples_x + 1.0) / 2.0, min=0.0, max=1.0)
 
-                    video = torch.randn(shape, device=device)
+                video = None
 
-                    additional_model_inputs = {}
-                    additional_model_inputs["image_only_indicator"] = torch.zeros(n_batch, num_frames).to(device)
-                    additional_model_inputs["num_video_frames"] = batch["num_video_frames"]
-
-                    def denoiser(input, sigma, c):
-                        return model.denoiser(model.model, input, sigma, c, **additional_model_inputs)
-
-                    samples_z = model.sampler(denoiser, video, cond=c, uc=uc, strength=strength)
-                    samples_x = model.decode_first_stage(samples_z)
-
-                    # Replace first and last by condition
-                    # samples_x[0] = condition.squeeze(0)[:, 0]
-                    # samples_x[-1] = condition.squeeze(0)[:, 1]
-
-                    samples = torch.clamp((samples_x + 1.0) / 2.0, min=0.0, max=1.0)
-
-                    # image = samples[-1] * 2.0 - 1.0
-                    video = None
-
-                    # samples = embed_watermark(samples)
-                    # samples = filter(samples)
-                    if i != len(masks_list) - 1:
-                        gt_list.append(torch.clamp((gt_chunks[i][:-1] + 1.0) / 2.0, min=0.0, max=1.0))
-                        samples_list.append(samples[:-1])  # Remove last frame to avoid overlap
-                    else:
-                        samples_list.append(samples)  # Keep last frame of last chunk
-                        gt_list.append(torch.clamp((gt_chunks[i] + 1.0) / 2.0, min=0.0, max=1.0))
-                    # samples_list.append(samples)
-
-        samples = torch.concatenate(samples_list)
-        gt = torch.concatenate(gt_list)
+        samples = rearrange(samples, "(b t) c h w -> b t c h w", t=num_frames)
+        samples = merge_overlapping_segments(samples, overlap)
 
         os.makedirs(output_folder, exist_ok=True)
         base_count = len(glob(os.path.join(output_folder, "*.mp4")))
@@ -366,13 +463,13 @@ def sample(
         #     (samples.shape[-1], samples.shape[-2]),
         # )
         vid = (rearrange(samples, "t c h w -> t c h w") * 255).cpu().numpy().astype(np.uint8)
-        gt_vid = (rearrange(gt, "t c h w -> t c h w") * 255).cpu().numpy().astype(np.uint8)
+        # gt_vid = (rearrange(gt, "t c h w -> t c h w") * 255).cpu().numpy().astype(np.uint8)
         # for frame in vid:
         #     frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
         #     writer.write(frame)
         # writer.release()
         if raw_audio is not None:
-            raw_audio = rearrange(raw_audio, "f s -> () (f s)")
+            raw_audio = rearrange(raw_audio[: vid.shape[0]], "f s -> () (f s)")
 
         save_audio_video(
             vid,
@@ -415,9 +512,9 @@ def get_batch(keys, value_dict, N, T, device):
                 b=math.prod(N),
             )
         elif key == "cond_frames":
-            batch[key] = repeat(value_dict["cond_frames"], "1 ... -> b ...", b=N[0])
+            batch[key] = repeat(value_dict["cond_frames"], "b ... -> (b t) ...", t=N[0])
         elif key == "cond_frames_without_noise":
-            batch[key] = repeat(value_dict["cond_frames_without_noise"], "1 ... -> b ...", b=N[0])
+            batch[key] = repeat(value_dict["cond_frames_without_noise"], "b ... -> (b t) ...", t=N[0])
         else:
             batch[key] = value_dict[key]
 

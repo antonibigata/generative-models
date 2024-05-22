@@ -4,12 +4,13 @@ model:
     scale_factor: 0.18215
     disable_first_stage_autocast: True
     # ckpt_path: /vol/paramonos2/projects/antoni/code/Personal/generative-models/checkpoints/svd.safetensors
-    ckpt_path: /data2/2024-05-10T15-28-00_example_training-svd_dubbing_half/mp_rank_00_model_states.pt
+    ckpt_path: /data2/2024-05-14T14-34-10_example_training-svd_dubbing_half.pt
     # remove_keys_from_weights: [model.diffusion_model.input_blocks.0.0.weight]
 
     denoiser_config:
-      target: sgm.modules.diffusionmodules.denoiser.DenoiserDub
+      target: sgm.modules.diffusionmodules.denoiser.DenoiserTemporalMultiDiffusion
       params:
+        is_dub: True
         scaling_config:
           target: sgm.modules.diffusionmodules.denoiser_scaling.VScalingWithEDMcNoise
 
