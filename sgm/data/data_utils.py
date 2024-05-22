@@ -1,6 +1,44 @@
 import torch
 import numpy as np
 from PIL import Image, ImageDraw
+import cv2
+
+
+def create_masks_from_landmarks_box(landmark_list, img_shape, nose_index=33, dtype="uint8", box_expand=0.0):
+    height, width = img_shape[:2]
+    num_frames = landmark_list.shape[0]
+
+    # Initialize the masks array
+    masks = np.zeros((num_frames, height, width), dtype=dtype)
+
+    if 0 <= box_expand < 1:
+        box_expand = int(box_expand * width)
+
+    for i in range(num_frames):
+        # Get the landmarks for the current frame
+        landmarks = landmark_list[i]
+
+        # Get the y-coordinate of the nose landmark
+        nose_point_h = landmarks[nose_index, 1]
+        cut_h = nose_point_h
+
+        # Find the leftmost and rightmost landmarks
+        far_left_index = np.argmin(landmarks[:, 0])
+        far_right_index = np.argmax(landmarks[:, 0])
+
+        # Define the points for the mask contour
+        left_up_point = np.array([landmarks[far_left_index][0] - box_expand, cut_h], dtype=np.int32)
+        left_down_point = np.array([landmarks[far_left_index][0] - box_expand, height], dtype=np.int32)
+        right_up_point = np.array([landmarks[far_right_index][0] + box_expand, cut_h], dtype=np.int32)
+        right_down_point = np.array([landmarks[far_right_index][0] + box_expand, height], dtype=np.int32)
+
+        # Define the contour
+        contour = np.array([[left_up_point, left_down_point, right_down_point, right_up_point]])
+
+        # Draw the contour on the mask
+        cv2.drawContours(masks[i], [contour], -1, color=(1), thickness=cv2.FILLED)
+
+    return masks
 
 
 def create_masks_from_landmarks_full_size(

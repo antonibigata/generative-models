@@ -16,7 +16,11 @@ from torchvision.io import read_video
 
 # from scripts.util.detection.nsfw_and_watermark_dectection import DeepFloydDataFiltering
 from sgm.util import default, instantiate_from_config, trim_pad_audio, get_raw_audio, save_audio_video
-from sgm.data.data_utils import create_masks_from_landmarks_full_size, create_face_mask_from_landmarks
+from sgm.data.data_utils import (
+    create_masks_from_landmarks_full_size,
+    create_face_mask_from_landmarks,
+    create_masks_from_landmarks_box,
+)
 
 # from sgm.models.components.audio.Whisper import Whisper
 
@@ -118,7 +122,6 @@ def merge_overlapping_segments(segments, overlap):
     # Avoid division by zero
     count[count == 0] = 1
     # Average the frames where there's overlap
-    print(count)
     output /= count
 
     return output
@@ -144,6 +147,8 @@ def create_interpolation_inputs(video, audio, landmarks, num_frames, video_emb=N
             masks = create_masks_from_landmarks_full_size(
                 landmarks[i:segment_end, :], video.shape[-1], video.shape[-2], offset=-0.01
             )
+        elif what_mask == "box":
+            masks = create_masks_from_landmarks_box(landmarks[i:segment_end, :], (video.shape[-1], video.shape[-2]))
         else:
             masks = create_face_mask_from_landmarks(
                 landmarks[i:segment_end, :],

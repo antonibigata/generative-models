@@ -15,7 +15,11 @@ from torchvision.transforms import RandomHorizontalFlip
 from audiomentations import Compose, AddGaussianNoise, PitchShift
 from safetensors.torch import load_file
 
-from sgm.data.data_utils import create_masks_from_landmarks_full_size, create_face_mask_from_landmarks
+from sgm.data.data_utils import (
+    create_masks_from_landmarks_full_size,
+    create_face_mask_from_landmarks,
+    create_masks_from_landmarks_box,
+)
 
 torchaudio.set_audio_backend("sox_io")
 decord.bridge.set_bridge("torch")
@@ -189,6 +193,8 @@ class VideoDataset(Dataset):
         landmarks = np.load(filename)[indexes, :]
         if self.what_mask == "full":
             mask = create_masks_from_landmarks_full_size(landmarks, original_size[0], original_size[1], offset=-0.01)
+        elif self.what_mask == "box":
+            mask = create_masks_from_landmarks_box(landmarks, (original_size[0], original_size[1]), box_expand=0.0)
         else:
             mask = create_face_mask_from_landmarks(landmarks, original_size[0], original_size[1], mask_expand=0.05)
         # mask = create_masks_from_landmarks_full_size(landmarks, original_size[0], original_size[1], offset=-0.01)
