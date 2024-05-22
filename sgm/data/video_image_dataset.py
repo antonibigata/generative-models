@@ -241,10 +241,10 @@ class VideoDataset(Dataset):
 
         audio_frames = None
         # raw_audio = None
-        # if self.audio_in_video:
-        #     raw_audio, _ = vr.get_batch(audio_indexes)
-        #     vr = vr._AVReader__video_reader
-        #     raw_audio = rearrange(self.ensure_shape(raw_audio), "f s -> (f s)")
+        if self.audio_in_video:
+            # raw_audio, _ = vr.get_batch(audio_indexes)
+            vr = vr._AVReader__video_reader
+            # raw_audio = rearrange(self.ensure_shape(raw_audio), "f s -> (f s)")
 
         if self.use_latent:
             latent_file = video_file.replace(self.video_ext, f"_{self.latent_type}_512_latent.safetensors").replace(

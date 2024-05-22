@@ -17,3 +17,5 @@
 __pycache__/
 /wandb
 main.log
+
+/sruns_rodrigo
