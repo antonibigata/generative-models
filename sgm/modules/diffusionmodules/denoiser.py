@@ -102,9 +102,9 @@ class DenoiserDub(nn.Module):
         input: torch.Tensor,
         sigma: torch.Tensor,
         cond: Dict,
-        num_overlap_frames: int,
-        num_frames: int,
-        n_skips: int,
+        num_overlap_frames: int = 1,
+        num_frames: int = 14,
+        n_skips: int = 1,
         chunk_size: int = None,
         **additional_model_inputs,
     ) -> torch.Tensor:

@@ -38,7 +38,7 @@ def create_masks_from_landmarks_box(landmark_list, img_shape, nose_index=33, dty
         # Draw the contour on the mask
         cv2.drawContours(masks[i], [contour], -1, color=(1), thickness=cv2.FILLED)
 
-    return masks
+    return torch.from_numpy(masks)
 
 
 def create_masks_from_landmarks_full_size(

@@ -208,34 +208,33 @@ def get_audio_embeddings(audio_path: str, audio_rate: int = 16000, fps: int = 25
 
 
 def sample(
-    input_path: str = "",  # Can either be image file or folder with image files
+    input_path: str = "",  # Actually not use
     video_path: Optional[str] = None,
-    audio_path: Optional[str] = None,
-    num_frames: Optional[int] = None,
-    num_steps: Optional[int] = None,
-    resize_size: Optional[int] = None,
+    audio_path: Optional[str] = None,  # Path to precomputed embeddings
+    num_frames: Optional[int] = None,  # No need to touch
+    num_steps: Optional[int] = None,  # Num steps diffusion process
+    resize_size: Optional[int] = None,  # Resize image to this size
     version: str = "svd",
-    fps_id: int = 6,
-    motion_bucket_id: int = 127,
-    cond_aug: float = 0.02,
+    fps_id: int = 24,  # Not use here
+    motion_bucket_id: int = 127,  # Not used here
+    cond_aug: float = 0.0,  # Not used here
     seed: int = 23,
     decoding_t: int = 14,  # Number of frames decoded at a time! This eats most VRAM. Reduce if necessary.
     device: str = "cuda",
     output_folder: Optional[str] = None,
-    autoregressive: int = 1,
-    strength: float = 1.0,
-    use_latent: bool = False,
+    strength: float = 1.0,  # Not used here
+    use_latent: bool = False,  # If need to input to be latent
     # degradation: int = 1,
-    overlap: int = 1,
-    what_mask: str = "full",
+    overlap: int = 1,  # Overlap between frames (i.e Multi-diffusion)
+    what_mask: str = "full",  # Type of mask to use
     model_config: Optional[str] = None,
-    max_seconds: Optional[int] = None,
-    lora_path: Optional[str] = None,
+    max_seconds: Optional[int] = None,  # Max seconds of video to generate (HDTF if pretty long so better to limit)
+    lora_path: Optional[str] = None,  # Not needed
     force_uc_zero_embeddings=[
         "cond_frames",
         "cond_frames_without_noise",
-    ],
-    chunk_size: int = None,
+    ],  # Useful for the classifier free guidance. What should be zeroed out in the unconditional embeddings
+    chunk_size: int = None,  # Useful if the model gets OOM
 ):
     """
     Simple script to generate a single sample conditioned on an image `input_path` or multiple images, one for each
