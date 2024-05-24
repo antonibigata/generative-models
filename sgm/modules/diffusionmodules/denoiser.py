@@ -123,6 +123,7 @@ class DenoiserDub(nn.Module):
         masks = cond.get("masks", None)
         masks = rearrange(masks, "b c t h w -> (b t) c h w")
         input = input * masks + gt * (1.0 - masks)
+       
         if chunk_size is not None:
             assert chunk_size % num_frames == 0, "Chunk size should be multiple of num_frames"
             out = chunk_network(
