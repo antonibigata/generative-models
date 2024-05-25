@@ -9,7 +9,7 @@ import pyrootutils
 
 root = pyrootutils.setup_root(__file__, pythonpath=True)
 sys.path.append(root)
-from sgm.data.video_image_dataset import VideoDataset
+from sgm.data.video_image_dataset import VideoDataset, collate_fn
 
 
 class VideoDataModule(LightningDataModule):
@@ -86,7 +86,7 @@ class VideoDataModule(LightningDataModule):
             self.test_datapipeline = VideoDataset(**self.test_config.datapipeline)
 
     def train_dataloader(self):
-        return DataLoader(self.train_datapipeline, **self.train_config.loader)
+        return DataLoader(self.train_datapipeline, collate_fn=collate_fn, **self.train_config.loader)
 
     def val_dataloader(self):
         if self.val_datapipeline:

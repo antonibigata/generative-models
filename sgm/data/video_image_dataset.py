@@ -278,6 +278,7 @@ class VideoDataset(Dataset):
             audio_frames = rearrange(audio, "(f s) -> f s", s=self.samples_per_frame)[audio_indexes]
         else:
             audio = torch.load(audio_file.split(".")[0] + f"_{self.audio_emb_type}_emb.pt")
+            assert audio.dim() == 3, f"Audio shape is {audio.shape}"
             audio_frames = audio[audio_indexes, :]
 
         diff_score = None
@@ -359,12 +360,20 @@ class VideoDataset(Dataset):
         return self.maybe_augment(video).squeeze(0)
 
     def __getitem__(self, idx):
-        clean_cond, noisy_cond, target, landmarks, audio, diff_score, cond_noise = self._get_frames_and_audio(
-            idx % len(self._indexes)
-        )
+        try:
+            clean_cond, noisy_cond, target, landmarks, audio, diff_score, cond_noise = self._get_frames_and_audio(
+                idx % len(self._indexes)
+            )
+        except Exception as e:
+            print(f"Error with index {idx}: {e}")
+            return self.__getitem__(np.random.randint(0, len(self)))
+
+        _, video_file, _ = self._indexes[idx % len(self._indexes)]
 
         out_data = {}
         # out_data = {"cond": cond, "video": target, "audio": audio, "video_file": video_file}
+
+        out_data["video_file"] = video_file
 
         if diff_score is not None:
             out_data["diff_score"] = torch.tensor([diff_score])
@@ -386,7 +395,7 @@ class VideoDataset(Dataset):
             out_data["cond_aug"] = cond_noise
         # out_data["motion_bucket_id"] = torch.tensor([self.motion_id])
         # out_data["fps_id"] = torch.tensor([self.video_rate - 1])
-        out_data["txt"] = "a portrait of a person"
+        # out_data["txt"] = "a portrait of a person"
         # out_data["num_video_frames"] = self.num_frames
         # out_data["image_only_indicator"] = torch.zeros(self.num_frames)
         out_data["num_video_frames"] = 1
@@ -399,6 +408,22 @@ class VideoDataset(Dataset):
             out_data["target_size_as_tuple"] = torch.tensor([self.resize_size, self.resize_size])
 
         return out_data
+
+
+def collate_fn(batch):
+    try:
+        out_data = {}
+        for key in batch[0].keys():
+            if key not in ["video_file", "num_video_frames", "cond_aug"]:
+                out_data[key] = torch.stack([d[key] for d in batch])
+            else:
+                out_data[key] = [d[key] for d in batch]
+        return out_data
+    except Exception as e:
+        print(f"Error in collate_fn: {e}")
+        for d in batch:
+            print(d["video_file"])
+        raise e
 
 
 if __name__ == "__main__":
