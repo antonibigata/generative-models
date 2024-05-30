@@ -20,6 +20,7 @@ from sgm.data.data_utils import (
     create_masks_from_landmarks_full_size,
     create_face_mask_from_landmarks,
     create_masks_from_landmarks_box,
+    scale_landmarks,
 )
 
 # from sgm.models.components.audio.Whisper import Whisper
@@ -307,6 +308,8 @@ def sample(
         #     )
         video = read_video(video_path, output_format="TCHW")[0]
         video = (video / 255.0) * 2.0 - 1.0
+        h, w = video.shape[2:]
+        video = torch.nn.functional.interpolate(video, (512, 512), mode="bilinear")
 
         video_embedding_path = video_path.replace(".mp4", "_video_512_latent.safetensors")
         video_emb = None
@@ -324,8 +327,9 @@ def sample(
         audio = audio.cuda()
 
         landmarks = np.load(video_path.replace(".mp4", ".npy"))
+        if h != 512 or w != 512:
+            landmarks = scale_landmarks(landmarks, (h, w), (512, 512))
 
-        h, w = video.shape[2:]
         # if degradation > 1:
         #     video = torch.nn.functional.interpolate(video, (h // degradation, w // degradation), mode="bilinear")
         #     video = torch.nn.functional.interpolate(video, (h, w), mode="bilinear")
@@ -399,6 +403,7 @@ def sample(
         value_dict["cond_aug"] = cond_aug
         value_dict["audio_emb"] = audio_cond
         value_dict["gt"] = rearrange(embbedings, "b t c h w -> b c t h w").to(device)
+        masked_gt = value_dict["gt"] * (1 - value_dict["masks"])
 
         with torch.no_grad():
             with torch.autocast(device):
@@ -424,7 +429,7 @@ def sample(
 
                 video = torch.randn(shape, device=device)
 
-                n_batch *= embbedings.shape[0]
+                # n_batch *= embbedings.shape[0]
 
                 additional_model_inputs = {}
                 additional_model_inputs["image_only_indicator"] = torch.zeros(n_batch, num_frames).to(device)
@@ -447,14 +452,29 @@ def sample(
                     )
 
                 samples_z = model.sampler(denoiser, video, cond=c, uc=uc, strength=strength)
+
+                samples_z_masked = samples_z * rearrange(
+                    (1 - value_dict["masks"]), "b c t h w -> (b t) c h w", t=num_frames
+                )
                 samples_x = model.decode_first_stage(samples_z)
+                samples_x_masked = model.decode_first_stage(samples_z_masked)
+
+                masked_gt_x = model.decode_first_stage(rearrange(masked_gt, "b c t h w -> (b t) c h w", t=num_frames))
+                masked_gt = torch.clamp((masked_gt_x + 1.0) / 2.0, min=0.0, max=1.0)
 
                 samples = torch.clamp((samples_x + 1.0) / 2.0, min=0.0, max=1.0)
+                samples_masked = torch.clamp((samples_x_masked + 1.0) / 2.0, min=0.0, max=1.0)
 
                 video = None
 
         samples = rearrange(samples, "(b t) c h w -> b t c h w", t=num_frames)
         samples = merge_overlapping_segments(samples, overlap)
+
+        samples_masked = rearrange(samples_masked, "(b t) c h w -> b t c h w", t=num_frames)
+        samples_masked = merge_overlapping_segments(samples_masked, overlap)
+
+        masked_gt = rearrange(masked_gt, "(b t) c h w -> b t c h w", t=num_frames)
+        masked_gt = merge_overlapping_segments(masked_gt, overlap).cpu()
 
         os.makedirs(output_folder, exist_ok=True)
         base_count = len(glob(os.path.join(output_folder, "*.mp4")))
@@ -467,6 +487,7 @@ def sample(
         #     (samples.shape[-1], samples.shape[-2]),
         # )
         vid = (rearrange(samples, "t c h w -> t c h w") * 255).cpu().numpy().astype(np.uint8)
+        vid_masked = (rearrange(samples_masked, "t c h w -> t c h w") * 255).cpu().numpy().astype(np.uint8)
         # gt_vid = (rearrange(gt, "t c h w -> t c h w") * 255).cpu().numpy().astype(np.uint8)
         # for frame in vid:
         #     frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
@@ -490,6 +511,16 @@ def sample(
             frame_rate=fps_id + 1,
             sample_rate=16000,
             save_path=video_path_gt,
+            keep_intermediate=False,
+        )
+
+        # Save mask video
+        save_audio_video(
+            vid_masked,
+            audio=raw_audio,
+            frame_rate=fps_id + 1,
+            sample_rate=16000,
+            save_path=video_path.replace(".mp4", "_masked.mp4"),
             keep_intermediate=False,
         )
 

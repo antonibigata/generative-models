@@ -8,9 +8,9 @@ model:
     # remove_keys_from_weights: [model.diffusion_model.input_blocks.0.0.weight]
 
     denoiser_config:
-      target: sgm.modules.diffusionmodules.denoiser.DenoiserTemporalMultiDiffusion
+      target: sgm.modules.diffusionmodules.denoiser.DenoiserDub
       params:
-        is_dub: True
+        # is_dub: True
         scaling_config:
           target: sgm.modules.diffusionmodules.denoiser_scaling.VScalingWithEDMcNoise
 
@@ -184,9 +184,10 @@ model:
             video_kernel_size: [3, 1, 1]
 
     sampler_config:
-      target: sgm.modules.diffusionmodules.sampling.EulerEDMSampler
+      target: sgm.modules.diffusionmodules.sampling.FIFOEDMSampler
       params:
         num_steps: 25
+        lookahead: False
         discretization_config:
           target: sgm.modules.diffusionmodules.discretizer.AYSDiscretization
           # params:
@@ -200,7 +201,7 @@ model:
         #     num_frames: 14
 
         guider_config:
-          target: sgm.modules.diffusionmodules.guiders.VanillaCFG
+          target: sgm.modules.diffusionmodules.guiders.IdentityGuider
           params:
             scale: 5.0
             # num_frames: 14

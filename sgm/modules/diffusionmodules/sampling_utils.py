@@ -1,6 +1,6 @@
 import torch
 from scipy import integrate
-
+from einops import repeat, rearrange
 from ...util import append_dims
 
 
@@ -24,8 +24,7 @@ def get_ancestral_step(sigma_from, sigma_to, eta=1.0):
         return sigma_to, 0.0
     sigma_up = torch.minimum(
         sigma_to,
-        eta
-        * (sigma_to**2 * (sigma_from**2 - sigma_to**2) / sigma_from**2) ** 0.5,
+        eta * (sigma_to**2 * (sigma_from**2 - sigma_to**2) / sigma_from**2) ** 0.5,
     )
     sigma_down = (sigma_to**2 - sigma_up**2) ** 0.5
     return sigma_down, sigma_up
@@ -41,3 +40,61 @@ def to_neg_log_sigma(sigma):
 
 def to_sigma(neg_log_sigma):
     return neg_log_sigma.neg().exp()
+
+
+# def chunk_inputs(input, cond, additional_model_inputs, sigma, sigma_next, start_idx, end_idx, num_frames=14):
+#     print(input.shape)
+#     input_chunk = input[:, :, start_idx:end_idx]
+
+#     sigma_chunk = sigma[start_idx:end_idx]
+#     sigma_next_chunk = sigma_next[start_idx:end_idx]
+
+#     cond_chunk = {}
+#     for k, v in cond.items():
+#         if isinstance(v, torch.Tensor):
+#             print(k, v.shape, start_idx, end_idx, num_frames)
+#             if v.dim() == 5:
+#                 cond_chunk[k] = rearrange(v, "b c t h w -> (b t) c h w")[start_idx:end_idx]
+#             elif (v.dim() == 3 or v.dim() == 4) and v.shape[0] != input.shape[2]:
+#                 cond_chunk[k] = v[start_idx // num_frames : end_idx // num_frames]
+#             else:
+#                 cond_chunk[k] = v[start_idx:end_idx]
+#         else:
+#             cond_chunk[k] = v
+
+#     additional_model_inputs_chunk = {}
+#     for k, v in additional_model_inputs.items():
+#         if isinstance(v, torch.Tensor):
+#             if v.dim() == 5:
+#                 cond_chunk[k] = rearrange(v, "b c t h w -> (b t) c h w")[start_idx:end_idx]
+#             elif (v.dim() == 3 or v.dim() == 4) and v.shape[0] != input.shape[2]:
+#                 cond_chunk[k] = v[start_idx // num_frames : end_idx // num_frames]
+#             else:
+#                 cond_chunk[k] = v[start_idx:end_idx]
+#         else:
+#             additional_model_inputs_chunk[k] = v
+
+#     return input_chunk, sigma_chunk, sigma_next_chunk, cond_chunk, additional_model_inputs_chunk
+
+
+def chunk_inputs(input, cond, additional_model_inputs, sigma, sigma_next, start_idx, end_idx, num_frames=14):
+    input_chunk = input[:, :, start_idx:end_idx].to(torch.float32).clone()
+
+    sigma_chunk = sigma[start_idx:end_idx].to(torch.float32)
+    sigma_next_chunk = sigma_next[start_idx:end_idx].to(torch.float32)
+
+    cond_chunk = {}
+    for k, v in cond.items():
+        if isinstance(v, torch.Tensor):
+            cond_chunk[k] = v[start_idx:end_idx]
+        else:
+            cond_chunk[k] = v
+
+    additional_model_inputs_chunk = {}
+    for k, v in additional_model_inputs.items():
+        if isinstance(v, torch.Tensor):
+            cond_chunk[k] = v[start_idx:end_idx]
+        else:
+            additional_model_inputs_chunk[k] = v
+
+    return input_chunk, sigma_chunk, sigma_next_chunk, cond_chunk, additional_model_inputs_chunk

@@ -21,4 +21,4 @@ srun python main.py --base configs/example_training/svd_dubbing_half.yaml --wand
     data.params.train.datapipeline.filelist=/fsx/rs2517/data/lists/HDTF/filelist_videos_train.txt \
     lightning.trainer.devices=4 lightning.trainer.accumulate_grad_batches=1 \
     model.params.network_config.params.audio_cond_method=to_time_emb data.params.train.datapipeline.what_mask=box \
-    data.params.train.loader.batch_size=1 'model.params.remove_keys_from_weights=[model.diffusion_model]' \
+    data.params.train.loader.batch_size=2 'model.params.remove_keys_from_weights=[model.diffusion_model]' \
