@@ -222,7 +222,8 @@ model:
 
     loss_fn_config:
       target: sgm.modules.diffusionmodules.loss.StandardDiffusionLoss
-      params:        
+      params:  
+        lambda_lower: 1.      
         batch2model_keys:
           - image_only_indicator
           - num_video_frames
