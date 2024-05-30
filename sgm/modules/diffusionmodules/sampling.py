@@ -183,6 +183,11 @@ def shift_latents(latents):
 
 
 class FIFOEDMSampler(FIFODiffusionSampler):
+    """
+    The problem is that the original implementation doesn't take into consideration the condition.
+    So we need to check if this can work with the condition. Don't have time to check this now.
+    """
+
     def __init__(self, s_churn=0.0, s_tmin=0.0, s_tmax=float("inf"), s_noise=1.0, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
