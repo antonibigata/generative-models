@@ -212,6 +212,20 @@ class VideoDataset(Dataset):
                 processed_tensors.append(tensor)
         return torch.cat(processed_tensors)
 
+    def get_predict_index_with_buffer(self, max_frames, first_index):
+        # Predict frame idx
+        # Calculate valid range for the second index
+        start = max(0, first_index - self.num_frames)
+        end = min(max_frames, first_index + self.num_frames)
+        valid_indices = list(range(0, start)) + list(range(end, max_frames))
+        # Select the second index from the valid range
+        if valid_indices:
+            second_index = np.random.choice(valid_indices)
+        else:
+            second_index = np.random.randint(0, max_frames)
+
+        return second_index
+
     def _get_frames_and_audio(self, idx):
         if self.load_all_possible_indexes:
             indexes, video_file, audio_file, land_file = self._indexes[idx]
@@ -228,7 +242,7 @@ class VideoDataset(Dataset):
                 vr = decord.VideoReader(video_file)
             len_video = len(vr)
             init_index = np.random.randint(0, len_video)
-            predict_index = np.random.randint(0, len_video)
+            predict_index = self.get_predict_index_with_buffer(len_video, init_index)
             indexes = [init_index, predict_index]
 
         # Initial frame between 0 and len(video) - frame_space

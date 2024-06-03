@@ -31,6 +31,7 @@ def create_interpolation_inputs(video, audio, num_frames, video_emb=None, overla
 
     # Break video into chunks of num_frames with overlap 1
     assert video.shape[0] == audio.shape[0], "Video and audio must have the same number of frames"
+
     video_chunks = []
     audio_chunks = []
     video_emb_chunks = []
@@ -91,7 +92,7 @@ def get_audio_embeddings(audio_path: str, audio_rate: int = 16000, fps: int = 25
             # audio = torch.cat(audio_embeddings, dim=1).squeeze(0)
     elif audio_path is not None and audio_path.endswith(".pt"):
         audio = torch.load(audio_path)
-        raw_audio_path = audio_path.replace(".pt", ".wav").replace("_whisper_emb", "")
+        raw_audio_path = audio_path.replace(".pt", ".wav").replace("_wav2vec2_emb", "")
 
         if os.path.exists(raw_audio_path):
             raw_audio = get_raw_audio(raw_audio_path, audio_rate)
@@ -109,7 +110,7 @@ def sample(
     num_steps: Optional[int] = None,
     resize_size: Optional[int] = None,
     version: str = "svd",
-    fps_id: int = 6,
+    fps_id: int = 24,
     motion_bucket_id: int = 127,
     cond_aug: float = 0.02,
     seed: int = 23,
@@ -199,6 +200,7 @@ def sample(
         #     )
         video = read_video(video_path, output_format="TCHW")[0]
         video = (video / 255.0) * 2.0 - 1.0
+        video = torch.nn.functional.interpolate(video, (512, 512), mode="bilinear")
 
         video_embedding_path = video_path.replace(".mp4", "_video_512_latent.safetensors")
         video_emb = None
