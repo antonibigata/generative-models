@@ -9,6 +9,7 @@ model:
     ckpt_path: checkpoints/svd_no_emb.safetensors
     remove_keys_from_weights: [model.diffusion_model.label_emb.0.0.weight]
     compile_model: False
+    en_and_decode_n_samples_a_time: 1
     # optimizer_config: 
     #   target: deepspeed.ops.adam.DeepSpeedCPUAdam
 

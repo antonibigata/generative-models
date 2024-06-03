@@ -164,7 +164,10 @@ model:
             sigma_max: 700.0
 
         guider_config:
-          target: sgm.modules.diffusionmodules.guiders.MultipleCondVanilla
+          # target: sgm.modules.diffusionmodules.guiders.MultipleCondVanilla
+          # params:
+          #   scales: [0.5, 0.5]
+          #   condition_names: [cond_frames_without_noise, audio_emb]
+          target: sgm.modules.diffusionmodules.guiders.VanillaCFG
           params:
-            scales: [0.5, 1., 0.5]
-            condition_names: [cond_frames_without_noise, cond_frames, audio_emb]
+            scale: 5.0

@@ -110,6 +110,7 @@ class DiffusionEngine(pl.LightningModule):
                 self.model.diffusion_model.load_state_dict(sd, strict=False)
 
         self.en_and_decode_n_samples_a_time = en_and_decode_n_samples_a_time
+        print("Using", self.en_and_decode_n_samples_a_time, "samples at a time for encoding and decoding")
 
         if use_lora:
             assert not only_train_ipadapter, "Cannot use both Lora and IPAdapter at the same time"
@@ -229,7 +230,7 @@ class DiffusionEngine(pl.LightningModule):
         if self.input_key == "latents":
             # Remove encoder to save memory
             self.first_stage_model.encoder = None
-            torch.cuda.empty_cache()
+        torch.cuda.empty_cache()
 
     def get_input(self, batch):
         # assuming unified data format, dataloader returns a dict.
