@@ -19,7 +19,7 @@ from audiomentations import Compose, AddGaussianNoise, PitchShift
 from skimage.metrics import structural_similarity as ssim
 from safetensors.torch import load_file
 
-from sgm.data.data_utils import trim_pad_audio, ssim_to_bin, create_landmarks_image
+from sgm.data.data_utils import trim_pad_audio, ssim_to_bin, create_landmarks_image, get_heatmap
 
 torchaudio.set_audio_backend("sox_io")
 decord.bridge.set_bridge("torch")
@@ -173,10 +173,15 @@ class VideoDataset(Dataset):
         audio = trim_pad_audio(audio, self.audio_rate, max_len_sec=max_len_sec)
         return audio[0]
 
-    def _load_landmarks(self, filename, original_size, index):
+    def _load_landmarks(self, filename, original_size, index, target_size=(64, 64)):
         landmarks = np.load(filename)[index]
-        landmarks = create_landmarks_image(landmarks, original_size, target_size=(224, 224), point_size=2)
-        return (torch.from_numpy(landmarks) / 255.0) * 2 - 1
+        # landmarks = create_landmarks_image(landmarks, original_size, target_size=(224, 224), point_size=2)
+        # return (torch.from_numpy(landmarks) / 255.0) * 2 - 1
+        # return get_heatmap(landmarks[None, ...], target_size, original_size, n_points="stable", sigma=4).squeeze(0)
+        land_image = create_landmarks_image(
+            landmarks, original_size, target_size=target_size, point_size=2, n_points="stable", dim=1
+        )
+        return torch.from_numpy(land_image) / 255.0
 
     def get_audio_indexes(self, main_index, n_audio_frames, max_len):
         # Get indexes for audio from both sides of the main index
@@ -282,7 +287,9 @@ class VideoDataset(Dataset):
         or_w, or_h = clean_cond.shape[0], clean_cond.shape[1]
         landmarks = None
         if self.get_landmarks:
-            landmarks = self._load_landmarks(land_file, (or_w, or_h), predict_index)
+            landmarks = self._load_landmarks(
+                land_file, (or_w, or_h), predict_index, target_size=(noisy_cond.shape[-2], noisy_cond.shape[-1])
+            )
 
         # if raw_audio is None:
         #     raw_audio = self._load_audio(audio_file, max_len_sec=len_video / self.video_rate, return_all=True)
