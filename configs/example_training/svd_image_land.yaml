@@ -7,7 +7,7 @@ model:
     scale_factor: 0.18215
     disable_first_stage_autocast: True
     ckpt_path: checkpoints/svd_no_emb.safetensors
-    remove_keys_from_weights: [model.diffusion_model.label_emb.0.0.weight]
+    remove_keys_from_weights: [model.diffusion_model.label_emb.0.0.weight, model.diffusion_model.input_blocks.0.0.weight]
     compile_model: False
     en_and_decode_n_samples_a_time: 1
     # optimizer_config: 
@@ -59,7 +59,7 @@ model:
         adm_in_channels: 0
         num_classes: sequential
         use_checkpoint: True
-        in_channels: 8
+        in_channels: 9
         out_channels: 4
         model_channels: 320
         attention_resolutions: [4, 2, 1]
@@ -160,6 +160,13 @@ model:
         #   target: sgm.modules.encoders.modules.ConcatTimestepEmbedderND
         #   params:
         #     outdim: 256
+
+        - input_key: landmarks
+          is_trainable: False
+          # ucg_rate: 0.1
+          target: sgm.modules.encoders.modules.IdentityEncoder
+          params:
+            cond_type: concat
 
         - input_key: audio_emb
           is_trainable: True
@@ -268,6 +275,7 @@ data:
         additional_audio_frames: 2
         virtual_increase: 10000
         use_latent_condition: True
+        get_landmarks: True
 
       loader:
         batch_size: 32

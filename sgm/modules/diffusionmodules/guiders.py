@@ -44,8 +44,15 @@ class MultipleCondVanilla(Guider):
     def __init__(self, scales, condition_names) -> None:
         assert len(scales) == len(condition_names)
         self.scales = scales
-        self.condition_names = condition_names
+        # self.condition_names = condition_names
         self.n_conditions = len(scales)
+        self.map_cond_name = {
+            "audio_emb": "audio_emb",
+            "cond_frames_without_noise": "crossattn",
+            "cond_frames": "concat",
+        }
+        self.condition_names = [self.map_cond_name.get(cond_name, cond_name) for cond_name in condition_names]
+        print("Condition names: ", self.condition_names)
 
     def __call__(self, x: torch.Tensor, sigma: torch.Tensor) -> torch.Tensor:
         outs = x.chunk(self.n_conditions + 1)

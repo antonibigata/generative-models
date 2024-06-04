@@ -262,6 +262,7 @@ class VideoDataset(Dataset):
             audio_frames = rearrange(audio, "(f s) -> f s", s=self.samples_per_frame)
         else:
             audio = torch.load(audio_file.split(".")[0] + f"_{self.audio_emb_type}_emb.pt")
+            assert audio.dim() == 3, f"Audio shape is {audio.shape}"
             audio_frames = audio[indexes, :]
 
         audio_frames = audio_frames[1:] if self.need_cond else audio_frames  # Remove audio of first frame

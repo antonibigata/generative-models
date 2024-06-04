@@ -9,7 +9,7 @@ import pyrootutils
 
 root = pyrootutils.setup_root(__file__, pythonpath=True)
 sys.path.append(root)
-from sgm.data.video_image_dataset import VideoDataset
+from sgm.data.video_image_dataset import VideoDataset, collate_fn
 
 
 class VideoDataModule(LightningDataModule):

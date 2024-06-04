@@ -101,7 +101,9 @@ def load_img(display=True, key=None, device="cuda"):
     return image.to(device)
 
 
-def get_full_audio_and_video(input_path, video_path, audio_path, max_seconds, use_latent, resize_size, fps_id):
+def get_full_audio_and_video(
+    input_path, video_path, audio_path, video_folder, latent_folder, max_seconds, use_latent, resize_size, fps_id
+):
     path = Path(input_path)
     all_img_paths = []
     if input_path == "":
@@ -127,8 +129,11 @@ def get_full_audio_and_video(input_path, video_path, audio_path, max_seconds, us
         #     )
         video = read_video(video_path, output_format="TCHW")[0]
         video = (video / 255.0) * 2.0 - 1.0
+        video = torch.nn.functional.interpolate(video, (512, 512), mode="bilinear")
 
         video_embedding_path = video_path.replace(".mp4", "_video_512_latent.safetensors")
+        if video_folder is not None and latent_folder is not None:
+            video_embedding_path = video_embedding_path.replace(video_folder, latent_folder)
         video_emb = None
         if use_latent:
             video_emb = load_safetensors(video_embedding_path)["latents"]
@@ -314,6 +319,8 @@ if __name__ == "__main__":
     video_path = st.text_input(
         "Video Path", value="/data2/Datasets/HDTF/cropped_videos_original/WRA_ShelleyMooreCapito0_000.mp4"
     )
+    video_folder = st.text_input("Video Folder", value="")
+    latent_folder = st.text_input("Latent Folder", value="")
     max_seconds = st.number_input("Max Seconds", value=10, min_value=1, max_value=60)
 
     # state = init_st(version_dict, load_filter=False, load_ckpt=False)
@@ -331,7 +338,7 @@ if __name__ == "__main__":
 
     if "model_input" not in state:
         model_input, video_emb, audio, raw_audio = get_full_audio_and_video(
-            "", video_path, audio_path, max_seconds, True, 512, 24
+            "", video_path, audio_path, video_folder, latent_folder, max_seconds, True, 512, 24
         )
         state["model_input"] = model_input
         state["video_emb"] = video_emb

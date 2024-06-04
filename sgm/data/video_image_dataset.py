@@ -19,7 +19,7 @@ from audiomentations import Compose, AddGaussianNoise, PitchShift
 from skimage.metrics import structural_similarity as ssim
 from safetensors.torch import load_file
 
-from sgm.data.data_utils import trim_pad_audio, ssim_to_bin, create_landmarks_image
+from sgm.data.data_utils import trim_pad_audio, ssim_to_bin, create_landmarks_image, get_heatmap
 
 torchaudio.set_audio_backend("sox_io")
 decord.bridge.set_bridge("torch")
@@ -173,10 +173,15 @@ class VideoDataset(Dataset):
         audio = trim_pad_audio(audio, self.audio_rate, max_len_sec=max_len_sec)
         return audio[0]
 
-    def _load_landmarks(self, filename, original_size, index):
+    def _load_landmarks(self, filename, original_size, index, target_size=(64, 64)):
         landmarks = np.load(filename)[index]
-        landmarks = create_landmarks_image(landmarks, original_size, target_size=(224, 224), point_size=2)
-        return (torch.from_numpy(landmarks) / 255.0) * 2 - 1
+        # landmarks = create_landmarks_image(landmarks, original_size, target_size=(224, 224), point_size=2)
+        # return (torch.from_numpy(landmarks) / 255.0) * 2 - 1
+        # return get_heatmap(landmarks[None, ...], target_size, original_size, n_points="stable", sigma=4).squeeze(0)
+        land_image = create_landmarks_image(
+            landmarks, original_size, target_size=target_size, point_size=2, n_points="stable", dim=1
+        )
+        return torch.from_numpy(land_image) / 255.0
 
     def get_audio_indexes(self, main_index, n_audio_frames, max_len):
         # Get indexes for audio from both sides of the main index
@@ -212,6 +217,20 @@ class VideoDataset(Dataset):
                 processed_tensors.append(tensor)
         return torch.cat(processed_tensors)
 
+    def get_predict_index_with_buffer(self, max_frames, first_index):
+        # Predict frame idx
+        # Calculate valid range for the second index
+        start = max(0, first_index - self.num_frames)
+        end = min(max_frames, first_index + self.num_frames)
+        valid_indices = list(range(0, start)) + list(range(end, max_frames))
+        # Select the second index from the valid range
+        if valid_indices:
+            second_index = np.random.choice(valid_indices)
+        else:
+            second_index = np.random.randint(0, max_frames)
+
+        return second_index
+
     def _get_frames_and_audio(self, idx):
         if self.load_all_possible_indexes:
             indexes, video_file, audio_file, land_file = self._indexes[idx]
@@ -228,7 +247,7 @@ class VideoDataset(Dataset):
                 vr = decord.VideoReader(video_file)
             len_video = len(vr)
             init_index = np.random.randint(0, len_video)
-            predict_index = np.random.randint(0, len_video)
+            predict_index = self.get_predict_index_with_buffer(len_video, init_index)
             indexes = [init_index, predict_index]
 
         # Initial frame between 0 and len(video) - frame_space
@@ -268,7 +287,9 @@ class VideoDataset(Dataset):
         or_w, or_h = clean_cond.shape[0], clean_cond.shape[1]
         landmarks = None
         if self.get_landmarks:
-            landmarks = self._load_landmarks(land_file, (or_w, or_h), predict_index)
+            landmarks = self._load_landmarks(
+                land_file, (or_w, or_h), predict_index, target_size=(noisy_cond.shape[-2], noisy_cond.shape[-1])
+            )
 
         # if raw_audio is None:
         #     raw_audio = self._load_audio(audio_file, max_len_sec=len_video / self.video_rate, return_all=True)
@@ -278,6 +299,7 @@ class VideoDataset(Dataset):
             audio_frames = rearrange(audio, "(f s) -> f s", s=self.samples_per_frame)[audio_indexes]
         else:
             audio = torch.load(audio_file.split(".")[0] + f"_{self.audio_emb_type}_emb.pt")
+            assert audio.dim() == 3, f"Audio shape is {audio.shape}"
             audio_frames = audio[audio_indexes, :]
 
         diff_score = None
@@ -359,12 +381,20 @@ class VideoDataset(Dataset):
         return self.maybe_augment(video).squeeze(0)
 
     def __getitem__(self, idx):
-        clean_cond, noisy_cond, target, landmarks, audio, diff_score, cond_noise = self._get_frames_and_audio(
-            idx % len(self._indexes)
-        )
+        try:
+            clean_cond, noisy_cond, target, landmarks, audio, diff_score, cond_noise = self._get_frames_and_audio(
+                idx % len(self._indexes)
+            )
+        except Exception as e:
+            print(f"Error with index {idx}: {e}")
+            return self.__getitem__(np.random.randint(0, len(self)))
+
+        _, video_file, _ = self._indexes[idx % len(self._indexes)]
 
         out_data = {}
         # out_data = {"cond": cond, "video": target, "audio": audio, "video_file": video_file}
+
+        out_data["video_file"] = video_file
 
         if diff_score is not None:
             out_data["diff_score"] = torch.tensor([diff_score])
@@ -386,7 +416,7 @@ class VideoDataset(Dataset):
             out_data["cond_aug"] = cond_noise
         # out_data["motion_bucket_id"] = torch.tensor([self.motion_id])
         # out_data["fps_id"] = torch.tensor([self.video_rate - 1])
-        out_data["txt"] = "a portrait of a person"
+        # out_data["txt"] = "a portrait of a person"
         # out_data["num_video_frames"] = self.num_frames
         # out_data["image_only_indicator"] = torch.zeros(self.num_frames)
         out_data["num_video_frames"] = 1
@@ -399,6 +429,22 @@ class VideoDataset(Dataset):
             out_data["target_size_as_tuple"] = torch.tensor([self.resize_size, self.resize_size])
 
         return out_data
+
+
+def collate_fn(batch):
+    try:
+        out_data = {}
+        for key in batch[0].keys():
+            if key not in ["video_file", "num_video_frames", "cond_aug"]:
+                out_data[key] = torch.stack([d[key] for d in batch])
+            else:
+                out_data[key] = [d[key] for d in batch]
+        return out_data
+    except Exception as e:
+        print(f"Error in collate_fn: {e}")
+        for d in batch:
+            print(d["video_file"])
+        raise e
 
 
 if __name__ == "__main__":

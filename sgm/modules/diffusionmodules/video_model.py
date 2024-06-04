@@ -571,7 +571,7 @@ class VideoUNet(nn.Module):
                     y = th.cat([y, audio_emb], dim=1)
                 else:
                     y = audio_emb
-            assert y.shape[0] == x.shape[0]
+            assert y.shape[0] == x.shape[0], f"{y.shape} != {x.shape}"
             emb = emb + self.label_emb(y)
 
         h = x
