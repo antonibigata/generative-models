@@ -25,6 +25,13 @@ torchaudio.set_audio_backend("sox_io")
 decord.bridge.set_bridge("torch")
 
 
+def do_skip(files_to_check, file):
+    for skip in files_to_check:
+        if skip in file:
+            return True
+    return False
+
+
 # Similar to regular video dataset but trades flexibility for speed
 class VideoDataset(Dataset):
     def __init__(
@@ -61,6 +68,7 @@ class VideoDataset(Dataset):
         is_xl=False,
         use_latent_condition=False,
         get_landmarks=False,
+        skip_files=["id04974/5z4zNgCIe3c/00059"],
     ):
         self.audio_folder = audio_folder
         landmarks_folder = video_folder if landmarks_folder is None else landmarks_folder
@@ -85,8 +93,8 @@ class VideoDataset(Dataset):
         with open(filelist, "r") as files:
             for f in files.readlines():
                 f = f.rstrip()
-                dataset_name = f.split("/")[-3]
-                if dataset_name in exclude_dataset:
+                skip = do_skip(skip_files, f)
+                if skip:
                     continue
                 audio_path = f.replace(video_folder, audio_folder).replace(video_extension, audio_extension)
                 if not self.audio_in_video and not os.path.exists(audio_path):
@@ -444,6 +452,7 @@ def collate_fn(batch):
         print(f"Error in collate_fn: {e}")
         for d in batch:
             print(d["video_file"])
+            print(d["audio_emb"].shape)
         raise e
 
 

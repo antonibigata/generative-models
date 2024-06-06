@@ -261,6 +261,13 @@ class VideoTransform:
                 torchvision.transforms.Grayscale(),
                 # torchvision.transforms.Normalize(0.421, 0.165),
             )
+        elif subset == "loss":
+            self.video_pipeline = torch.nn.Sequential(
+                FunctionalModule(lambda x: (x + 1) / 2),
+                torchvision.transforms.CenterCrop(center_crop_size),
+                torchvision.transforms.Grayscale(),
+                # torchvision.transforms.Normalize(0.421, 0.165),
+            )
 
     def __call__(self, sample):
         # sample: T x C x H x W

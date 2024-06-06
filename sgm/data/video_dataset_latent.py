@@ -15,6 +15,8 @@ from torchvision.transforms import RandomHorizontalFlip
 from audiomentations import Compose, AddGaussianNoise, PitchShift
 from safetensors.torch import load_file
 
+from sgm.data.data_utils import scale_landmarks
+
 torchaudio.set_audio_backend("sox_io")
 decord.bridge.set_bridge("torch")
 
@@ -48,6 +50,8 @@ class VideoDataset(Dataset):
         resize_size=None,
         audio_folder="Audio",
         video_folder="CroppedVideos",
+        lip_emb_folder="",
+        landmarks_folder=None,
         video_extension=".avi",
         audio_extension=".wav",
         audio_rate=16000,
@@ -74,6 +78,8 @@ class VideoDataset(Dataset):
         data_mean=None,
         data_std=None,
         use_latent_condition=False,
+        get_lip_emb=False,
+        get_landmarks=False,
     ):
         self.audio_folder = audio_folder
         self.from_audio_embedding = from_audio_embedding
@@ -82,6 +88,9 @@ class VideoDataset(Dataset):
         self.latent_condition = use_latent_condition
         precomputed_latent = latent_type
         # self.fps = fps
+
+        landmarks_folder = video_folder if landmarks_folder is None else landmarks_folder
+        self.landmarks_folder = landmarks_folder
 
         assert not (exists(data_mean) ^ exists(data_std)), "Both data_mean and data_std should be provided"
 
@@ -96,6 +105,8 @@ class VideoDataset(Dataset):
 
         self.filelist = []
         self.audio_filelist = []
+        self.landmark_filelist = []
+        self.lip_emb_filelist = []
         missing_audio = 0
         with open(filelist, "r") as files:
             for f in files.readlines():
@@ -109,6 +120,19 @@ class VideoDataset(Dataset):
                     continue
                 self.filelist += [f]
                 self.audio_filelist += [audio_path]
+
+                if get_landmarks:
+                    landmark_path = f.replace(video_folder, landmarks_folder).replace(video_extension, ".npy")
+                    self.landmark_filelist += [landmark_path]
+
+                if get_lip_emb:
+                    lip_emb_path = f.replace(video_folder, lip_emb_folder).replace(
+                        video_extension, "_stable_512_latent.safetensors"
+                    )
+                    self.lip_emb_filelist += [lip_emb_path]
+
+        self.get_landmarks = get_landmarks
+        self.get_lip_emb = get_lip_emb
 
         self.resize_size = resize_size
         if use_latent and not precomputed_latent:
@@ -158,9 +182,17 @@ class VideoDataset(Dataset):
         self.num_frames = num_frames
         self.load_all_possible_indexes = load_all_possible_indexes
         if load_all_possible_indexes:
-            self._indexes = self._get_indexes(self.filelist, self.audio_filelist)
+            self._indexes = self._get_indexes(
+                self.filelist, self.audio_filelist, self.landmark_filelist, self.lip_emb_filelist
+            )
         else:
-            self._indexes = list(zip(self.filelist, self.audio_filelist))
+            zip_tuple = (self.filelist, self.audio_filelist)
+            if self.get_landmarks:
+                zip_tuple += (self.landmark_filelist,)
+            if self.get_lip_emb:
+                zip_tuple += (self.lip_emb_filelist,)
+            # Now zip them together
+            self._indexes = list(zip(*zip_tuple))
         self.total_len = len(self._indexes)
 
     def __len__(self):
@@ -210,16 +242,21 @@ class VideoDataset(Dataset):
             latents = ((latents - self.data_mean) / self.data_std) * 0.5
         return latents
 
+    def _load_landmarks(self, filename, original_size, target_size, indexes):
+        landmarks = np.load(filename)[indexes, :]
+        landmarks = scale_landmarks(landmarks, original_size, target_size)
+        return torch.from_numpy(landmarks).float()
+
     def _get_frames_and_audio(self, idx):
         if self.load_all_possible_indexes:
-            indexes, video_file, audio_file = self._indexes[idx]
+            indexes, video_file, audio_file, land_file, lip_file = self._indexes[idx]
             if self.audio_in_video:
                 vr = decord.AVReader(video_file, sample_rate=self.audio_rate)
             else:
                 vr = decord.VideoReader(video_file)
             len_video = len(vr)
         else:
-            video_file, audio_file = self._indexes[idx]
+            video_file, audio_file, land_file, lip_file = self._indexes[idx]
             if self.audio_in_video:
                 vr = decord.AVReader(video_file, sample_rate=self.audio_rate)
             else:
@@ -280,6 +317,7 @@ class VideoDataset(Dataset):
                     clean_cond = frames_video[0].unsqueeze(0).permute(3, 0, 1, 2).float()
                 else:
                     clean_cond = vr[indexes[0]].unsqueeze(0).permute(3, 0, 1, 2).float()
+                or_shape = clean_cond.shape[-2:]
                 clean_cond = self.scale_and_crop((clean_cond / 255.0) * 2 - 1).squeeze(0)
                 if self.latent_condition:
                     noisy_cond = target[:, 0]
@@ -287,6 +325,7 @@ class VideoDataset(Dataset):
                     noisy_cond = clean_cond
             else:
                 clean_cond = target[:, 0]
+                or_shape = clean_cond.shape[-2:]
                 noisy_cond = clean_cond
         elif self.mode == "interpolation":
             if self.use_latent:
@@ -295,6 +334,7 @@ class VideoDataset(Dataset):
                     clean_cond = frames_video[[0, -1]].permute(3, 0, 1, 2).float()
                 else:
                     clean_cond = vr.get_batch([indexes[0], indexes[-1]]).permute(3, 0, 1, 2).float()
+                or_shape = clean_cond.shape[-2:]
                 clean_cond = self.scale_and_crop((clean_cond / 255.0) * 2 - 1)
                 if self.latent_condition:
                     noisy_cond = torch.stack([frames[:, 0], frames[:, -1]], dim=1)
@@ -302,7 +342,16 @@ class VideoDataset(Dataset):
                     noisy_cond = clean_cond
             else:
                 clean_cond = torch.stack([frames[:, 0], frames[:, -1]], dim=1)
+                or_shape = clean_cond.shape[-2:]
                 noisy_cond = clean_cond
+
+        landmarks = None
+        if self.get_landmarks:
+            landmarks = self._load_landmarks(land_file, or_shape, (self.resize_size, self.resize_size), indexes)
+
+        lip_emb = None
+        if self.get_lip_emb:
+            lip_emb = load_file(lip_file)["latents"][indexes, :]
 
         # Add noise to conditional frame
         # noisy_cond = None
@@ -315,22 +364,27 @@ class VideoDataset(Dataset):
         # else:
         #     cond_noise = None
 
-        return clean_cond, noisy_cond, target, audio_frames, raw_audio, cond_noise
+        return clean_cond, noisy_cond, target, audio_frames, raw_audio, cond_noise, landmarks, lip_emb
 
-    def _get_indexes(self, video_filelist, audio_filelist):
+    def _get_indexes(self, video_filelist, audio_filelist, landmark_filelist=None, lip_emb_filelist=None):
         indexes = []
         self.og_shape = None
-        for vid_file, audio_file in zip(video_filelist, audio_filelist):
+        for i, (vid_file, audio_file) in enumerate(zip(video_filelist, audio_filelist)):
             vr = decord.VideoReader(vid_file)
             if self.og_shape is None:
                 self.og_shape = vr[0].shape[-2]
             len_video = len(vr)
+
+            land_file = landmark_filelist[i] if self.get_landmarks else None
+            lip_emb_file = lip_emb_filelist[i] if self.get_lip_emb else None
             # Short videos
             if len_video < self.num_frames:
                 continue
             else:
                 possible_indexes = list(sliding_window(range(len_video), self.num_frames))[:: self.step]
-                possible_indexes = list(map(lambda x: (x, vid_file, audio_file), possible_indexes))
+                possible_indexes = list(
+                    map(lambda x: (x, vid_file, audio_file, land_file, lip_emb_file), possible_indexes)
+                )
                 indexes.extend(possible_indexes)
         print("Indexes", len(indexes), "\n")
         return indexes
@@ -356,7 +410,9 @@ class VideoDataset(Dataset):
 
     def __getitem__(self, idx):
         try:
-            clean_cond, noisy_cond, target, audio, raw_audio, cond_noise = self._get_frames_and_audio(idx)
+            clean_cond, noisy_cond, target, audio, raw_audio, cond_noise, landmarks, lip_emb = (
+                self._get_frames_and_audio(idx)
+            )
         except Exception as e:
             print(f"Error with index {idx}: {e}")
             return self.__getitem__(np.random.randint(0, len(self)))
@@ -366,6 +422,12 @@ class VideoDataset(Dataset):
         if audio is not None:
             out_data["audio_emb"] = audio
             out_data["raw_audio"] = raw_audio
+
+        if landmarks is not None:
+            out_data["landmarks"] = landmarks
+
+        if lip_emb is not None:
+            out_data["lip_emb"] = lip_emb
 
         if self.use_latent:
             input_key = "latents"

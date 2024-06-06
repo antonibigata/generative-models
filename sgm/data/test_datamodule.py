@@ -86,11 +86,11 @@ if __name__ == "__main__":
         }
     )
 
-    test_matching_audio_to_vid(
-        train_config.datapipeline.filelist,
-        train_config.datapipeline.audio_folder,
-        train_config.datapipeline.video_folder,
-        train_config.datapipeline.audio_extension,
-        train_config.datapipeline.video_extension,
-    )
+    # test_matching_audio_to_vid(
+    #     train_config.datapipeline.filelist,
+    #     train_config.datapipeline.audio_folder,
+    #     train_config.datapipeline.video_folder,
+    #     train_config.datapipeline.audio_extension,
+    #     train_config.datapipeline.video_extension,
+    # )
     test_video_data_module(train_config)

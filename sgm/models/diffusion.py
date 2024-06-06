@@ -58,7 +58,7 @@ class DiffusionEngine(pl.LightningModule):
     ):
         super().__init__()
 
-        # self.automatic_optimization = False
+        self.automatic_optimization = False
 
         self.log_keys = log_keys
         self.no_log_keys = no_log_keys
@@ -287,10 +287,17 @@ class DiffusionEngine(pl.LightningModule):
         return z
 
     def forward(self, x, batch):
-        loss = self.loss_fn(self.model, self.denoiser, self.conditioner, x, batch)
-        loss_mean = loss.mean()
-        loss_dict = {"loss": loss_mean}
+        loss_dict = self.loss_fn(self.model, self.denoiser, self.conditioner, x, batch, self.first_stage_model)
+        for k in loss_dict:
+            loss_dict[k] = loss_dict[k].mean()
+        loss_mean = loss_dict["loss"]
+        # loss_dict = {"loss": loss_mean}
         return loss_mean, loss_dict
+
+    def forward_no_loss(self, x, batch):
+        return self.loss_fn.forward_without_loss(
+            self.model, self.denoiser, self.conditioner, x, batch, self.first_stage_model
+        )
 
     def shared_step(self, batch: Dict) -> Any:
         x = self.get_input(batch)
@@ -300,10 +307,47 @@ class DiffusionEngine(pl.LightningModule):
         loss, loss_dict = self(x, batch)
         return loss, loss_dict
 
+    def shared_step_separated_loss(self, batch: Dict) -> Any:
+        x = self.get_input(batch)
+        if self.input_key != "latents":
+            x = self.encode_first_stage(x)
+        batch["global_step"] = self.global_step
+        model_output, input, w, mask, landmarks, lip_emb = self.forward_no_loss(x, batch)
+
+        opt = self.optimizers()
+        opt.zero_grad()
+
+        loss_dict = {}
+
+        # Diffusion
+        loss = self.loss_fn.diffusion_loss(model_output, input, w, mask)
+        loss = loss.mean()
+        loss_dict["diffusion_loss"] = loss
+        self.manual_backward(loss)
+
+        # Lip loss
+        lip_loss = self.loss_fn.lip_loss(model_output, w, landmarks, lip_emb, self.first_stage_model)
+        lip_loss = lip_loss.mean()
+        loss_dict["lip_loss"] = lip_loss
+        self.manual_backward(lip_loss)
+        opt.step()
+
+        return loss, loss_dict
+
     def training_step(self, batch, batch_idx):
-        loss, loss_dict = self.shared_step(batch)
-        # debugging_message = "Training step"
-        # print(f"RANK - {self.trainer.global_rank}: {debugging_message}")
+        # loss, loss_dict = self.shared_step(batch)
+        # # debugging_message = "Training step"
+        # # print(f"RANK - {self.trainer.global_rank}: {debugging_message}")
+
+        # opt = self.optimizers()
+        # opt.zero_grad()
+        # print(loss_dict)
+        # for k, v in loss_dict.items():
+        #     print(k, v)
+        #     self.manual_backward(v, retain_graph=True)
+        # # self.manual_backward(loss)
+        # opt.step()
+        loss, loss_dict = self.shared_step_separated_loss(batch)
 
         self.log_dict(loss_dict, prog_bar=True, logger=True, on_step=True, on_epoch=False)
 
