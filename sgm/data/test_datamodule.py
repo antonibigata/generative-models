@@ -50,13 +50,16 @@ if __name__ == "__main__":
     train_config = OmegaConf.create(
         {
             "datapipeline": {
-                "filelist": "/fsx/rs2517/data/lists/voxceleb2_proper.txt",
+                "filelist": "/fsx/rs2517/data/lists/HDTF/filelist_videos_train.txt",
                 "resize_size": 512,
-                "audio_folder": "/fsx/rs2517/data/voxceleb2_wav2vec2_feats",
-                "video_folder": "/fsx/behavioural_computing_data/voxceleb2",
+                # "audio_folder": "/fsx/rs2517/data/voxceleb2_wav2vec2_feats",
+                # "video_folder": "/fsx/behavioural_computing_data/voxceleb2",
+                "audio_folder": "audio",
+                "video_folder": "cropped_videos_original",
                 "video_extension": ".mp4",
                 "audio_extension": ".pt",
-                "latent_folder": "/fsx/rs2517/data/voxceleb2_sd_latent",
+                # "latent_folder": "/fsx/rs2517/data/voxceleb2_sd_latent",
+                "latent_folder": "cropped_videos_original",
                 "audio_in_video": True,
                 "audio_rate": 16000,
                 "num_frames": 14,
@@ -73,12 +76,12 @@ if __name__ == "__main__":
                 # data_mean: null
                 # data_std: null
                 "additional_audio_frames": 2,
-                "virtual_increase": 10,
+                "virtual_increase": 100000,
                 "use_latent_condition": True,
             },
             "loader": {
                 "batch_size": 64,
-                "num_workers": 90,
+                "num_workers": 4,
                 "drop_last": True,
                 "pin_memory": True,
                 "persistent_workers": True,

@@ -13,6 +13,7 @@ import torchaudio
 from safetensors.torch import load_file as load_safetensors
 import torch.nn.functional as F
 from torchvision.io import read_video
+import cv2
 
 # from scripts.util.detection.nsfw_and_watermark_dectection import DeepFloydDataFiltering
 from sgm.util import default, instantiate_from_config, trim_pad_audio, get_raw_audio, save_audio_video
@@ -53,6 +54,28 @@ def merge_overlapping_segments(segments, overlap):
     output /= count
 
     return output
+
+
+def add_text_to_keyframes(
+    video, text, font=cv2.FONT_HERSHEY_SIMPLEX, font_scale=1, color=(0, 255, 0), thickness=2, num_frames=14
+):
+    for i, frame in enumerate(video):
+        if i % (num_frames - 1) != 0:
+            continue
+        frame = cv2.cvtColor(rearrange(frame, "c h w -> h w c"), cv2.COLOR_RGB2BGR)
+        cv2.putText(
+            frame,
+            f"{text} {i}",
+            (10, 30),
+            font,
+            font_scale,
+            color,
+            thickness,
+            cv2.LINE_AA,
+        )
+        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        video[i] = rearrange(frame, "h w c -> c h w")
+    return video
 
 
 def create_interpolation_inputs(video, audio, num_frames, video_emb=None, overlap=1):
@@ -374,6 +397,8 @@ def sample(
         #     (samples.shape[-1], samples.shape[-2]),
         # )
         vid = (rearrange(samples, "t c h w -> t c h w") * 255).cpu().numpy().astype(np.uint8)
+        # Write GT on the ground truth frames
+        vid = add_text_to_keyframes(vid, "GT", num_frames=num_frames)
         # gt_vid = (rearrange(gt, "t c h w -> t c h w") * 255).cpu().numpy().astype(np.uint8)
         # for frame in vid:
         #     frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
