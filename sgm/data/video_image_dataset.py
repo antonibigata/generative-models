@@ -18,6 +18,7 @@ from torchvision.transforms import RandomHorizontalFlip
 from audiomentations import Compose, AddGaussianNoise, PitchShift
 from skimage.metrics import structural_similarity as ssim
 from safetensors.torch import load_file
+from safetensors import safe_open
 
 from sgm.data.data_utils import trim_pad_audio, ssim_to_bin, create_landmarks_image
 
@@ -276,8 +277,8 @@ class VideoDataset(Dataset):
             # )
             # frames = load_file(latent_file)["latents"]
             frames = self.curr_latents
-            frame = frames[predict_index, :, :, :]
-            cond = frames[init_index]
+            frame = frames[predict_index : predict_index + 1, :, :, :].squeeze(0)
+            cond = frames[init_index : init_index + 1, :, :, :].squeeze(0)
             # except FileNotFoundError:
             #     frames = torch.load(video_file.replace(self.video_ext, "_latent.pt"))
             #     frame = frames[predict_index, :, :, :]
@@ -412,7 +413,9 @@ class VideoDataset(Dataset):
             latent_file = video_file.replace(self.video_ext, f"_{self.latent_type}_512_latent.safetensors").replace(
                 self.video_folder, self.latent_folder
             )
-            self.curr_latents = load_file(latent_file)["latents"]
+            with safe_open(latent_file, framework="pt") as f:
+                self.curr_latents = f.get_slice("latents")
+            # self.curr_latents = load_file(latent_file)["latents"]
 
     def __getitem__(self, idx):
         if np.random.rand() > 0.9 or self.curr_video is None:
