@@ -20,7 +20,7 @@ from skimage.metrics import structural_similarity as ssim
 from safetensors.torch import load_file
 from safetensors import safe_open
 
-from sgm.data.data_utils import trim_pad_audio, ssim_to_bin, create_landmarks_image
+from sgm.data.data_utils import trim_pad_audio, ssim_to_bin, create_landmarks_image, draw_kps_image
 
 torchaudio.set_audio_backend("sox_io")
 decord.bridge.set_bridge("torch")
@@ -192,10 +192,11 @@ class VideoDataset(Dataset):
         # landmarks = create_landmarks_image(landmarks, original_size, target_size=(224, 224), point_size=2)
         # return (torch.from_numpy(landmarks) / 255.0) * 2 - 1
         # return get_heatmap(landmarks[None, ...], target_size, original_size, n_points="stable", sigma=4).squeeze(0)
-        land_image = create_landmarks_image(
-            landmarks, original_size, target_size=target_size, point_size=2, n_points="stable", dim=1
-        )
-        return torch.from_numpy(land_image) / 255.0
+        # land_image = create_landmarks_image(
+        #     landmarks, original_size, target_size=target_size, point_size=2, n_points="stable", dim=1
+        # )
+        land_image = draw_kps_image(target_size, original_size, landmarks, rgb=False, pts_width=1)
+        return torch.from_numpy(land_image).float() / 255.0
 
     def get_audio_indexes(self, main_index, n_audio_frames, max_len):
         # Get indexes for audio from both sides of the main index
@@ -206,7 +207,7 @@ class VideoDataset(Dataset):
             # for i in range(frame_ids[0], min(frame_ids[0] + self.n_audio_motion_embs + 1, n_frames)):
             audio_ids += [i]
         audio_ids += [max_len - 1] * max(main_index + n_audio_frames - max_len + 1, 0)
-        return audio_ids
+        return audio_ids, max(n_audio_frames - main_index, 0), max(main_index + n_audio_frames - max_len + 1, 0)
 
     def ensure_shape(self, tensors):
         target_length = self.samples_per_frame
@@ -261,7 +262,9 @@ class VideoDataset(Dataset):
 
         # Cond frame idx
         predict_index = indexes[-1]
-        audio_indexes = self.get_audio_indexes(predict_index, self.additional_audio_frames, len(vr))
+        audio_indexes, left_copies, right_copies = self.get_audio_indexes(
+            predict_index, self.additional_audio_frames, len(vr)
+        )
         # print(audio_indexes, indexes)
 
         audio_frames = None
@@ -307,8 +310,13 @@ class VideoDataset(Dataset):
         else:
             # audio = torch.load(audio_file.split(".")[0] + f"_{self.audio_emb_type}_emb.pt")
             audio = self.curr_audio
-            assert audio.dim() == 3, f"Audio shape is {audio.shape}"
-            audio_frames = audio[audio_indexes, :]
+            assert len(audio.get_shape()) == 3, f"Audio shape is {audio.shape}"
+            audio_frames = audio[audio_indexes[0] : audio_indexes[-1] + 1, :]
+            # Make copies of the first and last audio frames if needed
+            if left_copies > 0:
+                audio_frames = torch.cat([audio_frames[0][None, :]] * left_copies + [audio_frames])
+            if right_copies > 0:
+                audio_frames = torch.cat([audio_frames] + [audio_frames[-1][None, :]] * right_copies)
 
         diff_score = None
         if self.get_difference_score:
@@ -408,7 +416,9 @@ class VideoDataset(Dataset):
         self.curr_video = vr
         if self.get_landmarks:
             self.curr_landmarks = np.load(land_file)
-        self.curr_audio = torch.load(audio_file.split(".")[0] + f"_{self.audio_emb_type}_emb.pt")
+        with safe_open(audio_file.split(".")[0] + f"_{self.audio_emb_type}_emb.safetensors", framework="pt") as f:
+            self.curr_audio = f.get_slice("audio")
+        # self.curr_audio = torch.load(audio_file.split(".")[0] + f"_{self.audio_emb_type}_emb.pt")
         if self.use_latent:
             latent_file = video_file.replace(self.video_ext, f"_{self.latent_type}_512_latent.safetensors").replace(
                 self.video_folder, self.latent_folder
@@ -430,7 +440,7 @@ class VideoDataset(Dataset):
             self.load_new_media()
             return self.__getitem__(np.random.randint(0, len(self)))
 
-        _, video_file, _ = self._indexes[idx % len(self._indexes)]
+        _, video_file, _ = self._indexes[self.curr_idx]
 
         out_data = {}
         # out_data = {"cond": cond, "video": target, "audio": audio, "video_file": video_file}
@@ -486,6 +496,7 @@ def collate_fn(batch):
         for d in batch:
             print(d["video_file"])
             print(d["audio_emb"].shape)
+            print(d["latents"].shape)
         raise e
 
 

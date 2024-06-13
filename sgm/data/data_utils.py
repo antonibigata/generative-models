@@ -1,12 +1,14 @@
 import torch
 import numpy as np
+from functools import partial
+import torch
+import math
+import cv2
 
 
 ALL_FIXED_POINTS = (
     [i for i in range(0, 4)] + [i for i in range(13, 17)] + [i for i in range(27, 36)] + [36, 39, 42, 45]
 )
-from functools import partial
-import torch
 
 
 def gaussian_kernel(sigma, width, height):
@@ -81,6 +83,51 @@ def scale_landmarks(landmarks, original_size, target_size):
     scale_x = target_size[1] / original_size[1]
     scaled_landmarks = landmarks * np.array([scale_x, scale_y])
     return scaled_landmarks.astype(int)
+
+
+def draw_kps_image(
+    image_shape, original_size, landmarks, color_list=[(255, 0, 0), (0, 255, 0), (0, 0, 255)], rgb=True, pts_width=4
+):
+    stick_width = pts_width
+    limb_seq = np.array([[0, 2], [1, 2]])
+    kps = landmarks[[36, 45, 33], :]
+    kps = scale_landmarks(kps, original_size, image_shape)
+    if not rgb:  # Grayscale image
+        canvas = np.zeros((image_shape[0], image_shape[1], 1))
+        color_mode = "grayscale"
+    else:  # Color image
+        canvas = np.zeros((image_shape[0], image_shape[1], 3))
+        color_mode = "color"
+
+    polygon_cache = {}
+
+    for index in limb_seq:
+        color = color_list[index[0]]
+        if color_mode == "grayscale":
+            color = (int(0.299 * color[2] + 0.587 * color[1] + 0.114 * color[0]),)  # Convert to grayscale intensity
+
+        x = kps[index][:, 0]
+        y = kps[index][:, 1]
+        length = np.sqrt((x[0] - x[1]) ** 2 + (y[0] - y[1]) ** 2)
+        angle = math.degrees(math.atan2(y[0] - y[1], x[0] - x[1]))
+
+        cache_key = (color, int(np.mean(x)), int(np.mean(y)), int(length / 2), int(angle))
+        if cache_key not in polygon_cache:
+            polygon_cache[cache_key] = cv2.ellipse2Poly(
+                (int(np.mean(x)), int(np.mean(y))), (int(length / 2), stick_width), int(angle), 0, 360, 1
+            )
+
+        polygon = polygon_cache[cache_key]
+        cv2.fillConvexPoly(canvas, polygon, [int(c * 0.6) for c in color])
+
+    for idx, kp in enumerate(kps):
+        if color_mode == "grayscale":
+            color = (int(0.299 * color_list[idx][2] + 0.587 * color_list[idx][1] + 0.114 * color_list[idx][0]),)
+        else:
+            color = color_list[idx]
+        cv2.circle(canvas, (int(kp[0]), int(kp[1])), pts_width, color, -1)
+
+    return canvas.transpose(2, 0, 1)
 
 
 def create_landmarks_image(
