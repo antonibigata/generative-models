@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=antoni_project
-#SBATCH --partition=learnai4rl
+#SBATCH --partition=learnai
 #SBATCH --gres=gpu:4
 #SBATCH --ntasks-per-node=4
 #SBATCH --cpus-per-task=12
@@ -21,8 +21,8 @@ cd /data/home/antoni/code/generative-models
 srun python main.py --base configs/example_training/svd_image_land.yaml --wandb True lightning.trainer.num_nodes 8 \
     lightning.strategy=deepspeed_stage_1 lightning.trainer.precision=32 model.base_learning_rate=1.e-5 \
     data.params.train.datapipeline.filelist=/fsx/rs2517/data/lists/HDTF/filelist_videos_train.txt \
-    data.params.train.loader.num_workers=4 \
-    data.params.train.datapipeline.audio_in_video=True \
+    data.params.train.loader.num_workers=6 \
+    data.params.train.datapipeline.audio_in_video=False \
     data.params.train.datapipeline.load_all_possible_indexes=False \
     lightning.trainer.devices=4 lightning.trainer.accumulate_grad_batches=1 data.params.train.datapipeline.virtual_increase=100000 \
     model.params.network_config.params.audio_cond_method=to_time_emb_image data.params.train.loader.batch_size=32 \
