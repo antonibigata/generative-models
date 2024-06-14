@@ -120,7 +120,8 @@ class DubbingWrapper(IdentityWrapper):
 
         masks = c.get("masks", None)
         if masks is not None:
-            masks = rearrange(masks, "b c t h w -> (b t) c h w")
+            if masks.dim() == 5:
+                masks = rearrange(masks, "b c t h w -> (b t) c h w")
             if self.mask_input:
                 # gt = c.get("gt", torch.Tensor([]).type_as(x))
                 # gt = rearrange(gt, "b c t h w -> (b t) c h w")

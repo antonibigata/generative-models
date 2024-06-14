@@ -552,7 +552,7 @@ class VideoUNet(nn.Module):
         # print("x device:", x.dtype)
         # for name, param in self.time_embed.named_parameters():
         #     print(name, param.dtype)
-        t_emb = t_emb.to(x.dtype)
+        # t_emb = t_emb.to(x.dtype)
         emb = self.time_embed(t_emb)
 
         if self.num_classes is not None:
@@ -611,5 +611,5 @@ class VideoUNet(nn.Module):
                 time_context=time_context,
                 num_video_frames=num_video_frames,
             )
-        h = h.type(x.dtype)
+        # h = h.type(x.dtype)
         return self.out(h)

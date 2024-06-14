@@ -1,8 +1,8 @@
 """
-    Partially ported from https://github.com/crowsonkb/k-diffusion/blob/master/k_diffusion/sampling.py
+Partially ported from https://github.com/crowsonkb/k-diffusion/blob/master/k_diffusion/sampling.py
 """
 
-
+from collections import defaultdict
 from typing import Dict, Union
 
 import torch
@@ -16,6 +16,7 @@ from ...modules.diffusionmodules.sampling_utils import (
     to_d,
     to_neg_log_sigma,
     to_sigma,
+    chunk_inputs,
 )
 from ...util import append_dims, default, instantiate_from_config
 
@@ -79,6 +80,44 @@ class BaseDiffusionSampler:
         return sigma_generator
 
 
+class FIFODiffusionSampler(BaseDiffusionSampler):
+    def __init__(self, lookahead=False, num_frames=14, num_partitions=4, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self.num_frames = num_frames
+        self.lookahead = lookahead
+        self.num_partitions = num_partitions
+        self.num_steps = self.num_frames * self.num_partitions
+        self.fifo = []
+
+    def get_sigma_gen(self, num_sigmas, total_n_frames):
+        total = total_n_frames + num_sigmas - self.num_frames
+        sigma_generator = range(total_n_frames + num_sigmas - self.num_frames - 1)
+        if self.verbose:
+            print("#" * 30, " Sampling setting ", "#" * 30)
+            print(f"Sampler: {self.__class__.__name__}")
+            print(f"Discretization: {self.discretization.__class__.__name__}")
+            print(f"Guider: {self.guider.__class__.__name__}")
+            sigma_generator = tqdm(
+                sigma_generator,
+                total=total,
+                desc=f"Sampling with {self.__class__.__name__} for {total} steps",
+            )
+        return sigma_generator
+
+    def prepare_sampling_loop(self, x, cond, uc=None):
+        sigmas = self.discretization(self.num_steps, device=self.device)
+
+        uc = default(uc, cond)
+
+        x *= torch.sqrt(1.0 + sigmas[0] ** 2.0)
+        num_sigmas = len(sigmas)
+
+        s_in = x.new_ones([x.shape[0]])
+
+        return x, s_in, sigmas, num_sigmas, cond, uc
+
+
 class SingleStepDiffusionSampler(BaseDiffusionSampler):
     def sampler_step(self, sigma, next_sigma, denoiser, x, cond, uc, *args, **kwargs):
         raise NotImplementedError
@@ -131,6 +170,194 @@ class EDMSampler(SingleStepDiffusionSampler):
             )
 
         return x
+
+
+def shift_latents(latents):
+    # shift latents
+    latents[:, :, :-1] = latents[:, :, 1:].clone()
+
+    # add new noise to the last frame
+    latents[:, :, -1] = torch.randn_like(latents[:, :, -1])
+
+    return latents
+
+
+class FIFOEDMSampler(FIFODiffusionSampler):
+    """
+    The problem is that the original implementation doesn't take into consideration the condition.
+    So we need to check if this can work with the condition. Don't have time to check this now.
+    """
+
+    def __init__(self, s_churn=0.0, s_tmin=0.0, s_tmax=float("inf"), s_noise=1.0, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self.s_churn = s_churn
+        self.s_tmin = s_tmin
+        self.s_tmax = s_tmax
+        self.s_noise = s_noise
+
+    def euler_step(self, x, d, dt):
+        return x + dt * d
+
+    def possible_correction_step(self, euler_step, x, d, dt, next_sigma, denoiser, cond, uc):
+        return euler_step
+
+    def concatenate_list_dict(self, dict1):
+        for k, v in dict1.items():
+            if isinstance(v, list):
+                dict1[k] = torch.cat(v, dim=0)
+            else:
+                dict1[k] = v
+        return dict1
+
+    def prepare_latents(self, x, c, uc, sigmas, num_sigmas):
+        latents_list = []
+        sigma_hat_list = []
+        sigma_next_list = []
+        c_list = defaultdict(list)
+        uc_list = defaultdict(list)
+
+        video = torch.load("/data/home/antoni/code/generative-models-dub/samples_z.pt")
+        video = rearrange(video, "t c h w -> () c t h w")
+
+        for k, v in c.items():
+            if not isinstance(v, torch.Tensor):
+                c_list[k] = v
+                uc_list[k] = uc[k]
+
+        if self.lookahead:
+            for i in range(self.num_frames // 2):
+                gamma = (
+                    min(self.s_churn / (num_sigmas - 1), 2**0.5 - 1)
+                    if self.s_tmin <= sigmas[i] <= self.s_tmax
+                    else 0.0
+                )
+                sigma = sigmas[i]
+                sigma_hat = sigma * (gamma + 1.0)
+                if gamma > 0:
+                    eps = torch.randn_like(video[:, :, [0]]) * self.s_noise
+                    latents = video[:, :, [0]] + eps * append_dims(sigma_hat**2 - sigma**2, video.ndim) ** 0.5
+                else:
+                    latents = video[:, :, [0]]
+
+                for k, v in c.items():
+                    if isinstance(v, torch.Tensor):
+                        c_list[k].append(v[[0]])
+                for k, v in uc.items():
+                    if isinstance(v, torch.Tensor):
+                        uc_list[k].append(v[[0]])
+
+                latents_list.append(latents)
+                sigma_hat_list.append(sigma_hat)
+                sigma_next_list.append(sigmas[i + 1])
+
+        for i in range(num_sigmas - 1):
+            gamma = (
+                min(self.s_churn / (num_sigmas - 1), 2**0.5 - 1) if self.s_tmin <= sigmas[i] <= self.s_tmax else 0.0
+            )
+            sigma = sigmas[i]
+            sigma_hat = sigma * (gamma + 1.0)
+            frame_idx = max(0, i - (num_sigmas - self.num_frames))
+            print(frame_idx)
+            if gamma > 0:
+                eps = torch.randn_like(video[:, :, [frame_idx]]) * self.s_noise
+                latents = video[:, :, [frame_idx]] + eps * append_dims(sigma_hat**2 - sigma**2, video.ndim) ** 0.5
+            else:
+                latents = video[:, :, [frame_idx]]
+
+            for k, v in c.items():
+                if isinstance(v, torch.Tensor):
+                    c_list[k].append(
+                        v[[frame_idx]] if v.shape[0] == video.shape[2] else v[[frame_idx // self.num_frames]]
+                    )
+            for k, v in uc.items():
+                if isinstance(v, torch.Tensor):
+                    uc_list[k].append(
+                        v[[frame_idx]] if v.shape[0] == video.shape[2] else v[[frame_idx // self.num_frames]]
+                    )
+
+            latents_list.append(latents)
+            sigma_hat_list.append(sigma_hat)
+            sigma_next_list.append(sigmas[i + 1])
+
+        latents = torch.cat(latents_list, dim=2)
+        sigma_hat = torch.stack(sigma_hat_list, dim=0)
+        sigma_next = torch.stack(sigma_next_list, dim=0)
+
+        c_list = self.concatenate_list_dict(c_list)
+        uc_list = self.concatenate_list_dict(uc_list)
+
+        return latents, sigma_hat, sigma_next, c_list, uc_list
+
+    def sampler_step(self, sigma_hat, next_sigma, denoiser, x, cond, uc=None):
+        denoised = self.denoise(x, denoiser, sigma_hat, cond, uc)
+        if x.ndim == 5:
+            x = rearrange(x, "b c t h w -> (b t) c h w")
+
+        d = to_d(x, sigma_hat, denoised)
+        dt = append_dims(next_sigma - sigma_hat, x.ndim)
+
+        euler_step = self.euler_step(x, d, dt)
+        x = self.possible_correction_step(euler_step, x, d, dt, next_sigma, denoiser, cond, uc)
+        return x
+
+    def merge_cond_dict(self, cond, total_n_frames):
+        for k, v in cond.items():
+            if not isinstance(v, torch.Tensor):
+                cond[k] = v
+            else:
+                if v.dim() == 5:
+                    cond[k] = rearrange(v, "b c t h w -> (b t) c h w")
+                elif v.dim() == 3 and v.shape[0] != total_n_frames:
+                    cond[k] = rearrange(v, "b t c -> (b t) () c")
+                else:
+                    cond[k] = v
+        return cond
+
+    def __call__(self, denoiser, x, cond, uc=None, num_steps=None, strength=1.0):
+        x, s_in, sigmas, num_sigmas, cond, uc = self.prepare_sampling_loop(x, cond, uc)
+
+        x = rearrange(x, "b c h w -> () c b h w")
+        cond = self.merge_cond_dict(cond, x.shape[2])
+        uc = self.merge_cond_dict(uc, x.shape[2])
+        total_n_frames = x.shape[2]
+        latents, sigma_hat, sigma_next, cond, uc = self.prepare_latents(x, cond, uc, sigmas, num_sigmas)
+
+        fifo_video_frames = []
+
+        for i in self.get_sigma_gen(num_sigmas, total_n_frames):
+            for rank in reversed(range(2 * self.num_partitions if self.lookahead else self.num_partitions)):
+                start_idx = rank * (self.num_frames // 2) if self.lookahead else rank * self.num_frames
+                midpoint_idx = start_idx + self.num_frames // 2
+                end_idx = start_idx + self.num_frames
+
+                chunk_x, sigma_hat_chunk, sigma_next_chunk, cond_chunk, uc_chunk = chunk_inputs(
+                    latents, cond, uc, sigma_hat, sigma_next, start_idx, end_idx, self.num_frames
+                )
+
+                s_in = chunk_x.new_ones([chunk_x.shape[0]])
+
+                out = self.sampler_step(
+                    s_in * sigma_hat_chunk,
+                    s_in * sigma_next_chunk,
+                    denoiser,
+                    chunk_x,
+                    cond_chunk,
+                    uc=uc_chunk,
+                )
+                if self.lookahead:
+                    latents[:, :, midpoint_idx:end_idx] = rearrange(
+                        out[-(self.num_frames // 2) :], "b c h w -> () c b h w"
+                    )
+                else:
+                    latents[:, :, start_idx:end_idx] = rearrange(out, "b c h w -> () c b h w")
+                del out
+
+            first_frame_idx = self.num_frames // 2 if self.lookahead else 0
+            latents = shift_latents(latents)
+            fifo_video_frames.append(latents[:, :, [first_frame_idx]])
+
+        return rearrange(torch.cat(fifo_video_frames, dim=2), "() c b h w -> b c h w")[-total_n_frames:]
 
 
 class AncestralSampler(SingleStepDiffusionSampler):

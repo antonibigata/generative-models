@@ -38,10 +38,11 @@ def chunk_network(network, input, c_in, c_noise, cond, additional_model_inputs, 
 
         additional_model_inputs_chunk = {}
         for k, v in additional_model_inputs.items():
-            if isinstance(v, torch.Tensor) and v.shape[0] == input.shape[0]:
-                additional_model_inputs_chunk[k] = v[start_idx:end_idx]
-            elif isinstance(v, torch.Tensor):
-                additional_model_inputs_chunk[k] = v[start_idx // num_frames : end_idx // num_frames]
+            if isinstance(v, torch.Tensor):
+                or_size = v.shape[0]
+                additional_model_inputs_chunk[k] = repeat(
+                    v, "b c -> (b t) c", t=input_chunk.shape[0] // num_frames // or_size
+                )
             else:
                 additional_model_inputs_chunk[k] = v
 
@@ -74,8 +75,9 @@ class Denoiser(nn.Module):
         if input.ndim == 5:
             T = input.shape[2]
             input = rearrange(input, "b c t h w -> (b t) c h w")
-            sigma = repeat(sigma, "b ... -> b t ...", t=T)
-            sigma = rearrange(sigma, "b t ... -> (b t) ...")
+            if sigma.shape[0] != input.shape[0]:
+                sigma = repeat(sigma, "b ... -> b t ...", t=T)
+                sigma = rearrange(sigma, "b t ... -> (b t) ...")
         sigma_shape = sigma.shape
         sigma = append_dims(sigma, input.ndim)
         c_skip, c_out, c_in, c_noise = self.scaling(sigma)
@@ -112,18 +114,24 @@ class DenoiserDub(nn.Module):
         if input.ndim == 5:
             T = input.shape[2]
             input = rearrange(input, "b c t h w -> (b t) c h w")
-            sigma = repeat(sigma, "b ... -> b t ...", t=T)
-            sigma = rearrange(sigma, "b t ... -> (b t) ...")
+            if sigma.shape[0] != input.shape[0]:
+                sigma = repeat(sigma, "b ... -> b t ...", t=T)
+                sigma = rearrange(sigma, "b t ... -> (b t) ...")
         sigma_shape = sigma.shape
         sigma = append_dims(sigma, input.ndim)
         c_skip, c_out, c_in, c_noise = self.scaling(sigma)
         c_noise = self.possibly_quantize_c_noise(c_noise.reshape(sigma_shape))
         gt = cond.get("gt", torch.Tensor([]).type_as(input))
-        gt = rearrange(gt, "b c t h w -> (b t) c h w")
+        if gt.dim() == 5:
+            gt = rearrange(gt, "b c t h w -> (b t) c h w")
         masks = cond.get("masks", None)
-        masks = rearrange(masks, "b c t h w -> (b t) c h w")
+        if masks.dim() == 5:
+            masks = rearrange(masks, "b c t h w -> (b t) c h w")
         input = input * masks + gt * (1.0 - masks)
-       
+
+        # additional_model_inputs["image_only_indicator"] = repeat(
+        #     additional_model_inputs["image_only_indicator"], "b c -> (b t) c", t=input.shape[0] // num_frames
+        # )
         if chunk_size is not None:
             assert chunk_size % num_frames == 0, "Chunk size should be multiple of num_frames"
             out = chunk_network(
@@ -179,17 +187,21 @@ class DenoiserTemporalMultiDiffusion(nn.Module):
         if input.ndim == 5:
             T = input.shape[2]
             input = rearrange(input, "b c t h w -> (b t) c h w")
-            sigma = repeat(sigma, "b ... -> b t ...", t=T)
-            sigma = rearrange(sigma, "b t ... -> (b t) ...")
+            if sigma.shape[0] != input.shape[0]:
+                sigma = repeat(sigma, "b ... -> b t ...", t=T)
+                sigma = rearrange(sigma, "b t ... -> (b t) ...")
+        n_skips = n_skips * input.shape[0] // T
         sigma_shape = sigma.shape
         sigma = append_dims(sigma, input.ndim)
         c_skip, c_out, c_in, c_noise = self.scaling(sigma)
         c_noise = self.possibly_quantize_c_noise(c_noise.reshape(sigma_shape))
         if self.is_dub:
             gt = cond.get("gt", torch.Tensor([]).type_as(input))
-            gt = rearrange(gt, "b c t h w -> (b t) c h w")
+            if gt.dim() == 5:
+                gt = rearrange(gt, "b c t h w -> (b t) c h w")
             masks = cond.get("masks", None)
-            masks = rearrange(masks, "b c t h w -> (b t) c h w")
+            if masks.dim() == 5:
+                masks = rearrange(masks, "b c t h w -> (b t) c h w")
             input = input * masks + gt * (1.0 - masks)
 
         # Now we want to find the overlapping frames and average them
@@ -203,7 +215,9 @@ class DenoiserTemporalMultiDiffusion(nn.Module):
             input[i + n_skips, :, :num_overlap_frames] = average_frame
 
         input = rearrange(input, "b c t h w -> (b t) c h w")
-
+        # additional_model_inputs["image_only_indicator"] = repeat(
+        #     additional_model_inputs["image_only_indicator"], "b c -> (b t) c", t=input.shape[0] // num_frames
+        # )
         if chunk_size is not None:
             assert chunk_size % num_frames == 0, "Chunk size should be multiple of num_frames"
             out = chunk_network(
