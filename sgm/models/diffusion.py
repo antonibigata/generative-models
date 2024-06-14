@@ -55,17 +55,19 @@ class DiffusionEngine(pl.LightningModule):
         separate_unet_ckpt: Optional[str] = None,
         use_thunder: Optional[bool] = False,
         is_dubbing: Optional[bool] = False,
+        print_missing_keys: Optional[bool] = True,
     ):
         super().__init__()
 
         # self.automatic_optimization = False
-
         self.log_keys = log_keys
         self.no_log_keys = no_log_keys
         self.input_key = input_key
         self.is_dubbing = is_dubbing
         self.optimizer_config = default(optimizer_config, {"target": "torch.optim.AdamW"})
+
         model = instantiate_from_config(network_config)
+
         if isinstance(network_wrapper, str) or network_wrapper is None:
             self.model = get_obj_from_str(default(network_wrapper, OPENAIUNETWRAPPER))(
                 model, compile_model=compile_model
@@ -87,7 +89,9 @@ class DiffusionEngine(pl.LightningModule):
             sampler_config["params"]["guider_config"] = config_guider
         self.conditioner = instantiate_from_config(default(conditioner_config, UNCONDITIONAL_CONFIG))
         self.scheduler_config = scheduler_config
+
         self._init_first_stage(first_stage_config)
+        
 
         self.loss_fn = instantiate_from_config(loss_fn_config) if loss_fn_config is not None else None
 
@@ -101,7 +105,7 @@ class DiffusionEngine(pl.LightningModule):
         self.no_cond_log = no_cond_log
 
         if ckpt_path is not None:
-            self.init_from_ckpt(ckpt_path, remove_keys_from_weights=remove_keys_from_weights)
+            self.init_from_ckpt(ckpt_path, remove_keys_from_weights=remove_keys_from_weights, print_missing_keys=print_missing_keys)
             if separate_unet_ckpt is not None:
                 sd = torch.load(separate_unet_ckpt)["state_dict"]
                 if remove_keys_from_unet_weights is not None:
@@ -190,8 +194,8 @@ class DiffusionEngine(pl.LightningModule):
 
             self.model.diffusion_model = thunder.jit(self.model.diffusion_model)
 
-    def init_from_ckpt(self, path: str, remove_keys_from_weights: Optional[Union[List, Tuple]] = None) -> None:
-        print(f"Restoring from {path}")
+    def init_from_ckpt(self, path: str, remove_keys_from_weights: Optional[Union[List, Tuple]] = None, print_missing_keys = True) -> None:
+        
         if path.endswith("ckpt"):
             sd = torch.load(path, map_location="cpu")["state_dict"]
         elif path.endswith("pt"):
@@ -217,19 +221,23 @@ class DiffusionEngine(pl.LightningModule):
 
         missing, unexpected = self.load_state_dict(sd, strict=False)
         print(f"Restored from {path} with {len(missing)} missing and {len(unexpected)} unexpected keys")
-        if len(missing) > 0:
-            print(f"Missing Keys: {missing}")
-        if len(unexpected) > 0:
-            print(f"Unexpected Keys: {unexpected}")
+        if print_missing_keys:
+            if len(missing) > 0:
+                print(f"Missing Keys: {missing}")
+            if len(unexpected) > 0:
+                print(f"Unexpected Keys: {unexpected}")
 
     def _init_first_stage(self, config):
+        
         model = instantiate_from_config(config).eval()
         model.train = disabled_train
-        for param in model.parameters():
+        # for param in model.parameters():
+        for name, param in model.named_parameters():
             param.requires_grad = False
         self.first_stage_model = model
         if self.input_key == "latents":
             # Remove encoder to save memory
+            print('************** Remove first stage encoder *************')
             self.first_stage_model.encoder = None
             torch.cuda.empty_cache()
 
@@ -248,7 +256,6 @@ class DiffusionEngine(pl.LightningModule):
 
         z = 1.0 / self.scale_factor * z
         n_samples = default(self.en_and_decode_n_samples_a_time, z.shape[0])
-
         n_rounds = math.ceil(z.shape[0] / n_samples)
         all_out = []
         with torch.autocast("cuda", enabled=not self.disable_first_stage_autocast):
@@ -276,7 +283,7 @@ class DiffusionEngine(pl.LightningModule):
         n_rounds = math.ceil(x.shape[0] / n_samples)
         all_out = []
         with torch.autocast("cuda", enabled=not self.disable_first_stage_autocast):
-            for n in range(n_rounds):
+            for n in range(n_rounds):                
                 out = self.first_stage_model.encode(x[n * n_samples : (n + 1) * n_samples])
                 all_out.append(out)
         z = torch.cat(all_out, dim=0)

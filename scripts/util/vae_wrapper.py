@@ -20,6 +20,7 @@ class VaeWrapper(nn.Module):
         self.max_chunk_decode = max_chunk_decode
 
     def get_vae(self, latent_type, variant="fp16"):
+        
         if latent_type == "stable":
             vae_model = load_stable_model("stabilityai/stable-diffusion-x4-upscaler")
             vae_model.enable_slicing()
@@ -73,8 +74,10 @@ class VaeWrapper(nn.Module):
             T = video.shape[2]
             video = rearrange(video, "b c t h w -> (b t) c h w")
         or_dtype = video.dtype
+
         # if not self.is_accelerated:
         #     self.accelerate_model(video.shape)
+        
         if self.latent_type in ["stable", "refiner", "video"]:
             encoded_video = (
                 self.vae_model.encode(video.to(dtype=self.vae_model.dtype)).latent_dist.sample().to(dtype=or_dtype)

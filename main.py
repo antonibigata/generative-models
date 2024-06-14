@@ -51,7 +51,7 @@ def get_parser(**parser_kwargs):
         help="postfix for logdir",
     )
     parser.add_argument(
-        "--no_date",
+        "--urgnjbnnercuhhrdrgtbknuldjunklfi",
         type=str2bool,
         nargs="?",
         const=True,
@@ -234,46 +234,7 @@ def init_wandb(save_dir, opt, config, group_name, name_str):
 
 
 if __name__ == "__main__":
-    # custom parser to specify config files, train, test and debug mode,
-    # postfix, resume.
-    # `--key value` arguments are interpreted as arguments to the trainer.
-    # `nested.key=value` arguments are interpreted as config parameters.
-    # configs are merged from left-to-right followed by command line parameters.
-
-    # model:
-    #   base_learning_rate: float
-    #   target: path to lightning module
-    #   params:
-    #       key: value
-    # data:
-    #   target: main.DataModuleFromConfig
-    #   params:
-    #      batch_size: int
-    #      wrap: bool
-    #      train:
-    #          target: path to train dataset
-    #          params:
-    #              key: value
-    #      validation:
-    #          target: path to validation dataset
-    #          params:
-    #              key: value
-    #      test:
-    #          target: path to test dataset
-    #          params:
-    #              key: value
-    # lightning: (optional, has sane defaults and can be specified on cmdline)
-    #   trainer:
-    #       additional arguments to trainer
-    #   logger:
-    #       logger to instantiate
-    #   modelcheckpoint:
-    #       modelcheckpoint to instantiate
-    #   callbacks:
-    #       callback1:
-    #           target: importpath
-    #           params:
-    #               key: value
+   
 
     now = datetime.datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
     torch.set_float32_matmul_precision("medium")
@@ -286,7 +247,7 @@ if __name__ == "__main__":
     parser = get_parser()
 
     opt, unknown = parser.parse_known_args()
-
+    
     if opt.name and opt.resume:
         raise ValueError(
             "-n/--name and -r/--resume cannot be specified both."
@@ -320,6 +281,10 @@ if __name__ == "__main__":
         _tmp = logdir.split("/")
         nowname = _tmp[-1]
     else:
+        print(opt.no_date)
+        print('name', opt.name)
+        print('base', opt.base, opt.no_base_name, opt.legacy_naming)
+        print('postfix', opt.postfix)
         if opt.name:
             name = "_" + opt.name
         elif opt.base:
@@ -336,6 +301,7 @@ if __name__ == "__main__":
                     ]  # cut away the first one (we assert all configs are in "configs")
                     cfg_name = os.path.splitext(os.path.split(opt.base[0])[-1])[0]
                     cfg_name = "-".join(cfg_path) + f"-{cfg_name}"
+                print('cfg_name', cfg_name)
                 name = "_" + cfg_name
         else:
             name = ""
@@ -347,6 +313,8 @@ if __name__ == "__main__":
                 nowname = nowname[1:]
         logdir = os.path.join(opt.logdir, nowname)
         print(f"LOGDIR: {logdir}")
+    
+    quit()
 
     ckptdir = os.path.join(logdir, "checkpoints")
     cfgdir = os.path.join(logdir, "configs")
@@ -375,7 +343,7 @@ if __name__ == "__main__":
 
     # default to gpu
     trainer_config["accelerator"] = "gpu"
-    #
+    
     standard_args = default_trainer_args()
     for k in standard_args:
         if getattr(opt, k) != standard_args[k]:

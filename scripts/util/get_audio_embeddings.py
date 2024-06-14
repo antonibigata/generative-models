@@ -20,6 +20,13 @@ from scripts.util.audio_wrapper import AudioWrapper
 from sgm.util import trim_pad_audio
 
 
+"""
+python scripts/util/get_audio_embeddings.py --audio_path /fsx/rs2517/data/HDTF/audio/RD_Radio18_000.wav --model_type wav2vec2
+
+
+python scripts/util/get_audio_embeddings.py --audio_path /data/home/stellab/projects/dubbing_gans/results_demo/evaluation_data/kimmel.wav  --model_type wav2vec2
+"""
+
 def make_into_multiple_of(x, multiple, dim=0):
     """
     Make the torch tensor into a multiple of the given number.
@@ -41,7 +48,7 @@ def make_into_multiple_of(x, multiple, dim=0):
 
 argparser = argparse.ArgumentParser()
 argparser.add_argument("--audio_path", type=str, default="data/audio_files.txt")
-argparser.add_argument("--model_type", type=str, default="whisper", help="Model type: whisper or wavlm")
+argparser.add_argument("--model_type", type=str, default="whisper", help="Model type: whisper or wavlm or wav2vec2")
 argparser.add_argument(
     "--output_path",
     type=str,
@@ -81,10 +88,11 @@ def get_audio_embeddings(audio_path, output_path, model_size, fps):
         audio_files = glob.glob(audio_path)
         # + glob.glob(os.path.join(audio_path, "**/*.wav"))
         # + glob.glob(os.path.join(audio_path, "**/**/*.wav"))
-
+   
     audio_rate = args.audio_rate
     a2v_ratio = fps / float(audio_rate)
     samples_per_frame = math.ceil(1 / a2v_ratio)
+    
 
     # Load model
     # model = Whisper(model_size=model_size, fps=fps)
@@ -102,6 +110,7 @@ def get_audio_embeddings(audio_path, output_path, model_size, fps):
             audio_file_name = os.path.splitext(audio_file_name)[0]
             audio_file_name = audio_file_name + f"_{args.model_type}_emb.pt"
             audio_file_name = os.path.join(os.path.dirname(audio_file), audio_file_name)
+            
             if os.path.exists(audio_file_name.replace(args.in_dir, args.out_dir)) and not args.recompute:
                 continue
 
@@ -141,6 +150,7 @@ def get_audio_embeddings(audio_path, output_path, model_size, fps):
             audio_file_name = audio_file_name.replace(args.in_dir, args.out_dir)
             os.makedirs(os.path.dirname(audio_file_name), exist_ok=True)
             torch.save(audio_embeddings.squeeze(0).cpu(), audio_file_name)
+            print('Save audio embedding in {}'.format(audio_file_name))
         except Exception as e:
             print(e)
             print(f"Failed for file {audio_file}")

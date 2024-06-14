@@ -60,6 +60,7 @@ def get_raw_audio(audio_path, audio_rate, fps=25):
         audio = trim_pad_audio(audio, audio_rate, max_len_raw=math.ceil(n_frames) * samples_per_frame)
         print("Audio shape after trim_pad_audio: ", audio.shape)
     audio = rearrange(audio, "(f s) -> f s", s=samples_per_frame)
+    print(audio.shape)
     return audio
 
 

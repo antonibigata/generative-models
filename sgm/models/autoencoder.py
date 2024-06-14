@@ -164,8 +164,10 @@ class AutoencodingEngine(AbstractAutoencoder):
         if ckpt_path is not None:
             assert ckpt_engine is None, "Can't set ckpt_engine and ckpt_path"
             logpy.warn("Checkpoint path is deprecated, use `checkpoint_egnine` instead")
+       
         self.apply_ckpt(default(ckpt_path, ckpt_engine))
         self.additional_decode_keys = set(default(additional_decode_keys, []))
+
 
     def get_input(self, batch: Dict) -> torch.Tensor:
         # assuming unified data format, dataloader returns a dict.
@@ -199,6 +201,7 @@ class AutoencodingEngine(AbstractAutoencoder):
         return_reg_log: bool = False,
         unregularized: bool = False,
     ) -> Union[torch.Tensor, Tuple[torch.Tensor, dict]]:
+        
         z = self.encoder(x)
         if unregularized:
             return z, dict()

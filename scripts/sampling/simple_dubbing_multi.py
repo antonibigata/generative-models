@@ -24,6 +24,13 @@ from sgm.data.data_utils import (
 
 # from sgm.models.components.audio.Whisper import Whisper
 
+"""
+python scripts/sampling/simple_dubbing_multi.py --fps_id 24 --motion_bucket_id 60 --cond_aug 0. --decoding_t 14 \
+   --video_path=/fsx/rs2517/data/HDTF/cropped_videos_original/WDA_HillaryClinton_000.mp4 \
+    --audio_path=/fsx/rs2517/data/HDTF/audio/RD_Radio18_000_wav2vec2_emb.pt \
+    --model_config=scripts/sampling/configs/svd_dub.yaml --max_seconds=10 \
+    --resize_size=512 --use_latent=True --num_steps=10 '--force_uc_zero_embeddings=[audio_emb]' --what_mask=box --overlap=5 --chunk_size=10
+"""
 
 # def create_interpolation_inputs(video, audio, landmarks, num_frames, video_emb=None, overlap=1):
 #     # Interpolation is every num_frames, we need to create the inputs for the model
