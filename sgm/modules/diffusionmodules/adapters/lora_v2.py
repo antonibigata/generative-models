@@ -195,6 +195,8 @@ def _find_modules_v2(
 
     # Get the targets we should replace all linears under
     if ancestor_class is not None:
+        # for name, module in model.named_modules():
+        #     print(module.__class__.__name__)
         ancestors = (
             (name, module) for (name, module) in model.named_modules() if module.__class__.__name__ in ancestor_class
         )

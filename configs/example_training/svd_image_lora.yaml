@@ -26,14 +26,14 @@ model:
     to_unfreeze: ["time_embed"]
 
     # LoRA
-    use_lora: False
+    use_lora: True
     lora_config:
-      search_class_str: Linear
+      search_class_str: both
       target_replace_module: null
       r_linear: 16
       r_conv: 16
       loras: null  # path to lora .pt
-      verbose: True
+      verbose: False
       # dropout_p: 0.0
       # scale: 1.0
       # search_class: both

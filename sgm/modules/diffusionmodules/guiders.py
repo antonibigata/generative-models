@@ -40,6 +40,24 @@ class VanillaCFG(Guider):
         return torch.cat([x] * 2), torch.cat([s] * 2), c_out
 
 
+class KarrasGuider(VanillaCFG):
+    def __call__(self, x: torch.Tensor, sigma: torch.Tensor) -> torch.Tensor:
+        x_u, x_c = x.chunk(2)
+        x_pred = x_u + self.scale * (x_c - x_u)
+        return x_pred
+
+    def prepare_inputs(self, x, s, c, uc):
+        c_out = dict()
+
+        for k in c:
+            if k in ["vector", "crossattn", "concat", "audio_emb", "image_embeds", "landmarks"]:
+                c_out[k] = torch.cat((c[k], c[k]), 0)
+            else:
+                assert c[k] == uc[k]
+                c_out[k] = c[k]
+        return torch.cat([x] * 2), torch.cat([s] * 2), c_out
+
+
 class MultipleCondVanilla(Guider):
     def __init__(self, scales, condition_names) -> None:
         assert len(scales) == len(condition_names)

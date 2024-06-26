@@ -56,7 +56,7 @@ model:
     network_config:
       target: sgm.modules.diffusionmodules.video_model.VideoUNet
       params:
-        adm_in_channels: 0
+        adm_in_channels: 256
         num_classes: sequential
         use_checkpoint: True
         in_channels: 9
@@ -155,11 +155,11 @@ model:
                 lossconfig:
                   target: torch.nn.Identity
 
-        # - input_key: cond_aug
-        #   is_trainable: False
-        #   target: sgm.modules.encoders.modules.ConcatTimestepEmbedderND
-        #   params:
-        #     outdim: 256
+        - input_key: cond_aug
+          is_trainable: False
+          target: sgm.modules.encoders.modules.ConcatTimestepEmbedderND
+          params:
+            outdim: 256
 
         - input_key: landmarks
           is_trainable: False
@@ -231,6 +231,7 @@ model:
       target: sgm.modules.diffusionmodules.loss.StandardDiffusionLoss
       params:
         lambda_lower: 1.
+        fix_image_leak: False
         batch2model_keys:
           - image_only_indicator
           - num_video_frames
@@ -267,8 +268,8 @@ data:
         load_all_possible_indexes: False
         allow_all_possible_permutations: False
         audio_emb_type: wav2vec2
-        # cond_noise: [-3.0, 0.5]
-        cond_noise: 0.
+        cond_noise: [-3.0, 0.5]
+        # cond_noise: 0.
         motion_id: 60
         # data_mean: null
         # data_std: null

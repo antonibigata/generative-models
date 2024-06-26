@@ -20,6 +20,7 @@ import torchvision
 
 # from scripts.util.detection.nsfw_and_watermark_dectection import DeepFloydDataFiltering
 from sgm.util import default, instantiate_from_config, trim_pad_audio, get_raw_audio, save_audio_video
+from sgm.data.data_utils import draw_kps_image, scale_landmarks
 
 # from sgm.models.components.audio.Whisper import Whisper
 
@@ -34,6 +35,18 @@ def get_audio_indexes(main_index, n_audio_frames, max_len):
         audio_ids += [i]
     audio_ids += [max_len - 1] * max(main_index + n_audio_frames - max_len + 1, 0)
     return audio_ids
+
+
+def load_landmarks(landmarks, original_size, index, target_size=(64, 64)):
+    landmarks = landmarks[index]
+    # landmarks = create_landmarks_image(landmarks, original_size, target_size=(224, 224), point_size=2)
+    # return (torch.from_numpy(landmarks) / 255.0) * 2 - 1
+    # return get_heatmap(landmarks[None, ...], target_size, original_size, n_points="stable", sigma=4).squeeze(0)
+    # land_image = create_landmarks_image(
+    #     landmarks, original_size, target_size=target_size, point_size=2, n_points="stable", dim=1
+    # )
+    land_image = draw_kps_image(target_size, original_size, landmarks, rgb=False, pts_width=1)
+    return torch.from_numpy(land_image).float() / 255.0
 
 
 def get_audio_embeddings(audio_path: str, audio_rate: int = 16000, fps: int = 25):
@@ -96,6 +109,7 @@ def sample(
         "cond_frames",
         "cond_frames_without_noise",
     ],
+    get_landmarks: bool = False,
 ):
     """
     Simple script to generate a single sample conditioned on an image `input_path` or multiple images, one for each
@@ -156,6 +170,7 @@ def sample(
         #     )
         video = read_video(video_path, output_format="TCHW")[0]
         video = (video / 255.0) * 2.0 - 1.0
+        h, w = video.shape[2:]
         video = torch.nn.functional.interpolate(video, (512, 512), mode="bilinear")
 
         video_embedding_path = video_path.replace(".mp4", "_video_512_latent.safetensors")
@@ -174,6 +189,11 @@ def sample(
                 video_emb = video_emb[:max_frames] if video_emb is not None else None
                 raw_audio = raw_audio[:max_frames] if raw_audio is not None else None
         audio = audio.cuda()
+
+        landmarks = None
+        if get_landmarks:
+            landmarks = np.load(video_path.replace(".mp4", ".npy"))
+            landmarks = scale_landmarks(landmarks, (h, w), (512, 512))
 
         h, w = video.shape[2:]
         # if degradation > 1:
@@ -248,6 +268,11 @@ def sample(
                 value_dict["cond_frames"] = condition + cond_aug * torch.randn_like(condition)
             value_dict["cond_aug"] = cond_aug
             value_dict["audio_emb"] = audio_cond
+
+            if get_landmarks:
+                value_dict["landmarks"] = (
+                    load_landmarks(landmarks, (512, 512), i, target_size=(H // 8, W // 8)).unsqueeze(0).to(device)
+                )
 
             with torch.no_grad():
                 with torch.autocast(device):

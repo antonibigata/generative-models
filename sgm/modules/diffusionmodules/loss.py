@@ -5,9 +5,26 @@ import torch.nn as nn
 from einops import rearrange, repeat
 
 from ...modules.autoencoding.lpips.loss.lpips import LPIPS
-from ...modules.encoders.modules import GeneralConditioner
+from ...modules.encoders.modules import GeneralConditioner, ConcatTimestepEmbedderND
 from ...util import append_dims, instantiate_from_config
 from .denoiser import Denoiser
+
+
+def logit_normal_sampler(m, s=1, beta_m=15, sample_num=1000000):
+    y_samples = torch.randn(sample_num) * s + m
+    x_samples = beta_m * (torch.exp(y_samples) / (1 + torch.exp(y_samples)))
+    return x_samples
+
+
+def mu_t(t, a=5, mu_max=1):
+    t = t.to("cpu")
+    return 2 * mu_max * t**a - mu_max
+
+
+def get_sigma_s(t, a, beta_m):
+    mu = mu_t(t, a=a)
+    sigma_s = logit_normal_sampler(m=mu, sample_num=t.shape[0], beta_m=beta_m)
+    return sigma_s
 
 
 class StandardDiffusionLoss(nn.Module):
@@ -19,6 +36,7 @@ class StandardDiffusionLoss(nn.Module):
         offset_noise_level: float = 0.0,
         batch2model_keys: Optional[Union[str, List[str]]] = None,
         lambda_lower: float = 1.0,
+        fix_image_leak: bool = False,
     ):
         super().__init__()
 
@@ -41,6 +59,12 @@ class StandardDiffusionLoss(nn.Module):
             batch2model_keys = [batch2model_keys]
 
         self.batch2model_keys = set(batch2model_keys)
+
+        self.fix_image_leak = fix_image_leak
+        if fix_image_leak:
+            self.beta_m = 15
+            self.a = 5
+            self.noise_encoder = ConcatTimestepEmbedderND(256)
 
     def get_noised_input(self, sigmas_bc: torch.Tensor, noise: torch.Tensor, input: torch.Tensor) -> torch.Tensor:
         noised_input = input + noise * sigmas_bc
@@ -79,6 +103,16 @@ class StandardDiffusionLoss(nn.Module):
             )
         sigmas_bc = append_dims(sigmas, input.ndim)
         noised_input = self.get_noised_input(sigmas_bc, noise, input)
+
+        if self.fix_image_leak:
+            noise_aug_strength = get_sigma_s(sigmas / 700, self.a, self.beta_m)
+            noise_aug = append_dims(noise_aug_strength, 4).to(input.device)
+            noise = torch.randn_like(noise_aug)
+            cond["concat"] = self.get_noised_input(noise_aug, noise, cond["concat"])
+            noise_emb = self.noise_encoder(noise_aug_strength).to(input.device)
+            # cond["vector"] = noise_emb if "vector" not in cond else torch.cat([cond["vector"], noise_emb], dim=1)
+            cond["vector"] = noise_emb
+            # print(cond["concat"].shape, cond["vector"].shape, noise.shape, noise_aug.shape, noise_emb.shape)
 
         model_output = denoiser(network, noised_input, sigmas, cond, **additional_model_inputs)
         w = append_dims(self.loss_weighting(sigmas), input.ndim)

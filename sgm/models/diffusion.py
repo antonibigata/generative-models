@@ -54,6 +54,7 @@ class DiffusionEngine(pl.LightningModule):
         lora_config: Optional[Dict] = None,
         separate_unet_ckpt: Optional[str] = None,
         use_thunder: Optional[bool] = False,
+        bad_model_path: Optional[str] = None,
     ):
         super().__init__()
 
@@ -63,17 +64,17 @@ class DiffusionEngine(pl.LightningModule):
         self.no_log_keys = no_log_keys
         self.input_key = input_key
         self.optimizer_config = default(optimizer_config, {"target": "torch.optim.AdamW"})
-        model = instantiate_from_config(network_config)
-        if isinstance(network_wrapper, str) or network_wrapper is None:
-            self.model = get_obj_from_str(default(network_wrapper, OPENAIUNETWRAPPER))(
-                model, compile_model=compile_model
-            )
-        else:
-            target = network_wrapper["target"]
-            params = network_wrapper.get("params", dict())
-            self.model = get_obj_from_str(target)(model, compile_model=compile_model, **params)
+        self.model = self.initialize_network(network_config, network_wrapper, compile_model=compile_model)
 
         self.denoiser = instantiate_from_config(denoiser_config)
+
+        if "KarrasGuidanceDenosier" in denoiser_config.target:
+            assert bad_model_path is not None, "bad_model_path must be provided for KarrasGuidanceDenosier"
+            bad_model = self.initialize_network(network_config, network_wrapper, compile_model=compile_model)
+            state_dict = self.load_bad_model_weights(bad_model_path)
+            bad_model.load_state_dict(state_dict)
+            self.denoiser.set_bad_network(bad_model)
+
         self.sampler = instantiate_from_config(sampler_config) if sampler_config is not None else None
         self.is_guided = True
         if self.sampler and "IdentityGuider" in sampler_config["params"]["guider_config"]["target"]:
@@ -111,36 +112,6 @@ class DiffusionEngine(pl.LightningModule):
 
         self.en_and_decode_n_samples_a_time = en_and_decode_n_samples_a_time
         print("Using", self.en_and_decode_n_samples_a_time, "samples at a time for encoding and decoding")
-
-        if use_lora:
-            assert not only_train_ipadapter, "Cannot use both Lora and IPAdapter at the same time"
-            # for p in self.model.parameters():
-            #     p.requires_grad = False
-            search_class_str = lora_config.pop("search_class_str", "Linear")
-            search_class_list = []
-            if search_class_str.lower() in ["linear", "both"]:
-                search_class_list.append(torch.nn.Linear)
-            if search_class_str.lower() in ["conv2d", "both"]:
-                search_class_list.append(torch.nn.Conv2d)
-
-            inject_trainable_lora_extended(
-                self.model,
-                search_class=search_class_list,
-                **lora_config,
-            )
-
-            # for p in self.model.diffusion_model.input_blocks.parameters():
-            #     print(p.requires_grad)
-            # filters = [".transformer_blocks"]
-            # module_names = get_module_names(self.model, filters=filters, all_modules_in_filter=True)
-            # lora_config = LoraConfig(
-            #     inference_mode=False,
-            #     r=16,
-            #     lora_alpha=32,
-            #     lora_dropout=0.1,
-            #     target_modules=module_names,
-            # )
-            # self.model = LoraModel(self.model, lora_config, "bite")
 
         if to_freeze:
             for name, p in self.model.diffusion_model.named_parameters():
@@ -180,6 +151,23 @@ class DiffusionEngine(pl.LightningModule):
                 for p in getattr(self.model.diffusion_model, name).parameters():
                     p.requires_grad = True
 
+        if use_lora:
+            assert not only_train_ipadapter, "Cannot use both Lora and IPAdapter at the same time"
+            for p in self.model.parameters():
+                p.requires_grad = False
+            search_class_str = lora_config.pop("search_class_str", "Linear")
+            search_class_list = []
+            if search_class_str.lower() in ["linear", "both"]:
+                search_class_list.append(torch.nn.Linear)
+            if search_class_str.lower() in ["conv2d", "both"]:
+                search_class_list.append(torch.nn.Conv2d)
+
+            inject_trainable_lora_extended(
+                self.model,
+                search_class=search_class_list,
+                **lora_config,
+            )
+
             # for name, p in self.named_parameters():
             #     if p.requires_grad:
             #         print(name)
@@ -188,6 +176,24 @@ class DiffusionEngine(pl.LightningModule):
             import thunder
 
             self.model.diffusion_model = thunder.jit(self.model.diffusion_model)
+
+    def load_bad_model_weights(self, path: str) -> None:
+        state_dict = torch.load(path, map_location="cpu")
+        new_dict = {}
+        for k, v in state_dict["module"].items():
+            if "diffusion_model" in k:
+                new_dict["diffusion_model" + k.split("diffusion_model")[1]] = v
+        return new_dict
+
+    def initialize_network(self, network_config, network_wrapper, compile_model=False):
+        model = instantiate_from_config(network_config)
+        if isinstance(network_wrapper, str) or network_wrapper is None:
+            model = get_obj_from_str(default(network_wrapper, OPENAIUNETWRAPPER))(model, compile_model=compile_model)
+        else:
+            target = network_wrapper["target"]
+            params = network_wrapper.get("params", dict())
+            model = get_obj_from_str(target)(model, compile_model=compile_model, **params)
+        return model
 
     def init_from_ckpt(self, path: str, remove_keys_from_weights: Optional[Union[List, Tuple]] = None) -> None:
         print(f"Restoring from {path}")

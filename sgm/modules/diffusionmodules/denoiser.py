@@ -42,6 +42,55 @@ class Denoiser(nn.Module):
         return out * c_out + input * c_skip
 
 
+class KarrasGuidanceDenosier(Denoiser):
+    def __init__(self, scaling_config: Dict):
+        super().__init__(scaling_config)
+        self.bad_network = None
+
+    def set_bad_network(self, bad_network: nn.Module):
+        self.bad_network = bad_network
+
+    def split_inputs(self, input: torch.Tensor, cond: Dict) -> torch.Tensor:
+        half_input = input.shape[0] // 2
+        first_cond_half = {}
+        second_cond_half = {}
+        for k, v in cond.items():
+            if isinstance(v, torch.Tensor):
+                half_cond = v.shape[0] // 2
+                first_cond_half[k] = v[:half_cond]
+                second_cond_half[k] = v[half_cond:]
+            else:
+                first_cond_half[k] = v
+                second_cond_half[k] = v
+
+        return (input[:half_input], input[half_input:], first_cond_half, second_cond_half)
+
+    def forward(
+        self,
+        network: nn.Module,
+        input: torch.Tensor,
+        sigma: torch.Tensor,
+        cond: Dict,
+        **additional_model_inputs,
+    ) -> torch.Tensor:
+        sigma = self.possibly_quantize_sigma(sigma)
+        if input.ndim == 5:
+            T = input.shape[2]
+            input = rearrange(input, "b c t h w -> (b t) c h w")
+            sigma = repeat(sigma, "b ... -> b t ...", t=T)
+            sigma = rearrange(sigma, "b t ... -> (b t) ...")
+        sigma_shape = sigma.shape
+        sigma = append_dims(sigma, input.ndim)
+        c_skip, c_out, c_in, c_noise = self.scaling(sigma)
+        c_noise = self.possibly_quantize_c_noise(c_noise.reshape(sigma_shape))
+        half = c_in.shape[0] // 2
+        in_bad, in_good, cond_bad, cond_good = self.split_inputs(input, cond)
+        bad_out = self.bad_network(in_bad * c_in[:half], c_noise[:half], cond_bad, **additional_model_inputs)
+        out = network(in_good * c_in[half:], c_noise[half:], cond_good, **additional_model_inputs)
+        out = torch.cat([bad_out, out], dim=0)
+        return out * c_out + input * c_skip
+
+
 class DiscreteDenoiser(Denoiser):
     def __init__(
         self,
