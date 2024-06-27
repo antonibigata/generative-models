@@ -129,6 +129,7 @@ class VideoUNet(nn.Module):
         audio_dim: Optional[int] = 0,
         additional_audio_frames: Optional[int] = 0,
         skip_time: bool = False,
+        use_ada_aug: bool = False,
     ):
         super().__init__()
         assert context_dim is not None
@@ -182,6 +183,10 @@ class VideoUNet(nn.Module):
             nn.SiLU(),
             linear(time_embed_dim, time_embed_dim),
         )
+
+        self.use_ada_aug = use_ada_aug
+        if use_ada_aug:
+            self.map_aug = linear(9, time_embed_dim)
 
         if self.num_classes is not None:
             if isinstance(self.num_classes, int):
@@ -504,6 +509,7 @@ class VideoUNet(nn.Module):
         context: Optional[th.Tensor] = None,
         y: Optional[th.Tensor] = None,
         audio_emb: Optional[th.Tensor] = None,
+        aug_labels: Optional[th.Tensor] = None,
         time_context: Optional[th.Tensor] = None,
         num_video_frames: Optional[int] = 1,
         image_only_indicator: Optional[th.Tensor] = None,
@@ -573,6 +579,10 @@ class VideoUNet(nn.Module):
                     y = audio_emb
             assert y.shape[0] == x.shape[0], f"{y.shape} != {x.shape}"
             emb = emb + self.label_emb(y)
+
+        if self.use_ada_aug:
+            assert aug_labels is not None, "must provide aug_labels if use_ada_aug is True"
+            emb = emb + self.map_aug(aug_labels)
 
         h = x
 
