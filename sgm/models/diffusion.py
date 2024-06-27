@@ -113,6 +113,27 @@ class DiffusionEngine(pl.LightningModule):
         self.en_and_decode_n_samples_a_time = en_and_decode_n_samples_a_time
         print("Using", self.en_and_decode_n_samples_a_time, "samples at a time for encoding and decoding")
 
+        if use_lora:
+            assert not only_train_ipadapter, "Cannot use both Lora and IPAdapter at the same time"
+            for p in self.model.parameters():
+                p.requires_grad = False
+            search_class_str = lora_config.pop("search_class_str", "Linear")
+            search_class_list = []
+            if search_class_str.lower() in ["linear", "both"]:
+                search_class_list.append(torch.nn.Linear)
+            if search_class_str.lower() in ["conv2d", "both"]:
+                search_class_list.append(torch.nn.Conv2d)
+
+            inject_trainable_lora_extended(
+                self.model,
+                search_class=search_class_list,
+                **lora_config,
+            )
+
+            for name, p in self.named_parameters():
+                if p.requires_grad:
+                    print(name)
+
         if to_freeze:
             for name, p in self.model.diffusion_model.named_parameters():
                 for layer in to_freeze:
@@ -150,27 +171,6 @@ class DiffusionEngine(pl.LightningModule):
             for name in to_unfreeze:
                 for p in getattr(self.model.diffusion_model, name).parameters():
                     p.requires_grad = True
-
-        if use_lora:
-            assert not only_train_ipadapter, "Cannot use both Lora and IPAdapter at the same time"
-            for p in self.model.parameters():
-                p.requires_grad = False
-            search_class_str = lora_config.pop("search_class_str", "Linear")
-            search_class_list = []
-            if search_class_str.lower() in ["linear", "both"]:
-                search_class_list.append(torch.nn.Linear)
-            if search_class_str.lower() in ["conv2d", "both"]:
-                search_class_list.append(torch.nn.Conv2d)
-
-            inject_trainable_lora_extended(
-                self.model,
-                search_class=search_class_list,
-                **lora_config,
-            )
-
-            # for name, p in self.named_parameters():
-            #     if p.requires_grad:
-            #         print(name)
 
         if use_thunder:
             import thunder
@@ -581,10 +581,10 @@ class DiffusionEngine(pl.LightningModule):
 
         if sample:
             n = 2 if self.is_guided else 1
-            if num_frames == 1:
-                sampling_kwargs["image_only_indicator"] = torch.ones(n, num_frames).to(self.device)
-            else:
-                sampling_kwargs["image_only_indicator"] = torch.zeros(n, num_frames).to(self.device)
+            # if num_frames == 1:
+            #     sampling_kwargs["image_only_indicator"] = torch.ones(n, num_frames).to(self.device)
+            # else:
+            sampling_kwargs["image_only_indicator"] = torch.zeros(n, num_frames).to(self.device)
             sampling_kwargs["num_video_frames"] = batch["num_video_frames"]
 
             with self.ema_scope("Plotting"):
@@ -593,10 +593,10 @@ class DiffusionEngine(pl.LightningModule):
             log["samples"] = samples
 
             # Without guidance
-            if num_frames == 1:
-                sampling_kwargs["image_only_indicator"] = torch.ones(1, num_frames).to(self.device)
-            else:
-                sampling_kwargs["image_only_indicator"] = torch.zeros(1, num_frames).to(self.device)
+            # if num_frames == 1:
+            #     sampling_kwargs["image_only_indicator"] = torch.ones(1, num_frames).to(self.device)
+            # else:
+            sampling_kwargs["image_only_indicator"] = torch.zeros(1, num_frames).to(self.device)
             sampling_kwargs["num_video_frames"] = batch["num_video_frames"]
 
             with self.ema_scope("Plotting"):

@@ -22,14 +22,15 @@ model:
         f_max: [1.]
         f_min: [1.]
 
-    to_freeze: ["time_"]
-    to_unfreeze: ["time_embed"]
+    # to_freeze: ["time_"]
+    # to_unfreeze: ["time_embed"]
 
     # LoRA
     use_lora: True
     lora_config:
-      search_class_str: both
+      search_class_str: linear
       target_replace_module: null
+      exclude_layers: [time_, "!time_embed"]
       r_linear: 16
       r_conv: 16
       loras: null  # path to lora .pt

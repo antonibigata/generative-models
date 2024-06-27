@@ -204,12 +204,25 @@ def _find_modules_v2(
         # this, incase you want to naively iterate over all modules.
         ancestors = [(name, module) for (name, module) in model.named_modules()]
 
+    keep_layers = []
+    exclude_layers_copy = []
+    for name in exclude_layers:
+        if name.startswith("!"):
+            keep_layers.append(name[1:])
+        else:
+            exclude_layers_copy.append(name)
+    exclude_layers = exclude_layers_copy
+
     # For each target find every linear_class module that isn't a child of a LoraInjectedLinear
     for ancestor_name, ancestor in ancestors:
-        if any([name in ancestor_name for name in exclude_layers]):
+        if any([name in ancestor_name for name in exclude_layers]) and not any(
+            [name in ancestor_name for name in keep_layers]
+        ):
             continue
         for fullname, module in ancestor.named_modules():
-            if any([name in fullname for name in exclude_layers]):
+            if any([name in fullname for name in exclude_layers]) and not any(
+                [name in fullname for name in keep_layers]
+            ):
                 continue
             if any([isinstance(module, _class) for _class in search_class]):
                 # Find the direct parent if this is a descendant, not a child, of target

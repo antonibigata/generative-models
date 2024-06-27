@@ -471,7 +471,7 @@ class VideoDataset(Dataset):
         # out_data["num_video_frames"] = self.num_frames
         # out_data["image_only_indicator"] = torch.zeros(self.num_frames)
         out_data["num_video_frames"] = 1
-        out_data["image_only_indicator"] = torch.ones(1)
+        out_data["image_only_indicator"] = torch.zeros(1)
         if landmarks is not None:
             out_data["landmarks"] = landmarks
         if self.is_xl:
