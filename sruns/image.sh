@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=antoni_project
-#SBATCH --partition=learnai4rl
+#SBATCH --partition=learnai
 #SBATCH --gres=gpu:4
 #SBATCH --ntasks-per-node=4
 #SBATCH --cpus-per-task=12
@@ -10,7 +10,6 @@
 #SBATCH --error=/data/home/antoni/slurm_errors/generative_models/%j.err
 #SBATCH --no-requeue
 #SBATCH --account all
-#SBATCH --exclude=a100-st-p4d24xlarge-2
 source /data/home/antoni/miniconda3/etc/profile.d/conda.sh
 conda activate svd
 export WANDB_ENTITY=animator

@@ -268,8 +268,8 @@ class VideoLogger(Callback):
 
     @rank_zero_only
     def on_validation_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, *args, **kwargs):
-        if not self.disabled and pl_module.global_step > 0:
-            self.log_video(pl_module, batch, batch_idx, split="val")
+        # if not self.disabled and pl_module.global_step > 0:
+        self.log_video(pl_module, batch, batch_idx, split="val")
         if hasattr(pl_module, "calibrate_grad_norm"):
             if (pl_module.calibrate_grad_norm and batch_idx % 25 == 0) and batch_idx > 0:
                 self.log_gradients(trainer, pl_module, batch_idx=batch_idx)

@@ -286,33 +286,44 @@ data:
         #   params:
         #     merge_keys: [frames]
             
-    # validation:
+    validation:
+      datapipeline:
+        filelist: /home/abigata/PhD/datasets/HDTF/filelist_val.txt
+        resize_size: 512
+        audio_folder: audio
+        video_folder: cropped_videos_original
+        video_extension: .mp4
+        audio_extension: .wav
+        latent_folder: null
+        audio_in_video: False
+        audio_rate: 16000
+        num_frames: 14
+        use_latent: True
+        latent_type: video
+        latent_scale: 1  # For backwards compatibility
+        from_audio_embedding: True
+        load_all_possible_indexes: False
+        allow_all_possible_permutations: False
+        audio_emb_type: wav2vec2
+        # cond_noise: [-3.0, 0.5]
+        cond_noise: 0.
+        motion_id: 60
+        # data_mean: null
+        # data_std: null
+        additional_audio_frames: 2
+        virtual_increase: 1
+        use_latent_condition: True
 
-    #   datapipeline:
-    #     urls:
-    #       # USER: adapt this path the root of your custom dataset
-    #       - /data/122-2/Datasets/CREMA/webdataset/val/out-{000000..000001}.tar
-    #     pipeline_config:
-    #       shardshuffle: 10000
-    #       sample_shuffle: 1000 # USER: you might wanna adapt depending on your available RAM
-
-    #     decoders:
-    #       - video
-    #     postprocessors:
-    #       - target: sdata.mappers.SelectTuple
-    #         params:
-    #           key: 'mp4' # USER: you might wanna adapt this for your custom dataset
-    #           index: 0
-    #       - target: sdata.mappers.ToSVDFormat
-    #         params:
-    #           key: mp4
-    #           n_frames: 14
-    #           resize_size: 256
-    #           cond_noise: [-3.0, 0.5]
-
-    #   loader:
-    #     batch_size: 2
-    #     num_workers: 6
+      loader:
+        batch_size: 2
+        num_workers: 6
+        drop_last: True
+        pin_memory: True
+        persistent_workers: True
+        # collation_fn:
+        #   target: sgm.data.collates.collate_video
+        #   params:
+        #     merge_keys: [frames]
 
 lightning:
   modelcheckpoint:
@@ -348,3 +359,4 @@ lightning:
     max_epochs: 1000
     precision: bf16-mixed
     num_nodes: 1
+    # val_check_interval: 0.0000062893
