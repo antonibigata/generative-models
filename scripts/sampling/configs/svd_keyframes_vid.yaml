@@ -5,13 +5,12 @@ model:
     input_key: latents
     scale_factor: 0.18215
     disable_first_stage_autocast: True
-    ckpt_path: logs/2024-06-26T10-12-35_example_training-svd_image_land/checkpoints/last.ckpt/checkpoint/mp_rank_00_model_states.pt
-    # remove_keys_from_weights: [model.diffusion_model.label_emb.0.0.weight]
+    ckpt_path: logs/2024-07-01T15-33-29_example_training-svd_keyframes_vid/checkpoints/last.ckpt/checkpoint/mp_rank_00_model_states.pt
 
     # LoRA
     use_lora: False
     lora_config:
-      search_class_str: linear
+      search_class_str: Linear
       target_replace_module: null
       r_linear: 16
       r_conv: 16
@@ -39,10 +38,10 @@ model:
     network_config:
       target: sgm.modules.diffusionmodules.video_model.VideoUNet
       params:
-        adm_in_channels: 256
+        adm_in_channels: 0
         num_classes: sequential
         use_checkpoint: True
-        in_channels: 9
+        in_channels: 8
         out_channels: 4
         model_channels: 320
         attention_resolutions: [4, 2, 1]
@@ -58,11 +57,26 @@ model:
         merge_strategy: learned_with_images
         video_kernel_size: [3, 1, 1]
         fine_tuning_method: null
-        audio_cond_method: to_time_emb_image
-        additional_audio_frames: 2
+        audio_cond_method: to_time_emb
+        additional_audio_frames: 0
         audio_dim: 768
         unfreeze_blocks: [] # Because we changed the input block
-        skip_time: true
+        # adapter_kwargs:
+        #   # down_ratio: 1
+        #   # adapter_type: null
+        #   # adapter_weight: null
+        #   # act_layer: gelu
+        #   # zero_init_last: True
+        #   # use_bias: True
+        #   # adapt_on_time: True
+        #   # condition_on: space
+        #   # condition_dim: 1280
+        #   target_replace_module: ["SpatialVideoTransformer"]
+        #   r: 16
+        #   loras: null  # path to lora .pt
+        #   verbose: False
+        #   dropout_p: 0.0
+        #   scale: 1.0
 
     conditioner_config:
       target: sgm.modules.GeneralConditioner
@@ -80,6 +94,18 @@ model:
               params:
                 freeze: True
 
+        # - input_key: fps_id
+        #   is_trainable: False
+        #   target: sgm.modules.encoders.modules.ConcatTimestepEmbedderND
+        #   params:
+        #     outdim: 256
+
+        # - input_key: motion_bucket_id
+        #   is_trainable: False
+        #   target: sgm.modules.encoders.modules.ConcatTimestepEmbedderND
+        #   params:
+        #     outdim: 256
+
         - input_key: cond_frames
           is_trainable: False
           ucg_rate: 0.1
@@ -89,6 +115,7 @@ model:
             n_cond_frames: 1
             n_copies: 1
             is_ae: True
+            load_encoder: False
             encoder_config:
               target: sgm.models.autoencoder.AutoencoderKLModeOnly
               params:
@@ -109,22 +136,15 @@ model:
                 lossconfig:
                   target: torch.nn.Identity
 
-        - input_key: cond_aug
-          is_trainable: False
-          target: sgm.modules.encoders.modules.ConcatTimestepEmbedderND
-          params:
-            outdim: 256
-
-        - input_key: landmarks
-          is_trainable: False
-          # ucg_rate: 0.1
-          target: sgm.modules.encoders.modules.IdentityEncoder
-          params:
-            cond_type: concat
+        # - input_key: cond_aug
+        #   is_trainable: False
+        #   target: sgm.modules.encoders.modules.ConcatTimestepEmbedderND
+        #   params:
+        #     outdim: 256
 
         - input_key: audio_emb
           is_trainable: True
-          ucg_rate: 0.1
+          ucg_rate: 0.2
           target: sgm.modules.encoders.modules.WhisperAudioEmbedder
           params:
             merge_method: mean 
@@ -170,17 +190,15 @@ model:
     sampler_config:
       target: sgm.modules.diffusionmodules.sampling.EulerEDMSampler
       params:
-        num_steps: 25
+        num_steps: 10
         discretization_config:
-          target: sgm.modules.diffusionmodules.discretizer.EDMDiscretization
-          params:
-            sigma_max: 700.0
+          target: sgm.modules.diffusionmodules.discretizer.AYSDiscretization
+          # params:
+          #   # sigma_max: 700.0
 
         guider_config:
-          # target: sgm.modules.diffusionmodules.guiders.MultipleCondVanilla
-          # params:
-          #   scales: [0.5, 0.5]
-          #   condition_names: [cond_frames_without_noise, audio_emb]
           target: sgm.modules.diffusionmodules.guiders.VanillaCFG
           params:
-            scale: 5.0
+            scale: 2.0
+
+   

@@ -251,7 +251,7 @@ data:
   params:
     train:
       datapipeline:
-        filelist: /home/abigata/PhD/datasets/HDTF/filelist_train.txt
+        filelist: /data/home/antoni/datasets/HDTF/filelist_val.txt
         resize_size: 512
         audio_folder: audio
         video_folder: cropped_videos_original

@@ -332,10 +332,10 @@ class DiffusionEngine(pl.LightningModule):
 
         return loss
 
-    def validation_step(self, batch, batch_idx):
-        loss, loss_dict = self.shared_step(batch)
-        self.log_dict(loss_dict, prog_bar=True, logger=True, on_step=True, on_epoch=False)
-        return loss
+    # def validation_step(self, batch, batch_idx):
+    #     loss, loss_dict = self.shared_step(batch)
+    #     self.log_dict(loss_dict, prog_bar=True, logger=True, on_step=True, on_epoch=False)
+    #     return loss
 
     # def on_train_epoch_start(self, *args, **kwargs):
     #     print(f"RANK - {self.trainer.global_rank}: on_train_epoch_start")

@@ -53,7 +53,7 @@ class VideoDataset(Dataset):
         audio_rate=16000,
         latent_folder=None,
         audio_in_video=False,
-        # fps=25,
+        fps=25,
         num_frames=5,
         need_cond=True,
         step=1,
@@ -74,6 +74,9 @@ class VideoDataset(Dataset):
         data_mean=None,
         data_std=None,
         use_latent_condition=False,
+        skip_frames=0,
+        get_separate_id=False,
+        virtual_increase=1,
     ):
         self.audio_folder = audio_folder
         self.from_audio_embedding = from_audio_embedding
@@ -81,7 +84,10 @@ class VideoDataset(Dataset):
         self.cond_noise = cond_noise
         self.latent_condition = use_latent_condition
         precomputed_latent = latent_type
-        # self.fps = fps
+        self.skip_frames = skip_frames
+        self.get_separate_id = get_separate_id
+        self.fps = fps
+        self.virtual_increase = virtual_increase
 
         assert not (exists(data_mean) ^ exists(data_std)), "Both data_mean and data_std should be provided"
 
@@ -146,6 +152,12 @@ class VideoDataset(Dataset):
         num_frames = num_frames if not self.need_cond else num_frames + 1
         # print(f"Num frames: {num_frames}")
 
+        if get_separate_id:
+            assert mode == "prediction", "Separate identity frame is only supported for prediction mode"
+            # No need for extra frame if we are getting a separate identity frame
+            self.need_cond = True
+            num_frames -= 1
+
         # Get metadata about video and audio
         # _, self.audio_rate = torchaudio.load(self.audio_filelist[0], channels_first=False)
         vr = decord.VideoReader(self.filelist[0])
@@ -164,7 +176,7 @@ class VideoDataset(Dataset):
         self.total_len = len(self._indexes)
 
     def __len__(self):
-        return self.total_len
+        return self.total_len * self.virtual_increase
 
     def _load_audio(self, filename, max_len_sec, start=None, indexes=None):
         audio, sr = sf.read(
@@ -210,6 +222,21 @@ class VideoDataset(Dataset):
             latents = ((latents - self.data_mean) / self.data_std) * 0.5
         return latents
 
+    def get_frame_indices(self, total_video_frames):
+        # Calculate the maximum possible start index
+        max_start_idx = total_video_frames - ((self.num_frames - 1) * (self.skip_frames + 1) + 1)
+
+        # Generate a random start index
+        if max_start_idx > 0:
+            start_idx = np.random.randint(0, max_start_idx)
+        else:
+            raise ValueError("Not enough frames in the video to sample with given parameters.")
+
+        # Generate the indices
+        indexes = [start_idx + i * (self.skip_frames + 1) for i in range(self.num_frames)]
+
+        return indexes
+
     def _get_frames_and_audio(self, idx):
         if self.load_all_possible_indexes:
             indexes, video_file, audio_file = self._indexes[idx]
@@ -225,8 +252,13 @@ class VideoDataset(Dataset):
             else:
                 vr = decord.VideoReader(video_file)
             len_video = len(vr)
-            start_idx = np.random.randint(0, len_video - self.num_frames)
-            indexes = list(range(start_idx, start_idx + self.num_frames))
+            # start_idx = np.random.randint(0, len_video - self.num_frames)
+            # indexes = list(range(start_idx, start_idx + self.num_frames))
+            indexes = self.get_frame_indices(len_video)
+
+        if self.get_separate_id:
+            id_idx = np.random.randint(0, len_video)
+            indexes.insert(0, id_idx)
 
         raw_audio = None
         if self.audio_in_video:
@@ -253,8 +285,8 @@ class VideoDataset(Dataset):
             # Audio is not in video
             raw_audio = self._load_audio(
                 audio_file,
-                max_len_sec=frames.shape[1] / self.video_rate,
-                start=indexes[0] / self.video_rate,
+                max_len_sec=frames.shape[1] / self.fps,
+                start=indexes[0] / self.fps,
                 indexes=indexes,
             )
         if not self.from_audio_embedding:
@@ -282,11 +314,11 @@ class VideoDataset(Dataset):
                     clean_cond = vr[indexes[0]].unsqueeze(0).permute(3, 0, 1, 2).float()
                 clean_cond = self.scale_and_crop((clean_cond / 255.0) * 2 - 1).squeeze(0)
                 if self.latent_condition:
-                    noisy_cond = target[:, 0]
+                    noisy_cond = frames[:, 0]
                 else:
                     noisy_cond = clean_cond
             else:
-                clean_cond = target[:, 0]
+                clean_cond = frames[:, 0]
                 noisy_cond = clean_cond
         elif self.mode == "interpolation":
             if self.use_latent:
@@ -297,11 +329,11 @@ class VideoDataset(Dataset):
                     clean_cond = vr.get_batch([indexes[0], indexes[-1]]).permute(3, 0, 1, 2).float()
                 clean_cond = self.scale_and_crop((clean_cond / 255.0) * 2 - 1)
                 if self.latent_condition:
-                    noisy_cond = torch.stack([frames[:, 0], frames[:, -1]], dim=1)
+                    noisy_cond = torch.stack([target[:, 0], target[:, -1]], dim=1)
                 else:
                     noisy_cond = clean_cond
             else:
-                clean_cond = torch.stack([frames[:, 0], frames[:, -1]], dim=1)
+                clean_cond = torch.stack([target[:, 0], target[:, -1]], dim=1)
                 noisy_cond = clean_cond
 
         # Add noise to conditional frame
@@ -356,7 +388,9 @@ class VideoDataset(Dataset):
 
     def __getitem__(self, idx):
         try:
-            clean_cond, noisy_cond, target, audio, raw_audio, cond_noise = self._get_frames_and_audio(idx)
+            clean_cond, noisy_cond, target, audio, raw_audio, cond_noise = self._get_frames_and_audio(
+                idx % len(self._indexes)
+            )
         except Exception as e:
             print(f"Error with index {idx}: {e}")
             return self.__getitem__(np.random.randint(0, len(self)))
@@ -378,7 +412,7 @@ class VideoDataset(Dataset):
         if cond_noise is not None:
             out_data["cond_aug"] = cond_noise
         out_data["motion_bucket_id"] = torch.tensor([self.motion_id])
-        out_data["fps_id"] = torch.tensor([self.video_rate - 1])
+        out_data["fps_id"] = torch.tensor([self.fps - 1])
         out_data["num_video_frames"] = self.num_frames
         out_data["image_only_indicator"] = torch.zeros(self.num_frames)
         return out_data

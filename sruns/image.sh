@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=antoni_project
-#SBATCH --partition=learnai
+#SBATCH --partition=learnai4rl
 #SBATCH --gres=gpu:4
 #SBATCH --ntasks-per-node=4
 #SBATCH --cpus-per-task=12
