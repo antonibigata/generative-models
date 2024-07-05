@@ -81,7 +81,7 @@ model:
         video_kernel_size: [3, 1, 1]
         fine_tuning_method: null
         audio_cond_method: to_time_emb_image
-        additional_audio_frames: 2
+        additional_audio_frames: &add_audio 2
         audio_dim: 768
         unfreeze_blocks: [] # Because we changed the input block
         skip_time: False
@@ -271,9 +271,10 @@ data:
         motion_id: 60
         # data_mean: null
         # data_std: null
-        additional_audio_frames: 2
+        additional_audio_frames: *add_audio
         virtual_increase: 10000
         use_latent_condition: True
+        n_out_frames: 1
 
       loader:
         batch_size: 32

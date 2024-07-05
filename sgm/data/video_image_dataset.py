@@ -66,6 +66,7 @@ class VideoDataset(Dataset):
         cond_noise=[-3.0, 0.5],
         motion_id=255.0,
         virtual_increase=1,
+        n_out_frames=1,
         is_xl=False,
         use_latent_condition=False,
         get_landmarks=False,
@@ -86,6 +87,7 @@ class VideoDataset(Dataset):
         self.is_xl = is_xl
         self.latent_folder = latent_folder if latent_folder is not None else video_folder
         self.audio_in_video = audio_in_video
+        self.n_out_frames = n_out_frames
 
         self.filelist = []
         self.audio_filelist = []
@@ -188,26 +190,30 @@ class VideoDataset(Dataset):
         return audio[0]
 
     def _load_landmarks(self, original_size, index, target_size=(64, 64)):
-        landmarks = self.curr_landmarks[index]
-        # landmarks = create_landmarks_image(landmarks, original_size, target_size=(224, 224), point_size=2)
-        # return (torch.from_numpy(landmarks) / 255.0) * 2 - 1
-        # return get_heatmap(landmarks[None, ...], target_size, original_size, n_points="stable", sigma=4).squeeze(0)
-        # land_image = create_landmarks_image(
-        #     landmarks, original_size, target_size=target_size, point_size=2, n_points="stable", dim=1
-        # )
-        land_image = draw_kps_image(target_size, original_size, landmarks, rgb=False, pts_width=1)
-        return torch.from_numpy(land_image).float() / 255.0
+        land_list = []
+        for idx in index:
+            landmarks = self.curr_landmarks[idx]
+            # landmarks = create_landmarks_image(landmarks, original_size, target_size=(224, 224), point_size=2)
+            # return (torch.from_numpy(landmarks) / 255.0) * 2 - 1
+            # return get_heatmap(landmarks[None, ...], target_size, original_size, n_points="stable", sigma=4).squeeze(0)
+            # land_image = create_landmarks_image(
+            #     landmarks, original_size, target_size=target_size, point_size=2, n_points="stable", dim=1
+            # )
+            land_image = draw_kps_image(target_size, original_size, landmarks, rgb=False, pts_width=1)
+            land_list += [torch.from_numpy(land_image).float() / 255.0]
+        return torch.stack(land_list)
 
-    def get_audio_indexes(self, main_index, n_audio_frames, max_len):
+    def get_audio_indexes(self, main_indexes, n_audio_frames, max_len):
+        start, end = main_indexes[0], main_indexes[-1]
         # Get indexes for audio from both sides of the main index
         audio_ids = []
         # get audio embs from both sides of the GT frame
-        audio_ids += [0] * max(n_audio_frames - main_index, 0)
-        for i in range(max(main_index - n_audio_frames, 0), min(main_index + n_audio_frames + 1, max_len)):
+        audio_ids += [0] * max(n_audio_frames - start, 0)
+        for i in range(max(start - n_audio_frames, 0), min(end + n_audio_frames + 1, max_len)):
             # for i in range(frame_ids[0], min(frame_ids[0] + self.n_audio_motion_embs + 1, n_frames)):
             audio_ids += [i]
-        audio_ids += [max_len - 1] * max(main_index + n_audio_frames - max_len + 1, 0)
-        return audio_ids, max(n_audio_frames - main_index, 0), max(main_index + n_audio_frames - max_len + 1, 0)
+        audio_ids += [max_len - 1] * max(end + n_audio_frames - max_len + 1, 0)
+        return audio_ids, max(n_audio_frames - start, 0), max(end + n_audio_frames - max_len + 1, 0)
 
     def ensure_shape(self, tensors):
         target_length = self.samples_per_frame
@@ -237,14 +243,14 @@ class VideoDataset(Dataset):
         # Calculate valid range for the second index
         start = max(0, first_index - self.num_frames)
         end = min(max_frames, first_index + self.num_frames)
-        valid_indices = list(range(0, start)) + list(range(end, max_frames))
+        valid_indices = list(range(0, start)) + list(range(end, max_frames - self.n_out_frames))
         # Select the second index from the valid range
         if valid_indices:
             second_index = np.random.choice(valid_indices)
         else:
             second_index = np.random.randint(0, max_frames)
 
-        return second_index
+        return [second_index] + [second_index + i for i in range(1, self.n_out_frames)]
 
     def _get_frames_and_audio(self, idx):
         vr = self.curr_video
@@ -255,13 +261,13 @@ class VideoDataset(Dataset):
             len_video = len(vr)
             init_index = np.random.randint(0, len_video)
             predict_index = self.get_predict_index_with_buffer(len_video, init_index)
-            indexes = [init_index, predict_index]
+            indexes = [init_index, *predict_index]
 
         # Initial frame between 0 and len(video) - frame_space
         init_index = indexes[0]
 
         # Cond frame idx
-        predict_index = indexes[-1]
+        predict_index = indexes[1:]
         audio_indexes, left_copies, right_copies = self.get_audio_indexes(
             predict_index, self.additional_audio_frames, len(vr)
         )
@@ -280,7 +286,7 @@ class VideoDataset(Dataset):
             # )
             # frames = load_file(latent_file)["latents"]
             frames = self.curr_latents
-            frame = frames[predict_index : predict_index + 1, :, :, :].squeeze(0)
+            frame = frames[predict_index[0] : predict_index[-1] + 1, :, :, :]
             cond = frames[init_index : init_index + 1, :, :, :].squeeze(0)
             # except FileNotFoundError:
             #     frames = torch.load(video_file.replace(self.video_ext, "_latent.pt"))
@@ -291,7 +297,7 @@ class VideoDataset(Dataset):
             clean_cond = vr[init_index].float()
 
         else:
-            frame, clean_cond = vr.get_batch([predict_index, init_index]).float()
+            frame, clean_cond = vr.get_batch([*predict_index, init_index]).float()
             # clean_cond = vr[init_index].float()
 
         or_w, or_h = clean_cond.shape[0], clean_cond.shape[1]
@@ -332,7 +338,7 @@ class VideoDataset(Dataset):
         #     audio_frames = (audio_frames / audio_frames.max()) * 2 - 1
 
         if not self.use_latent:
-            frame = rearrange(frame, "h w c -> c h w")
+            frame = rearrange(frame, "t h w c -> t c h w")
             clean_cond = rearrange(clean_cond, "h w c -> c h w")
             frame = self.scale_and_crop((frame / 255.0) * 2 - 1)
             clean_cond = self.scale_and_crop((clean_cond / 255.0) * 2 - 1)
@@ -343,7 +349,8 @@ class VideoDataset(Dataset):
             if not self.latent_condition:
                 noisy_cond = clean_cond
 
-        target = frame.unsqueeze(1)
+        # target = frame.unsqueeze(1)
+        target = rearrange(frame, "t c h w -> c t h w")
 
         if self.cond_noise and isinstance(self.cond_noise, ListConfig):
             cond_noise = (self.cond_noise[0] + self.cond_noise[1] * torch.randn((1,))).exp()
@@ -442,6 +449,11 @@ class VideoDataset(Dataset):
 
         _, video_file, _ = self._indexes[self.curr_idx]
 
+        # print("clean_cond", clean_cond.shape)
+        # print("noisy_cond", noisy_cond.shape)
+        # print("target", target.shape)
+        # print("audio", audio.shape)
+
         out_data = {}
         # out_data = {"cond": cond, "video": target, "audio": audio, "video_file": video_file}
 
@@ -470,8 +482,8 @@ class VideoDataset(Dataset):
         # out_data["txt"] = "a portrait of a person"
         # out_data["num_video_frames"] = self.num_frames
         # out_data["image_only_indicator"] = torch.zeros(self.num_frames)
-        out_data["num_video_frames"] = 1
-        out_data["image_only_indicator"] = torch.zeros(1)
+        out_data["num_video_frames"] = self.n_out_frames
+        out_data["image_only_indicator"] = torch.zeros(self.n_out_frames)
         if landmarks is not None:
             out_data["landmarks"] = landmarks
         if self.is_xl:
