@@ -110,14 +110,11 @@ model:
         - is_trainable: False
           input_key: cond_frames_without_noise
           ucg_rate: 0.1
-          target: sgm.modules.encoders.modules.FrozenOpenCLIPImagePredictionEmbedder
+          target: sgm.modules.encoders.modules.FaceEmbeddings
           params:
-            n_cond_frames: 1
-            n_copies: 1
-            open_clip_embedding_config:
-              target: sgm.modules.encoders.modules.FrozenOpenCLIPImageEmbedder
-              params:
-                freeze: True
+            face_type: facenet
+            linear_dim: 1024
+            id_embeddings_dim: 512
 
         # - input_key: fps_id
         #   is_trainable: False

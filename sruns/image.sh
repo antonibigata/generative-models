@@ -25,5 +25,5 @@ srun python main.py --base configs/example_training/svd_image.yaml --wandb True 
     data.params.train.datapipeline.load_all_possible_indexes=False \
     lightning.trainer.devices=4 lightning.trainer.accumulate_grad_batches=1 data.params.train.datapipeline.virtual_increase=100000 \
     model.params.network_config.params.audio_cond_method=to_time_emb data.params.train.loader.batch_size=8 \
-    model.params.loss_fn_config.params.lambda_lower=2. model.params.network_config.params.skip_time=False data.params.train.datapipeline.n_out_frames=4 model.params.network_config.params.additional_audio_frames=0 \
+    model.params.loss_fn_config.params.lambda_lower=2. model.params.network_config.params.skip_time=False data.params.train.datapipeline.n_out_frames=3 model.params.network_config.params.additional_audio_frames=0 \
     data.params.train.datapipeline.additional_audio_frames=0

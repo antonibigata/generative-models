@@ -35,6 +35,9 @@ from ...util import (
     instantiate_from_config,
 )
 
+from facenet_pytorch import MTCNN, InceptionResnetV1
+from insightface.app import FaceAnalysis
+
 
 class AbstractEmbModel(nn.Module):
     def __init__(self):
@@ -252,6 +255,71 @@ class WhisperAudioEmbedder(AbstractEmbModel):
         # print(f"Audio embedding shape: {x.shape}")
 
         return x
+
+
+class FaceEmbeddings(AbstractEmbModel):
+    def __init__(self, linear_dim=None, id_embeddings_dim=512, n_cond_frames=1, n_copies=1, face_type="insightface"):
+        super().__init__()
+        self.proj = torch.nn.Sequential(
+            torch.nn.Linear(id_embeddings_dim, linear_dim),
+            torch.nn.GELU(),
+            torch.nn.Linear(linear_dim, linear_dim),
+        )
+        self.norm = torch.nn.LayerNorm(linear_dim)
+
+        self.face_type = face_type
+        if face_type == "insightface":
+            self.app = FaceAnalysis(name="buffalo_l", providers=["CUDAExecutionProvider", "CPUExecutionProvider"])
+            self.app.prepare(ctx_id=0, det_size=(320, 320))
+        else:
+            self.mtcnn = MTCNN(
+                image_size=160, margin=0, min_face_size=20, post_process=True, device="cuda"
+            ).eval()  # Keep everything as default
+            self.resnet = InceptionResnetV1(pretrained="vggface2").eval()
+            for param in self.resnet.parameters():
+                param.requires_grad = False
+            for param in self.mtcnn.parameters():
+                param.requires_grad = False
+
+        self.n_cond_frames = n_cond_frames
+        self.n_copies = n_copies
+
+    @torch.no_grad()
+    def get_insightface_embeddings(self, x):
+        x = (((x + 1.0) / 2.0) * 255.0).clip(0, 255)
+        face_embeddings = torch.empty((len(x), 512), device=x.device)
+        for i in range(len(x)):
+            image = x[i].cpu().numpy()
+            face = self.app.get(image)[0]
+            face_embeddings[i] = torch.as_tensor(face.normed_embedding, device=x.device)
+        return face_embeddings
+
+    @torch.no_grad()
+    def get_facenet_embeddings(self, x):
+        x = (((x + 1.0) / 2.0) * 255.0).clip(0, 255)
+        img_crops = self.mtcnn(x, device=x.device)
+        img_crops = rearrange(torch.stack(img_crops), "b h w c -> b c h w")
+        return self.resnet(img_crops)
+
+    def get_embeddings(self, x):
+        if self.face_type == "insightface":
+            x = self.get_insightface_embeddings(x)
+        else:
+            x = self.get_facenet_embeddings(x)
+        x = self.proj(x)
+        x = self.norm(x)
+        return x
+
+    def forward(self, vid):
+        if vid.ndim == 5:
+            vid = rearrange(vid, "b c t h w -> (b t) h w c")
+        else:
+            vid = rearrange(vid, "b c h w -> b h w c")
+        vid = self.get_embeddings(vid)
+        vid = rearrange(vid, "(b t) d -> b t d", t=self.n_cond_frames)
+        vid = repeat(vid, "b t d -> (b s) t d", s=self.n_copies)
+
+        return vid
 
 
 class ClassEmbedder(AbstractEmbModel):

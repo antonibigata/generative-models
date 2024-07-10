@@ -26,14 +26,15 @@ from sgm.data.data_utils import draw_kps_image, scale_landmarks
 
 
 def get_audio_indexes(main_index, n_audio_frames, max_len):
+    start, end = main_index[0], main_index[-1]
     # Get indexes for audio from both sides of the main index
     audio_ids = []
     # get audio embs from both sides of the GT frame
-    audio_ids += [0] * max(n_audio_frames - main_index, 0)
-    for i in range(max(main_index - n_audio_frames, 0), min(main_index + n_audio_frames + 1, max_len)):
+    audio_ids += [0] * max(n_audio_frames - start, 0)
+    for i in range(max(start - n_audio_frames, 0), min(end + n_audio_frames + 1, max_len)):
         # for i in range(frame_ids[0], min(frame_ids[0] + self.n_audio_motion_embs + 1, n_frames)):
         audio_ids += [i]
-    audio_ids += [max_len - 1] * max(main_index + n_audio_frames - max_len + 1, 0)
+    audio_ids += [max_len - 1] * max(end + n_audio_frames - max_len + 1, 0)
     return audio_ids
 
 
@@ -110,6 +111,8 @@ def sample(
         "cond_frames_without_noise",
     ],
     get_landmarks: bool = False,
+    out_frames: int = 1,
+    n_audio_frames: int = 2,
 ):
     """
     Simple script to generate a single sample conditioned on an image `input_path` or multiple images, one for each
@@ -120,12 +123,10 @@ def sample(
         num_frames = default(num_frames, 14)
         output_folder = default(output_folder, "outputs/simple_image_sample/sd_2_1/")
         model_config = "scripts/sampling/configs/sd_2_1.yaml"
-        n_audio_frames = 2
     elif version == "svd_image":
         num_frames = default(num_frames, 14)
         output_folder = default(output_folder, "outputs/simple_image_sample/svd_image/")
         model_config = default(model_config, "scripts/sampling/configs/svd_image.yaml")
-        n_audio_frames = 2
 
     if use_latent:
         input_key = "latents"
@@ -233,7 +234,7 @@ def sample(
             range(num_frames - 1, len(audio), num_frames), desc="Autoregressive", total=len(audio) // num_frames
         ):
             condition = cond
-            audio_indexes = get_audio_indexes(i, n_audio_frames, len(audio))
+            audio_indexes = get_audio_indexes(list(range(i, i + out_frames)), n_audio_frames, len(audio))
             audio_cond = audio[audio_indexes].unsqueeze(0).cuda()
             # audio_cond = audio_list[i].unsqueeze(0).to(device)
             condition = condition.unsqueeze(0).to(device)
@@ -243,7 +244,7 @@ def sample(
             assert condition.shape[1] == 3
             F = 8
             C = 4
-            shape = (1, C, H // F, W // F)
+            shape = (out_frames, C, H // F, W // F)
             if (H, W) != (576, 1024):
                 print(
                     "WARNING: The conditioning frame you provided is not 576x1024. This leads to suboptimal performance as model was only trained on 576x1024. Consider increasing `cond_aug`."
@@ -280,7 +281,7 @@ def sample(
                         get_unique_embedder_keys_from_conditioner(model.conditioner),
                         value_dict,
                         [1, 1],
-                        T=1,
+                        T=out_frames,
                         device=device,
                     )
 
@@ -299,7 +300,7 @@ def sample(
                     video = torch.randn(shape, device=device)
 
                     additional_model_inputs = {}
-                    additional_model_inputs["image_only_indicator"] = torch.zeros(n_batch, 1).to(device)
+                    additional_model_inputs["image_only_indicator"] = torch.zeros(n_batch, out_frames).to(device)
                     additional_model_inputs["num_video_frames"] = batch["num_video_frames"]
 
                     def denoiser(input, sigma, c):
@@ -365,7 +366,7 @@ def get_batch(keys, value_dict, N, T, device):
             batch[key] = value_dict[key]
 
     # if T is not None:
-    batch["num_video_frames"] = 1
+    batch["num_video_frames"] = T
 
     for key in batch.keys():
         if key not in batch_uc and isinstance(batch[key], torch.Tensor):
