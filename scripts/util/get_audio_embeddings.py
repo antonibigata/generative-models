@@ -113,8 +113,9 @@ def get_audio_embeddings(audio_path, output_path, model_size, fps):
             sr = info.get("audio_fps", None)
             max_len_sec = frames.shape[0] / fps
 
+            print(audio.nelement() == 0, audio_file)
             # Load audio
-            if audio is None:
+            if audio is None or audio.nelement() == 0:
                 audio, sr = torchaudio.load(audio_file)
             if sr != audio_rate:
                 audio = torchaudio.functional.resample(audio, orig_freq=sr, new_freq=audio_rate)[0]

@@ -5,7 +5,7 @@ model:
     input_key: latents
     scale_factor: 0.18215
     disable_first_stage_autocast: True
-    ckpt_path: logs/2024-07-04T19-41-29_example_training-svd_image/checkpoints/last.ckpt/checkpoint/mp_rank_00_model_states.pt
+    ckpt_path: logs/2024-07-10T12-28-09_example_training-svd_image/checkpoints/last.ckpt/checkpoint/mp_rank_00_model_states.pt
     # remove_keys_from_weights: [model.diffusion_model.label_emb.0.0.weight]
     bad_model_path: logs/2024-05-30T18-28-54_example_training-svd_image/checkpoints/last.ckpt/checkpoint/mp_rank_00_model_states.pt
 
@@ -59,11 +59,11 @@ model:
         merge_strategy: learned_with_images
         video_kernel_size: [3, 1, 1]
         fine_tuning_method: null
-        audio_cond_method: to_time_emb
-        additional_audio_frames: 0
+        audio_cond_method: to_time_emb_image
+        additional_audio_frames: 2
         audio_dim: 768
         unfreeze_blocks: [] # Because we changed the input block
-        skip_time: false
+        skip_time: true
 
     conditioner_config:
       target: sgm.modules.GeneralConditioner
@@ -72,14 +72,11 @@ model:
         - is_trainable: False
           input_key: cond_frames_without_noise
           ucg_rate: 0.1
-          target: sgm.modules.encoders.modules.FrozenOpenCLIPImagePredictionEmbedder
+          target: sgm.modules.encoders.modules.FaceEmbeddings
           params:
-            n_cond_frames: 1
-            n_copies: 1
-            open_clip_embedding_config:
-              target: sgm.modules.encoders.modules.FrozenOpenCLIPImageEmbedder
-              params:
-                freeze: True
+            face_type: facenet
+            linear_dim: 1024
+            id_embeddings_dim: 512
 
         - input_key: cond_frames
           is_trainable: False

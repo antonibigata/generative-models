@@ -382,10 +382,10 @@ def load_model(
     input_key: str,
 ):
     config = OmegaConf.load(config)
-    if device == "cuda":
-        config.model.params.conditioner_config.params.emb_models[
-            0
-        ].params.open_clip_embedding_config.params.init_device = device
+    # if device == "cuda":
+    #     config.model.params.conditioner_config.params.emb_models[
+    #         0
+    #     ].params.open_clip_embedding_config.params.init_device = device
 
     config["model"]["params"]["input_key"] = input_key
 

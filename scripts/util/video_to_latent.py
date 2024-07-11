@@ -127,6 +127,7 @@ def main():
                 torch.save(encoded.cpu(), out_path)
             else:
                 save_file({"latents": encoded.cpu(), "init_rez": torch.tensor(video.shape[-2:])}, out_path)
+
         except:
             print(f"Failed for file {video_file}")
 

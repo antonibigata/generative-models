@@ -308,16 +308,16 @@ data:
     #     motion_id: 60
     #     # data_mean: null
     #     # data_std: null
-    #     additional_audio_frames: 2
+    #     additional_audio_frames: *add_audio
     #     virtual_increase: 1
     #     use_latent_condition: True
 
     #   loader:
     #     batch_size: 2
-    #     num_workers: 6
+    #     num_workers: 0
     #     drop_last: True
     #     pin_memory: True
-    #     persistent_workers: True
+    #     persistent_workers: False
     #     # collation_fn:
     #     #   target: sgm.data.collates.collate_video
     #     #   params:
@@ -340,6 +340,7 @@ lightning:
         disabled: False
         enable_autocast: False
         batch_frequency: 1000
+        batch_frequency_val: 100
         max_videos: 1
         increase_log_steps: False
         log_first_step: True
@@ -352,9 +353,10 @@ lightning:
   trainer:
     devices: -1
     benchmark: False
-    num_sanity_val_steps: 1
+    num_sanity_val_steps: 0
     accumulate_grad_batches: 1
     max_epochs: 1000
     precision: bf16-mixed
     num_nodes: 1
-    # val_check_interval: 0.0000062893
+    # limit_train_batches: 2
+    # val_check_interval: 0.000006

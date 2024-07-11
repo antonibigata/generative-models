@@ -600,7 +600,7 @@ if __name__ == "__main__":
     print(f"trainer_opt: {trainer_opt}")
     # exit()
 
-    trainer = Trainer(**trainer_opt, **trainer_kwargs, limit_train_batches=1.0)
+    trainer = Trainer(**trainer_opt, **trainer_kwargs)
 
     trainer.logdir = logdir  ###
 
