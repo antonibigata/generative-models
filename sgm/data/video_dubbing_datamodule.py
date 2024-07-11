@@ -78,7 +78,6 @@ class VideoDataModule(LightningDataModule):
         careful not to execute things like random split twice!
         """
         print("Preparing datasets")
-
         self.train_datapipeline = VideoDataset(**self.train_config.datapipeline)
         if self.val_config:
             self.val_datapipeline = VideoDataset(**self.val_config.datapipeline)
@@ -120,7 +119,7 @@ if __name__ == "__main__":
     import cv2
 
     root = pyrootutils.setup_root(__file__, pythonpath=True)
-    cfg = omegaconf.OmegaConf.load(root / "configs" / "datamodule" / "image_datamodule.yaml")
+    cfg = omegaconf.OmegaConf.load(root / "configs" / "example_training" / "svd_dubbing_half.yaml")
     # cfg.data_dir = str(root / "data")
     data = hydra.utils.instantiate(cfg)
     data.prepare_data()

@@ -110,6 +110,8 @@ class DubbingWrapper(IdentityWrapper):
         self.mask_input = mask_input
 
     def forward(self, x: torch.Tensor, t: torch.Tensor, c: dict, **kwargs) -> torch.Tensor:
+
+        
         cond_cat = c.get("concat", torch.Tensor([]).type_as(x))
         if len(cond_cat.shape):
             T = x.shape[0] // cond_cat.shape[0]
@@ -132,6 +134,7 @@ class DubbingWrapper(IdentityWrapper):
                 x = torch.cat((x, masks), dim=1)
 
         x = torch.cat((x, cond_cat), dim=1)
+
         out = self.diffusion_model(
             x,
             timesteps=t,

@@ -440,6 +440,7 @@ def sample(
 
                 additional_model_inputs = {}
                 additional_model_inputs["image_only_indicator"] = torch.zeros(n_batch, num_frames).to(device)
+                print('image_only_indicator', additional_model_inputs["image_only_indicator"].shape)
                 additional_model_inputs["num_video_frames"] = batch["num_video_frames"]
 
                 if chunk_size is not None:

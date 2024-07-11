@@ -1,0 +1,11 @@
+defaults:
+  - base_data
+
+filelist: /fsx/rs2517/data/lists/HDTF/filelist_videos_train.txt
+audio_folder: audio
+video_folder: cropped_videos_original
+video_extension: .mp4
+audio_extension: .wav
+latent_folder: null
+
+dataset_name: hdtf

@@ -4,7 +4,7 @@ from glob import glob
 from pathlib import Path
 from typing import Optional
 from tqdm import tqdm  # Correct import
-
+import time
 import face_alignment
 import numpy as np
 import torch
@@ -13,35 +13,50 @@ from fire import Fire
 from omegaconf import OmegaConf
 import torchaudio
 from safetensors.torch import load_file as load_safetensors
-import torch.nn.functional as F
 from torchvision.io import read_video
 
 import warnings
 # Suppress all warnings
 warnings.filterwarnings("ignore")
 
-# from scripts.util.detection.nsfw_and_watermark_dectection import DeepFloydDataFiltering
-from sgm.util import default, instantiate_from_config, trim_pad_audio, get_raw_audio, save_audio_video
-from sgm.data.data_utils import (
-	create_masks_from_landmarks_full_size,
-	create_face_mask_from_landmarks,
-	create_masks_from_landmarks_box,
-)
+from sgm.util import default, instantiate_from_config, save_audio_video
 from scripts.util.audio_wrapper import AudioWrapper
 from scripts.util.vae_wrapper import VaeWrapper
 from scripts.util.utilities import *
-
-
+from scripts.util.utils_audio import get_audio_embeddings
+from scripts.util.utils_inference import *
+from scripts.util.utils_video import preprocess_video, get_video_fps, convert_video_fps, encode_video
+from scripts.util.preprocessing import invert_transformation_ai_agents
 """
 python scripts/sampling/simple_dubbing_multi_stella.py --fps_id 24 --motion_bucket_id 60 --cond_aug 0. --decoding_t 14 \
---video_path=/data/home/stellab/projects/dubbing_gans/results_demo/insta_5/3345252620443890114_0_chain0_translated.mp4 \
-	--audio_path=/fsx/rs2517/data/HDTF/audio/WDA_BarackObama_000_wav2vec2_emb.pt \
-	--model_config=scripts/sampling/configs/svd_dub.yaml --max_seconds=10 \
-	--resize_size=512 --use_latent=True --num_steps=10 '--force_uc_zero_embeddings=[audio_emb]' --what_mask=box --overlap=5 --chunk_size=10
+ 	--video_path=/fsx/rs2517/data/HDTF/cropped_videos_original/WDA_BarackObama_000.mp4 \
+	--audio_path=/fsx/rs2517/data/HDTF/audio/RD_Radio18_000_wav2vec2_emb.pt \
+	--model_config=scripts/sampling/configs/svd_dub.yaml --max_seconds=5  --preprocess_video_flag False --blend_to_original False \
+	--resize_size=512 --use_latent=True --num_steps=10 '--force_uc_zero_embeddings=[audio_emb]' --what_mask=box --overlap=5 --chunk_size=10 \
+	--output_folder ./outputs/test_artifacts/
 
+	/fsx/behavioural_computing_data/voxceleb2/test/id00017/01dfn2spqyE/00001.mp4
+	/fsx/behavioural_computing_data/voxceleb2/test/id04030/7mXUMuo5_NE/00001.mp4
+	/fsx/stellab/AI_agents/test_set_all_actors_25fps/A479_C022_1120YY_001.mp4
+	/fsx/behavioural_computing_data/voxceleb2/test/id00562/0Zh6t-f8MsY/00001.mp4
+
+	/fsx/behavioural_computing_data/voxceleb2/test/id04006/113VkmVVz1Q/ 
+	
+	part_27/video_aligned_512/A076_C034_0731PQ_001_output_output.mp4 -> poses
+	/fsx/behavioural_computing_data/face_generation_data/AI_Agent_dataset/part_27
+
+part_1/video_aligned_512/A662_C030_01290I_001_output_output.mp4
+part_27/video_aligned_512/A057_C005_0725BR_001_output_output.mp4
+part_1/video_aligned_512/A564_C034_1217I2_001_output_output.mp4
+--video_path=/fsx/behavioural_computing_data/face_generation_data/AI_Agent_dataset/part_27/A076_C034_0731PQ_001.mov
+
+part_14/video_aligned_512/A095_C027_0802M4_001_output_output.mp4
 
 	/fsx/behavioural_computing_data/face_generation_data/AA_processed/part_14/video_aligned_512/A089_C001_0802HK_001_output_output.mp4
 
+	/fsx/behavioural_computing_data/face_generation_data/AA_processed/
+
+	--video_path=/data/home/stellab/projects/dubbing_gans/results_demo/insta_5/3345252620443890114_0_chain0_translated.mp4
 	--audio_path=/fsx/rs2517/data/HDTF/audio/RD_Radio18_000_wav2vec2_emb.pt \
 	--audio_path=/data/home/stellab/projects/dubbing_gans/results_demo/evaluation_data/kimmel.wav \
 	--audio_path=/fsx/rs2517/data/HDTF/audio/WDA_BarackObama_000_wav2vec2_emb.pt
@@ -50,9 +65,10 @@ python scripts/sampling/simple_dubbing_multi_stella.py --fps_id 24 --motion_buck
 
 python scripts/sampling/simple_dubbing_multi_stella.py --fps_id 24 --motion_bucket_id 60 --cond_aug 0. --decoding_t 14 \
 	--video_path=/fsx/rs2517/data/HDTF/cropped_videos_original/WDA_BarackObama_000.mp4 \
-	--audio_path=/data/home/stellab/projects/dubbing_gans/results_demo/evaluation_data/kimmel.wav
+	--audio_path=/fsx/rs2517/data/HDTF/audio/WDA_BarackObama_000_wav2vec2_emb.pt \
 	--model_config=scripts/sampling/configs/svd_dub.yaml --max_seconds=10 \
 	--resize_size=512 --use_latent=True --num_steps=10 '--force_uc_zero_embeddings=[audio_emb]' --what_mask=box --overlap=5 --chunk_size=10
+
 
 	python scripts/sampling/simple_dubbing_multi_stella.py --fps_id 24 --motion_bucket_id 60 --cond_aug 0. --decoding_t 14 \
 	--video_path=/fsx/rs2517/data/HDTF/cropped_videos_original/WDA_BarackObama_000.mp4 \
@@ -70,156 +86,6 @@ python scripts/sampling/simple_dubbing_multi_stella.py --fps_id 24 --motion_buck
 	--resize_size=512 --use_latent=True --num_steps=10 '--force_uc_zero_embeddings=[audio_emb]' --what_mask=jawline --overlap=5 --chunk_size=10
 """
 
-
-def merge_overlapping_segments(segments, overlap):
-	"""
-	Merges overlapping segments by averaging overlapping frames.
-	Segments have shape (b, t, ...), where 'b' is the number of segments,
-	't' is frames per segment, and '...' are other dimensions.
-
-	:param segments: Tensor of shape (b, t, ...)
-	:param overlap: Integer, number of frames that overlap between consecutive segments.
-	:return: Tensor of the merged video.
-	"""
-	# Get the shape details
-	b, t, *other_dims = segments.shape
-	num_frames = (b - 1) * (t - overlap) + t  # Calculate the total number of frames in the merged video
-
-	# Initialize the output tensor and a count tensor to keep track of contributions for averaging
-	output_shape = [num_frames] + other_dims
-	output = torch.zeros(output_shape, dtype=segments.dtype, device=segments.device)
-	count = torch.zeros(output_shape, dtype=torch.float32, device=segments.device)
-
-	current_index = 0
-	for i in range(b):
-		end_index = current_index + t
-		# Add the segment to the output tensor
-		output[current_index:end_index] += rearrange(segments[i], "... -> ...")
-		# Increment the count tensor for each frame that's added
-		count[current_index:end_index] += 1
-		# Update the starting index for the next segment
-		current_index += t - overlap
-
-	# Avoid division by zero
-	count[count == 0] = 1
-	# Average the frames where there's overlap
-	output /= count
-
-	return output
-
-
-def create_interpolation_inputs(video, audio, landmarks, num_frames, video_emb=None, overlap=1, what_mask="full"):
-	assert video.shape[0] == audio.shape[0], "Video and audio must have the same number of frames"
-	masks_chunks = []
-	audio_chunks = []
-	video_emb_chunks = []
-	gt_chunks = []
-	masks_chunks_big = []
-	# Adjustment for overlap to ensure segments are created properly
-	step = num_frames - overlap
-
-	# Ensure there's at least one step forward on each iteration
-	if step < 1:
-		step = 1
-	
-	for i in range(0, video.shape[0] - num_frames + 1, step):
-		segment_end = i + num_frames
-		if what_mask == "full":
-			masks = create_masks_from_landmarks_full_size(
-				landmarks[i:segment_end, :], video.shape[-1], video.shape[-2], offset=-0.01
-			)
-		elif what_mask == "box":
-			masks = create_masks_from_landmarks_box(landmarks[i:segment_end, :], (video.shape[-1], video.shape[-2]))
-		else:
-			masks = create_face_mask_from_landmarks(
-				landmarks[i:segment_end, :],
-				video.shape[-1],
-				video.shape[-2],
-				mask_expand=0.05,
-			)
-		masks_chunks_big.append(masks)
-		gt_chunks.append(video[i:segment_end])
-		masks = F.interpolate(masks.unsqueeze(1).float(), size=(64, 64), mode="nearest")
-		masks_chunks.append(masks)
-		if video_emb is not None:
-			video_emb_chunks.append(video_emb[i:segment_end])
-		if audio is not None:
-			audio_chunks.append(audio[i:segment_end])
-
-	return gt_chunks, masks_chunks, audio_chunks, video_emb_chunks, masks_chunks_big
-
-
-def get_audio_embeddings(audio_path: str, audio_rate: int = 16000, fps: int = 25, audio_model = None, save_emb = None):
-	# Process audio
-	audio = None
-	raw_audio = None
-	if audio_path is not None and (audio_path.endswith(".wav") or audio_path.endswith(".mp3")):
-		audio, sr = torchaudio.load(audio_path, channels_first=True)
-		if audio.shape[0] > 1:
-			audio = audio.mean(0, keepdim=True)
-		if sr != audio_rate:
-			audio = torchaudio.functional.resample(audio, orig_freq=sr, new_freq=audio_rate)[0]
-			audio = audio.unsqueeze(0)
-
-		samples_per_frame = math.ceil(audio_rate / fps)
-		# audio_zeros = torch.zeros(audio.shape)
-		# audio = audio_zeros
-		raw_audio = audio.clone()
-		raw_audio = raw_audio.squeeze(0)
-		n_frames = raw_audio.shape[-1] / samples_per_frame
-		if not n_frames.is_integer():
-			# print("Audio shape before trim_pad_audio: ", raw_audio.shape)
-			raw_audio = trim_pad_audio(raw_audio, audio_rate, max_len_raw=math.ceil(n_frames) * samples_per_frame)
-			# print("Audio shape after trim_pad_audio: ", raw_audio.shape)
-		raw_audio = rearrange(raw_audio, "(f s) -> f s", s=samples_per_frame)
-
-	   
-		if audio_model is not None:
-			audio = (audio - audio.mean()) / torch.sqrt(audio.var() + 1e-7)
-			audio_embeddings = audio_model.encode_audio(audio)
-			audio_file_name = get_name_from_file(audio_path)
-			if save_emb is not None:
-				torch.save(audio_embeddings.squeeze(0).cpu(), os.path.join(save_emb, '{}.pt'.format(audio_file_name)))
-		else:
-			print('Load audio model')
-			exit()
-
-		if "whisper" in audio_path.lower():
-			raise NotImplementedError("Whisper audio embeddings are not yet supported.")
-			# audio_model = Whisper(model_size="large-v2", fps=25)
-			# model.eval()
-			# # Get audio embeddings
-			# audio_embeddings = []
-			# for chunk in torch.split(
-			#     raw_audio, 750, dim=0
-			# ):  # 750 is the max size of the audio chunks that can be processed by the model (= 30 seconds)
-			#     audio_embeddings.append(audio_model(chunk.unsqueeze(0).cuda()))
-			# audio = torch.cat(audio_embeddings, dim=1).squeeze(0)
-	elif audio_path is not None and audio_path.endswith(".pt"):
-		audio_embeddings = torch.load(audio_path)
-		raw_audio_path = audio_path.replace(".pt", ".wav").replace("_whisper_emb", "").replace("_wav2vec2_emb", "")
-
-		if os.path.exists(raw_audio_path):
-			raw_audio = get_raw_audio(raw_audio_path, audio_rate)
-		else:
-			print(f"WARNING: Could not find raw audio file at {raw_audio_path}.")
-	return audio_embeddings, raw_audio
-
-def encode_video(video, vae_model, device):
-	n_samples = 14
-	video_ = video.clone()
-	video_ = torch.nn.functional.interpolate(video_.float(), size=512, mode="bilinear", align_corners=False).to(device)
-	n_rounds = math.ceil(video_.shape[0] / n_samples)
-	video_ = rearrange(video_, "t c h w -> c t h w")
-	all_out = []
-	with torch.no_grad():
-		for n in tqdm(range(n_rounds)):         
-			chunk_video = video_[:, n * n_samples : (n + 1) * n_samples, :, :]
-			out = vae_model.encode_video(chunk_video.unsqueeze(0)).squeeze(0) # torch.Size([1, 4, 14, 64, 64])
-			out = rearrange(out, "c t h w -> t c h w")
-			all_out.append(out)      
-	z = torch.cat(all_out, dim=0)
-	return z
 
 def sample(
 	video_path: Optional[str] = None,
@@ -248,12 +114,18 @@ def sample(
 		"cond_frames_without_noise",
 	],  # Useful for the classifier free guidance. What should be zeroed out in the unconditional embeddings
 	chunk_size: int = None,  # Useful if the model gets OOM
+	preprocess_video_flag: bool = False,  # Preprocess video using actors preprocessing in needed
+	start_frame: int = 0,
+	blend_to_original: bool = False,
+	reference_index: int = None,
+	use_current_reference: bool = False,
+	save_gt_video: bool = False
 ):
 	"""
 	Simple script to generate a single sample conditioned on an image `input_path` or multiple images, one for each
 	image file in folder `input_path`. If you run out of VRAM, try decreasing `decoding_t`.
 	"""
-
+	
 	if version == "svd":
 		num_frames = default(num_frames, 14)
 		num_steps = default(num_steps, 25)
@@ -300,6 +172,8 @@ def sample(
 	print('\n')
 	print('******* Save results in {} ********'.format(output_folder))
 	
+	os.makedirs(output_folder, exist_ok=True)
+	
 	audio_model = None
 	if audio_path is not None and (audio_path.endswith(".wav") or audio_path.endswith(".mp3")):
 		print('************* Load audio encoder: default is wav2vec2 *************')
@@ -312,14 +186,35 @@ def sample(
 
 	audio, raw_audio = get_audio_embeddings(audio_path, 16000, fps_id + 1, audio_model = audio_model, save_emb = output_folder)
 	
-	video = read_video(video_path, output_format="TCHW")[0]
-	video = (video / 255.0) * 2.0 - 1.0
-	
-	# max_seconds = 2
+	fps, num_video_frames, video_size = get_video_fps(video_path, get_frames = True)	
+	print('Video frames ', num_video_frames)
+	if fps != fps_id + 1:
+		print('Convert video fps from {} to {}'.format(fps, fps_id+1))
+		video_name = os.path.splitext(os.path.basename(video_path))[0]
+		video_path_25 = os.path.join(output_folder, '{}_25.mp4'.format(video_name))
+		success = convert_video_fps(video_path, video_path_25, target_fps = fps_id + 1)
+		if not success:
+			print('Failed to change the fps for input video')
+			exit()
+		video_path = video_path_25
+
+	# max_seconds = 1
 	if max_seconds is not None:
-		max_frames = max_seconds * fps_id
-		if video.shape[0] > max_frames:
-			video = video[:max_frames]
+		num_video_frames = max_seconds * fps_id
+	
+	norm_mean = [0.5, 0.5, 0.5]; norm_std = [0.5, 0.5, 0.5]
+	if preprocess_video_flag:
+		print('Preprocess video')
+		video, start_frame, end_frame, full_vid_length, stats_alignment, original_video, landmarks = preprocess_video(video_path, start_frame, (512, 512), norm_mean, norm_std, num_frames = num_video_frames, align = True)
+	else:
+		video, start_frame, end_frame, full_vid_length, stats_alignment, original_video, landmarks = preprocess_video(video_path, start_frame, (512, 512), norm_mean, norm_std, num_frames = num_video_frames, align = False)
+		# video = read_video(video_path, output_format="TCHW")[0]
+		# video = (video / 255.0) * 2.0 - 1.0
+		
+	# if max_seconds is not None:
+	# 	max_frames = max_seconds * fps_id
+	# 	if video.shape[0] > max_frames:
+	# 		video = video[:max_frames]
 
 	video_embedding_path = video_path.replace(".mp4", "_video_512_latent.safetensors")    
 	if os.path.exists(video_embedding_path):
@@ -331,14 +226,13 @@ def sample(
 		######### Load VAE ############# 
 		print('************* load VAE *************')
 		vae_model = VaeWrapper('video')
+		t0 = time.time()
 		video_emb = encode_video(video, vae_model, device)
 		print('video_emb', video_emb.shape)
+		print('Time to encode video frames is {:.3f}'.format(time.time()-t0))
 
-	
-	
 	if max_seconds is not None:
 		max_frames = max_seconds * fps_id
-		# if video.shape[0] > max_frames:
 		audio = audio[:max_frames]
 		video_emb = video_emb[:max_frames] if video_emb is not None else None
 		raw_audio = raw_audio[:max_frames] if raw_audio is not None else None
@@ -359,53 +253,76 @@ def sample(
 			f"WARNING: Your image is of size {h}x{w} which is not divisible by 64. We are resizing to {height}x{width}!"
 		)
 	
-	# landmarks_path = video_path.replace(".mp4", ".npy")
-	# if os.path.exists(landmarks_path):
-	# 	landmarks = np.load(landmarks_path)
-	# else:
-
-	print('Extract landmarks')
-	lmks_detector = face_alignment.FaceAlignment(
-			face_alignment.LandmarksType.TWO_D,
-			flip_input=False,
-			device=device,
-		)
-	landmarks = get_landmarks_facealignment(model_input, lmks_detector)
+	if landmarks is None:
+		print('Extract landmarks')
+		lmks_detector = face_alignment.FaceAlignment(
+				face_alignment.LandmarksType.TWO_D,
+				flip_input=False,
+				device=device,
+			)
+		landmarks = get_landmarks_facealignment(model_input, lmks_detector)
 	
-
+	
+	if model_input.shape[0] > audio.shape[0]:
+		model_input = model_input[:audio.shape[0]]
+	elif model_input.shape[0] < audio.shape[0]:
+		audio = audio[:model_input.shape[0]]
 
 	gt_chunks, masks_list, audio_list, emb_list, masks_big_list = create_interpolation_inputs(
 		model_input, audio, landmarks, num_frames, video_emb, overlap, what_mask
 	)
+
 	masks_big = torch.stack(masks_big_list).to(device)
 	gt_chunks = torch.stack(gt_chunks).to(device)
-
-	check_masks(gt_chunks, masks_big, save_path = './masked_frame_co.png')
+	
+	# check_masks(gt_chunks, masks_big, save_path = './masked_frame_co.png')
 	
 	gt_chunks = merge_overlapping_segments(gt_chunks, overlap)
 	gt_chunks = torch.clamp((gt_chunks + 1.0) / 2.0, min=0.0, max=1.0)
 	gt_vid = (gt_chunks * 255).cpu().numpy().astype(np.uint8)
 
-	check_landmarks(gt_vid, landmarks, save_path = './land_co.png')
+	# landmarks = data['landmarks'][0] * (512/224)
+	# check_landmarks(gt_vid, landmarks, save_path = './land_co.png')
 	
-	
+
 	# Take random index
-	idx = torch.randint(0, len(model_input), (1,)).item()
+	# TODO: Take the first frame of the 14 frames sequence and not a random one 
+	if reference_index is None:
+		idx = torch.randint(0, len(model_input), (1,)).item()
+	else:
+		idx = reference_index # Use the first reference frame
 	condition = model_input[idx].unsqueeze(0).to(device)
 	condition_emb = video_emb[idx].unsqueeze(0).to(device) if video_emb is not None else None
 	print('condition', condition.shape)
 	print('condition_emb', condition_emb.shape)
+	print('model_input', model_input.shape)
+	print('video_emb', video_emb.shape)
 
-	# for i in tqdm(range(len(masks_list)), desc="Autoregressive", total=len(masks_list)):
 	masks = torch.stack(masks_list)
 	print('masks', masks.shape)
 	audio_cond = torch.stack(audio_list).to(device)
 	embbedings = torch.stack(emb_list).to(device) if emb_list is not None else None
-	print('embbedings', embbedings.shape)
+	print('video embbedings', embbedings.shape)
+	print('audio_cond', audio_cond.shape)
 	
 
-	condition = repeat(condition, "b c h w -> (b d) c h w", d=audio_cond.shape[0])
-	condition_emb = repeat(condition_emb, "b c h w -> (b d) c h w", d=audio_cond.shape[0])
+	# condition torch.Size([1, 3, 512, 512])
+	# condition_emb torch.Size([1, 4, 64, 64])
+	# masks torch.Size([12, 14, 1, 64, 64])
+	# embbedings torch.Size([12, 14, 4, 64, 64])
+	# audio_cond torch.Size([12, 14, 2, 768])
+	
+	if not use_current_reference:
+		condition = repeat(condition, "b c h w -> (b d) c h w", d=audio_cond.shape[0])
+		condition_emb = repeat(condition_emb, "b c h w -> (b d) c h w", d=audio_cond.shape[0])
+	else:
+		# TODO: Check if for every batch i can use a difference reference frame
+		condition = gt_chunks # Not correct
+		condition_emb = embbedings
+	print('condition', condition.shape)
+	print('condition_emb', condition_emb.shape)
+	# condition torch.Size([13, 3, 512, 512])
+	# condition_emb torch.Size([13, 4, 64, 64])
 
 	H, W = condition.shape[-2:]
 	# assert condition.shape[1] == 3
@@ -437,6 +354,7 @@ def sample(
 	value_dict["audio_emb"] = audio_cond
 	value_dict["gt"] = rearrange(embbedings, "b t c h w -> b c t h w").to(device)
 
+	t0 = time.time()
 	with torch.no_grad():
 		with torch.autocast(device):
 			batch, batch_uc = get_batch(
@@ -461,10 +379,10 @@ def sample(
 
 			video = torch.randn(shape, device=device)
 
-			n_batch *= embbedings.shape[0]
-
 			additional_model_inputs = {}
 			additional_model_inputs["image_only_indicator"] = torch.zeros(n_batch, num_frames).to(device)
+			# print('image_only_indicator', additional_model_inputs["image_only_indicator"].shape)
+			
 			additional_model_inputs["num_video_frames"] = batch["num_video_frames"]
 
 			if chunk_size is not None:
@@ -484,25 +402,23 @@ def sample(
 				)
 
 			samples_z = model.sampler(denoiser, video, cond=c, uc=uc, strength=strength)
+			print('samples_z', samples_z.shape)
 			samples_x = model.decode_first_stage(samples_z)
 
 			samples = torch.clamp((samples_x + 1.0) / 2.0, min=0.0, max=1.0)
 
 			video = None
-
+	
+	print('Time to generate video of {} frames is {:.3f}'.format(num_video_frames, time.time()-t0))
 	samples = rearrange(samples, "(b t) c h w -> b t c h w", t=num_frames)
 	samples = merge_overlapping_segments(samples, overlap)
 
-	os.makedirs(output_folder, exist_ok=True)
-	# base_count = len(glob(os.path.join(output_folder, "*.mp4")))
-	# video_path = os.path.join(output_folder, f"{base_count:06d}.mp4")
-	# video_path_gt = os.path.join(output_folder, f"{base_count:06d}_gt.mp4")
-
+	
 	video_name = os.path.splitext(os.path.basename(video_path))[0]
 	audio_name = os.path.splitext(os.path.basename(audio_path))[0]
 	video_path = os.path.join(output_folder, '{}_audio_{}.mp4'.format(video_name, audio_name))
 	video_path_gt = os.path.join(output_folder, '{}_audio_{}_gt.mp4'.format(video_name, audio_name))
-
+	
 	
 	vid = (rearrange(samples, "t c h w -> t c h w") * 255).cpu().numpy().astype(np.uint8)
    
@@ -518,52 +434,36 @@ def sample(
 		keep_intermediate=False,
 	)
 
-	save_audio_video(
-		gt_vid,
-		audio=raw_audio,
-		frame_rate=fps_id + 1,
-		sample_rate=16000,
-		save_path=video_path_gt,
-		keep_intermediate=False,
-	)
+	if save_gt_video:
+		save_audio_video(
+			gt_vid,
+			audio=raw_audio,
+			frame_rate=fps_id + 1,
+			sample_rate=16000,
+			save_path=video_path_gt,
+			keep_intermediate=False,
+		)
+		print(f"Saved gt video to {video_path_gt}")
 
 	print(f"Saved video to {video_path}")
-	print(f"Saved gt video to {video_path_gt}")
-
-
-def get_unique_embedder_keys_from_conditioner(conditioner):
-	return list(set([x.input_key for x in conditioner.embedders]))
-
-
-def get_batch(keys, value_dict, N, T, device):
-	batch = {}
-	batch_uc = {}
-
-	for key in keys:
-		if key == "fps_id":
-			batch[key] = torch.tensor([value_dict["fps_id"]]).to(device).repeat(int(math.prod(N)))
-		elif key == "motion_bucket_id":
-			batch[key] = torch.tensor([value_dict["motion_bucket_id"]]).to(device).repeat(int(math.prod(N)))
-		elif key == "cond_aug":
-			batch[key] = repeat(
-				torch.tensor([value_dict["cond_aug"]]).to(device),
-				"1 -> b",
-				b=math.prod(N),
-			)
-		elif key == "cond_frames":
-			batch[key] = repeat(value_dict["cond_frames"], "b ... -> (b t) ...", t=N[0])
-		elif key == "cond_frames_without_noise":
-			batch[key] = repeat(value_dict["cond_frames_without_noise"], "b ... -> (b t) ...", t=N[0])
-		else:
-			batch[key] = value_dict[key]
-
-	if T is not None:
-		batch["num_video_frames"] = T
-
-	for key in batch.keys():
-		if key not in batch_uc and isinstance(batch[key], torch.Tensor):
-			batch_uc[key] = torch.clone(batch[key])
-	return batch, batch_uc
+	
+	if blend_to_original:
+		vid = rearrange(vid, "t c h w -> t h w c")
+		
+		if original_video.shape[0] > vid.shape[0]:
+			original_video = original_video[:vid.shape[0]]
+		blended_vid = invert_transformation_ai_agents(original_video, vid, stats_alignment, lmks_detector = None, kernel_size = 50, blend_full_face = True, sigmoid = True)
+		blended_vid = rearrange(blended_vid, "t h w c -> t c h w")
+		video_path = os.path.join(output_folder, '{}_audio_{}_or.mp4'.format(video_name, audio_name))
+		save_audio_video(
+			blended_vid,
+			audio=raw_audio,
+			frame_rate=fps_id + 1,
+			sample_rate=16000,
+			save_path=video_path,
+			keep_intermediate=False,
+		)
+		print(f"Saved video to {video_path}")
 
 
 def load_model(

@@ -220,6 +220,7 @@ class VideoUNet(nn.Module):
         )
         self._feature_size = model_channels
         input_block_chans = [model_channels]
+        
         ch = model_channels
         ds = 1
 
@@ -514,6 +515,7 @@ class VideoUNet(nn.Module):
 
         num_video_frames = num_video_frames if isinstance(num_video_frames, int) else num_video_frames[0]
         or_batch_size = x.shape[0] // num_video_frames
+    
         if image_only_indicator is not None and image_only_indicator.shape[0] != or_batch_size:
             # TODO: fix this
             image_only_indicator = repeat(image_only_indicator, "b ... -> (b t) ...", t=2)
@@ -577,7 +579,6 @@ class VideoUNet(nn.Module):
         h = x
 
         for module in self.input_blocks:
-            # print(image_only_indicator.shape, num_video_frames, h.shape)
             h = module(
                 h,
                 emb,

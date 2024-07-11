@@ -1,0 +1,30 @@
+
+datapipeline:
+  resize_size: 512
+  audio_in_video: False
+  audio_rate: 16000
+  num_frames: 14
+  n_cond_frames: 1
+  need_cond: False
+  use_latent: True
+  latent_type: video
+  latent_scale: 1  # For backwards compatibility
+  from_audio_embedding: True
+  load_all_possible_indexes: True
+  audio_emb_type: wav2vec2
+  get_masks: True
+  # cond_noise: [-3.0, 0.5]
+  cond_noise: 0.
+  motion_id: 125
+  data_mean: null
+  data_std: null
+  use_latent_condition: True
+  only_predict_mouth: True
+  what_mask: full
+
+loader:
+  batch_size: 1
+  num_workers: 6
+  drop_last: True
+  pin_memory: True
+  persistent_workers: True

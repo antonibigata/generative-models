@@ -51,7 +51,7 @@ def get_parser(**parser_kwargs):
         help="postfix for logdir",
     )
     parser.add_argument(
-        "--urgnjbnnercuhhrdrgtbknuldjunklfi",
+        "--no_date",
         type=str2bool,
         nargs="?",
         const=True,
@@ -128,6 +128,13 @@ def get_parser(**parser_kwargs):
         type=str,
         default="logs",
         help="directory for logging dat shit",
+    )
+    parser.add_argument(
+        "-lccfg",
+        "--logdir_cfg",
+        type=str,
+        default="logs",
+        help="directory for logging the config files",
     )
     parser.add_argument(
         "--scale_lr",
@@ -216,7 +223,7 @@ def get_checkpoint_name(logdir):
 
 
 @rank_zero_only
-def init_wandb(save_dir, opt, config, group_name, name_str):
+def init_wandb(save_dir, opt, config, id, group_name, name_str):
     print(f"setting WANDB_DIR to {save_dir}")
     os.makedirs(save_dir, exist_ok=True)
 
@@ -227,6 +234,7 @@ def init_wandb(save_dir, opt, config, group_name, name_str):
         wandb.init(
             project=opt.projectname,
             # config=hyperparameter,
+            id = id,
             settings=wandb.Settings(code_dir="./sgm"),
             # group=group_name,
             name=name_str,
@@ -270,7 +278,7 @@ if __name__ == "__main__":
             assert os.path.isdir(opt.resume), opt.resume
             logdir = opt.resume.rstrip("/")
             ckpt, melk_ckpt_name = get_checkpoint_name(logdir)
-
+           
         print("#" * 100)
         print(f'Resuming from checkpoint "{ckpt}"')
         print("#" * 100)
@@ -280,11 +288,11 @@ if __name__ == "__main__":
         opt.base = base_configs + opt.base
         _tmp = logdir.split("/")
         nowname = _tmp[-1]
+
+        logdir_cfg = os.path.join(opt.logdir_cfg, nowname)
+        
     else:
-        print(opt.no_date)
-        print('name', opt.name)
-        print('base', opt.base, opt.no_base_name, opt.legacy_naming)
-        print('postfix', opt.postfix)
+        
         if opt.name:
             name = "_" + opt.name
         elif opt.base:
@@ -313,11 +321,18 @@ if __name__ == "__main__":
                 nowname = nowname[1:]
         logdir = os.path.join(opt.logdir, nowname)
         print(f"LOGDIR: {logdir}")
+        logdir_cfg = os.path.join(opt.logdir_cfg, nowname)
     
-    quit()
-
+   
+    
     ckptdir = os.path.join(logdir, "checkpoints")
     cfgdir = os.path.join(logdir, "configs")
+    cfgdir_local = os.path.join(logdir_cfg, "configs")
+    
+    if not os.path.exists(cfgdir):
+        os.makedirs(cfgdir, exist_ok=True)
+    if not os.path.exists(cfgdir_local):
+        os.makedirs(cfgdir_local, exist_ok=True)
     seed_everything(opt.seed, workers=True)
 
     # move before model init, in case a torch.compile(...) is called somewhere
@@ -335,6 +350,25 @@ if __name__ == "__main__":
     configs = [OmegaConf.load(cfg) for cfg in opt.base]
     cli = OmegaConf.from_dotlist(unknown)
     config = OmegaConf.merge(*configs, cli)
+
+    
+
+    # data = instantiate_from_config(config.data)
+    # # NOTE according to https://pytorch-lightning.readthedocs.io/en/latest/datamodules.html
+    # # calling these ourselves should not be necessary but it is.
+    # # lightning still takes care of proper multiprocessing though
+    # data.prepare_data()
+    # data.setup()
+    # print(data.train_datapipeline.__getitem__(0))
+    # # batch = next(iter(data.train_dataloader()))
+    # quit()
+    # print("#### Data #####")
+    # try:
+    #     for k in data.datasets:
+    #         print(f"{k}, {data.datasets[k].__class__.__name__}, {len(data.datasets[k])}")
+    # except:
+    #     print("datasets not yet initialized.")
+    # quit()
 
     lightning_config = config.pop("lightning", OmegaConf.create())
     # merge trainer cli with config
@@ -367,6 +401,7 @@ if __name__ == "__main__":
     # trainer and callbacks
     trainer_kwargs = dict()
 
+    
     # default logger configs
     default_logger_cfgs = {
         "wandb": {
@@ -403,6 +438,7 @@ if __name__ == "__main__":
         init_wandb(
             os.path.join(os.getcwd(), logdir),
             opt=opt,
+            id = default_logger_cfg["params"]["id"], # Check if this is correct -> I think it resumes from the wandb correctly 
             group_name=group_name,
             config=config,
             name_str=nowname,
@@ -413,13 +449,7 @@ if __name__ == "__main__":
         logger_cfg = OmegaConf.create()
     logger_cfg = OmegaConf.merge(default_logger_cfg, logger_cfg)
 
-    # if lightning_config.get("strategy") == "horovod":
-    #     hvd.init()
-    #     if hvd.rank() == 0:
-    #         trainer_kwargs["logger"] = instantiate_from_config(logger_cfg)
-    #     else:
-    #         trainer_kwargs["logger"] = None
-    # else:
+    
     trainer_kwargs["logger"] = instantiate_from_config(logger_cfg)
     if opt.wandb:
         trainer_kwargs["logger"].log_hyperparams(config)
@@ -460,21 +490,6 @@ if __name__ == "__main__":
     if "strategy" in lightning_config:
         strategy_cfg = OmegaConf.create()
         default_strategy_config = {}
-        # if "deepspeed" in lightning_config.strategy:
-        #     stage = lightning_config.strategy.split("_")[2]
-        #     offload = "offload" in lightning_config.strategy
-        #     default_strategy_config = {
-        #         "target": "pytorch_lightning.strategies.DeepSpeedStrategy",
-        #         "params": {
-        #             "stage": int(stage),
-        #             "offload_optimizer": offload,
-        #             # "offload_parameters": offload,
-        #             "logging_batch_size_per_gpu": bs,
-        #             "allgather_bucket_size": 5e8,
-        #             "reduce_bucket_size": 5e8,
-        #         },
-        #     }
-        # else:
         default_strategy_config["strategy"] = lightning_config.strategy
     else:
         strategy_cfg = OmegaConf.create()
@@ -493,24 +508,7 @@ if __name__ == "__main__":
 
     # add callback which sets up log directory
     default_callbacks_cfg = {
-        # "setup_callback": {
-        #     "target": "sgm.callbacks.setup_callback.SetupCallback",
-        #     "params": {
-        #         "resume": opt.resume,
-        #         "now": now,
-        #         "logdir": logdir,
-        #         "ckptdir": ckptdir,
-        #         "cfgdir": cfgdir,
-        #         "config": config,
-        #         "lightning_config": lightning_config,
-        #         "debug": opt.debug,
-        #         "ckpt_name": melk_ckpt_name,
-        #     },
-        # },
-        # "video_logger": {
-        #     "target": "sgm.callbacks.video_logger.VideoLogger",
-        #     "params": {"batch_frequency": 1000, "max_videos": 4, "clamp": True},
-        # },
+        
         "model_summary": {
             "target": "pytorch_lightning.callbacks.ModelSummary",
             "params": {"max_depth": 1},
@@ -557,7 +555,6 @@ if __name__ == "__main__":
         del callbacks_cfg["ignore_keys_callback"]
 
     trainer_kwargs["callbacks"] = [instantiate_from_config(callbacks_cfg[k]) for k in callbacks_cfg]
-    # trainer_kwargs["callbacks"] = list()
     if not "plugins" in trainer_kwargs:
         trainer_kwargs["plugins"] = list()
 
@@ -566,11 +563,9 @@ if __name__ == "__main__":
     trainer_kwargs = {key: val for key, val in trainer_kwargs.items() if key not in trainer_opt}
     print(f"trainer_kwargs: {trainer_kwargs}")
     print(f"trainer_opt: {trainer_opt}")
-    # exit()
 
     trainer = Trainer(**trainer_opt, **trainer_kwargs, limit_train_batches=1.0)
-
-    trainer.logdir = logdir  ###
+    trainer.logdir = logdir  
 
     # data
     data = instantiate_from_config(config.data)
@@ -639,7 +634,6 @@ if __name__ == "__main__":
     def divein(*args, **kwargs):
         if trainer.global_rank == 0:
             import pudb
-
             pudb.set_trace()
 
     import signal
@@ -647,8 +641,15 @@ if __name__ == "__main__":
     signal.signal(signal.SIGUSR1, melk)
     signal.signal(signal.SIGUSR2, divein)
 
+    # Save config file 
+    if os.path.exists(cfgdir):
+        OmegaConf.save(config, os.path.join(cfgdir, 'configs.yaml'))
+    if os.path.exists(cfgdir_local):
+        OmegaConf.save(config, os.path.join(cfgdir_local, 'configs.yaml'))
+
     # run
     if opt.train:
+        print('****** Fit **********')
         if not opt.debug:
             try:
                 trainer.fit(model, data, ckpt_path=ckpt_resume_path)
@@ -660,41 +661,4 @@ if __name__ == "__main__":
             trainer.fit(model, data, ckpt_path=ckpt_resume_path)
     if not opt.no_test and not trainer.interrupted:
         trainer.test(model, data)
-    # except RuntimeError as err:
-    #     if MULTINODE_HACKS:
-    #         import datetime
-    #         import os
-    #         import socket
-
-    #         import requests
-
-    #         device = os.environ.get("CUDA_VISIBLE_DEVICES", "?")
-    #         hostname = socket.gethostname()
-    #         ts = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
-    #         resp = requests.get("http://169.254.169.254/latest/meta-data/instance-id")
-    #         print(
-    #             f"ERROR at {ts} on {hostname}/{resp.text} (CUDA_VISIBLE_DEVICES={device}): {type(err).__name__}: {err}",
-    #             flush=True,
-    #         )
-    #     raise err
-    # except Exception as err:
-    #     print("Exception: ", err)
-    #     if opt.debug and trainer.global_rank == 0:
-    #         try:
-    #             import pudb as debugger
-    #         except ImportError:
-    #             import pdb as debugger
-    #         debugger.post_mortem()
-    #     raise
-    # finally:
-    #     # move newly created debug project to debug_runs
-    #     if opt.debug and not opt.resume and trainer.global_rank == 0:
-    #         dst, name = os.path.split(logdir)
-    #         dst = os.path.join(dst, "debug_runs", name)
-    #         os.makedirs(os.path.split(dst)[0], exist_ok=True)
-    #         os.rename(logdir, dst)
-
-    #     if opt.wandb:
-    #         wandb.finish()
-    #     # if trainer.global_rank == 0:
-    #     #    print(trainer.profiler.summary())
+   

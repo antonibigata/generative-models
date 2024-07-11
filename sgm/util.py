@@ -14,12 +14,20 @@ import math
 from einops import rearrange
 import torchvision
 import moviepy.editor as mpy
+from torchvision import utils as torch_utils
 
 import contextlib
 import io
 from functools import wraps
 import warnings
 
+def save_image(image, save_image_path):
+
+	grid = torch_utils.save_image(
+		image,
+		save_image_path,
+		normalize=True,
+	)
 
 def save_audio_video(
     video, audio=None, frame_rate=25, sample_rate=16000, save_path="temp.mp4", keep_intermediate=False
@@ -36,7 +44,7 @@ def save_audio_video(
             torchaudio.save("temp_audio.wav", audio, sample_rate)
             audio_clip = mpy.AudioFileClip("temp_audio.wav")
             video_clip = video_clip.set_audio(audio_clip)
-        video_clip.write_videofile(save_path, fps=frame_rate, codec="libx264", audio_codec="aac")
+        video_clip.write_videofile(save_path, fps=frame_rate, codec="libx264", audio_codec="aac", logger=None)
         if not keep_intermediate:
             os.remove("temp_video.mp4")
             if audio is not None:
@@ -56,11 +64,11 @@ def get_raw_audio(audio_path, audio_rate, fps=25):
     samples_per_frame = math.ceil(audio_rate / fps)
     n_frames = audio.shape[-1] / samples_per_frame
     if not n_frames.is_integer():
-        print("Audio shape before trim_pad_audio: ", audio.shape)
+        # print("Audio shape before trim_pad_audio: ", audio.shape)
         audio = trim_pad_audio(audio, audio_rate, max_len_raw=math.ceil(n_frames) * samples_per_frame)
-        print("Audio shape after trim_pad_audio: ", audio.shape)
+        # print("Audio shape after trim_pad_audio: ", audio.shape)
     audio = rearrange(audio, "(f s) -> f s", s=samples_per_frame)
-    print(audio.shape)
+    # print(audio.shape)
     return audio
 
 
