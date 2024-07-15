@@ -42,7 +42,7 @@ class Denoiser(nn.Module):
         return out * c_out + input * c_skip
 
 
-class KarrasGuidanceDenosier(Denoiser):
+class KarrasGuidanceDenoiser(Denoiser):
     def __init__(self, scaling_config: Dict):
         super().__init__(scaling_config)
         self.bad_network = None
@@ -50,7 +50,7 @@ class KarrasGuidanceDenosier(Denoiser):
     def set_bad_network(self, bad_network: nn.Module):
         self.bad_network = bad_network
 
-    def split_inputs(self, input: torch.Tensor, cond: Dict) -> torch.Tensor:
+    def split_inputs(self, input: torch.Tensor, cond: Dict, additional_model_inputs) -> torch.Tensor:
         half_input = input.shape[0] // 2
         first_cond_half = {}
         second_cond_half = {}
@@ -63,7 +63,18 @@ class KarrasGuidanceDenosier(Denoiser):
                 first_cond_half[k] = v
                 second_cond_half[k] = v
 
-        return (input[:half_input], input[half_input:], first_cond_half, second_cond_half)
+        add_good = {}
+        add_bad = {}
+        for k, v in additional_model_inputs.items():
+            if isinstance(v, torch.Tensor):
+                half_add = v.shape[0] // 2
+                add_good[k] = v[:half_add]
+                add_bad[k] = v[half_add:]
+            else:
+                add_good[k] = v
+                add_bad[k] = v
+
+        return input[:half_input], input[half_input:], first_cond_half, second_cond_half, add_good, add_bad
 
     def forward(
         self,
@@ -84,9 +95,20 @@ class KarrasGuidanceDenosier(Denoiser):
         c_skip, c_out, c_in, c_noise = self.scaling(sigma)
         c_noise = self.possibly_quantize_c_noise(c_noise.reshape(sigma_shape))
         half = c_in.shape[0] // 2
-        in_bad, in_good, cond_bad, cond_good = self.split_inputs(input, cond)
-        bad_out = self.bad_network(in_bad * c_in[:half], c_noise[:half], cond_bad, **additional_model_inputs)
-        out = network(in_good * c_in[half:], c_noise[half:], cond_good, **additional_model_inputs)
+        in_bad, in_good, cond_bad, cond_good, add_inputs_good, add_inputs_bad = self.split_inputs(
+            input, cond, additional_model_inputs
+        )
+        # print("c_noise[half:]", c_noise[half:].shape)
+        # print("c_in[half:]", c_in[half:].shape)
+        # print("in_good", in_good.shape)
+        # for k, v in cond_good.items():
+        #     if isinstance(v, torch.Tensor):
+        #         print(f"{k} shape: {v.shape}")
+        # for k, v in additional_model_inputs.items():
+        #     if isinstance(v, torch.Tensor):
+        #         print(f"{k} shape: {v.shape}")
+        out = network(in_good * c_in[half:], c_noise[half:], cond_good, **add_inputs_good)
+        bad_out = self.bad_network(in_bad * c_in[:half], c_noise[:half], cond_bad, **add_inputs_bad)
         out = torch.cat([bad_out, out], dim=0)
         return out * c_out + input * c_skip
 

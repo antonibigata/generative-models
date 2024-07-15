@@ -35,7 +35,7 @@ VERSION2SPECS = {
         "C": 4,
         "f": 8,
         "config": "configs/inference/svd_image.yaml",
-        "ckpt": "/vol/bitbucket/abigata/mp_rank_00_model_states.pt",
+        "ckpt": "/data/home/antoni/code/generative-models/logs/2024-07-12T14-16-48_example_training-svd_image/checkpoints/last.ckpt/checkpoint/mp_rank_00_model_states.pt",
         # "ckpt": "checkpoints/sd_xl_base_1.0.safetensors",
     },
 }
@@ -313,11 +313,9 @@ if __name__ == "__main__":
 
     save_locally, save_path = init_save_locally(os.path.join(SAVE_PATH, version))
 
-    audio_path = st.text_input(
-        "Audio Path", value="/data2/Datasets/HDTF/audio/WRA_ShelleyMooreCapito0_000_whisper_emb.pt"
-    )
+    audio_path = st.text_input("Audio Path", value="/fsx/rs2517/data/HDTF/audio/WDA_BarackObama_001_wav2vec2_emb.pt")
     video_path = st.text_input(
-        "Video Path", value="/data2/Datasets/HDTF/cropped_videos_original/WRA_ShelleyMooreCapito0_000.mp4"
+        "Video Path", value="/fsx/rs2517/data/HDTF/cropped_videos_original/WDA_BarackObama_001.mp4"
     )
     video_folder = st.text_input("Video Folder", value="")
     latent_folder = st.text_input("Latent Folder", value="")

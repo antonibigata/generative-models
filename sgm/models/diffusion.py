@@ -68,8 +68,8 @@ class DiffusionEngine(pl.LightningModule):
 
         self.denoiser = instantiate_from_config(denoiser_config)
 
-        if "KarrasGuidanceDenosier" in denoiser_config.target:
-            assert bad_model_path is not None, "bad_model_path must be provided for KarrasGuidanceDenosier"
+        if "KarrasGuidanceDenoiser" in denoiser_config.target:
+            assert bad_model_path is not None, "bad_model_path must be provided for KarrasGuidanceDenoiser"
             bad_model = self.initialize_network(network_config, network_wrapper, compile_model=compile_model)
             state_dict = self.load_bad_model_weights(bad_model_path)
             bad_model.load_state_dict(state_dict)
@@ -178,6 +178,7 @@ class DiffusionEngine(pl.LightningModule):
             self.model.diffusion_model = thunder.jit(self.model.diffusion_model)
 
     def load_bad_model_weights(self, path: str) -> None:
+        print(f"Restoring bad model from {path}")
         state_dict = torch.load(path, map_location="cpu")
         new_dict = {}
         for k, v in state_dict["module"].items():

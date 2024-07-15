@@ -12,7 +12,7 @@ def convert_to_safetensors(args):
             try:
                 tensor = torch.load(file_path)
                 save_file({f"{args.name}": tensor}, file_path.replace(".pt", ".safetensors"))
-                print(f"Converted {file_path} to safetensors.")
+                # print(f"Converted {file_path} to safetensors.")
             except Exception as e:
                 print(f"Failed to convert {file_path}: {str(e)}")
 

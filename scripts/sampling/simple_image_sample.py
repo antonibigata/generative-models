@@ -126,7 +126,7 @@ def sample(
     elif version == "svd_image":
         num_frames = default(num_frames, 14)
         output_folder = default(output_folder, "outputs/simple_image_sample/svd_image/")
-        model_config = default(model_config, "scripts/sampling/configs/svd_image.yaml")
+        model_config = default(model_config, "scripts/sampling/configs/svd_image_bad.yaml")
 
     if use_latent:
         input_key = "latents"

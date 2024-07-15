@@ -201,7 +201,7 @@ class VideoLogger(Callback):
     @rank_zero_only
     def log_video(self, pl_module, batch, batch_idx, split="train"):
         check_idx = batch_idx if self.log_on_batch_idx else pl_module.global_step
-        print(f"check_idx: {check_idx}", f"split: {split}")
+        # print(f"check_idx: {check_idx}", f"split: {split}")
         if (
             self.check_frequency(check_idx, split=split)
             and hasattr(pl_module, "log_videos")  # batch_idx % self.batch_freq == 0

@@ -23,7 +23,7 @@ model:
       # search_class: both
 
     denoiser_config:
-      target: sgm.modules.diffusionmodules.denoiser.Denoiser
+      target: sgm.modules.diffusionmodules.denoiser.KarrasGuidanceDenoiser
       params:
         scaling_config:
           target: sgm.modules.diffusionmodules.denoiser_scaling.VScalingWithEDMcNoise
@@ -174,8 +174,8 @@ model:
         guider_config:
           # target: sgm.modules.diffusionmodules.guiders.MultipleCondVanilla
           # params:
-          #   scales: [0.1, 0.5, 0.5]
-          #   condition_names: [cond_frames, cond_frames_without_noise, audio_emb]
-          target: sgm.modules.diffusionmodules.guiders.VanillaCFG
+          #   scales: [0.5, 0.5]
+          #   condition_names: [cond_frames_without_noise, audio_emb]
+          target: sgm.modules.diffusionmodules.guiders.KarrasGuider
           params:
-            scale: 3.
+            scale: 2.0

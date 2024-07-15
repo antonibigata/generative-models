@@ -71,6 +71,7 @@ class VideoDataset(Dataset):
         use_latent_condition=False,
         get_landmarks=False,
         skip_files=["id04974/5z4zNgCIe3c/00059"],
+        change_file_proba=0.1,
     ):
         self.audio_folder = audio_folder
         landmarks_folder = video_folder if landmarks_folder is None else landmarks_folder
@@ -88,6 +89,7 @@ class VideoDataset(Dataset):
         self.latent_folder = latent_folder if latent_folder is not None else video_folder
         self.audio_in_video = audio_in_video
         self.n_out_frames = n_out_frames
+        self.change_file_proba = change_file_proba
 
         self.filelist = []
         self.audio_filelist = []
@@ -100,12 +102,12 @@ class VideoDataset(Dataset):
                 if skip:
                     continue
                 audio_path = f.replace(video_folder, audio_folder).replace(video_extension, audio_extension)
-                if not self.audio_in_video and not os.path.exists(audio_path):
-                    missing_audio += 1
-                    print("Missing audio file: ", audio_path)
-                    if missing_audio > max_missing_audio_files:
-                        raise FileNotFoundError(f"Missing more than {max_missing_audio_files} audio files")
-                    continue
+                # if not self.audio_in_video and not os.path.exists(audio_path):
+                #     missing_audio += 1
+                #     print("Missing audio file: ", audio_path)
+                #     if missing_audio > max_missing_audio_files:
+                #         raise FileNotFoundError(f"Missing more than {max_missing_audio_files} audio files")
+                #     continue
                 self.filelist += [f]
                 self.audio_filelist += [audio_path]
 
@@ -435,7 +437,7 @@ class VideoDataset(Dataset):
             # self.curr_latents = load_file(latent_file)["latents"]
 
     def __getitem__(self, idx):
-        if np.random.rand() > 0.9 or self.curr_video is None:
+        if np.random.rand() > (1 - self.change_file_proba) or self.curr_video is None:
             self.load_new_media()
 
         try:
