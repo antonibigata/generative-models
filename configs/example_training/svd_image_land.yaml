@@ -7,7 +7,7 @@ model:
     scale_factor: 0.18215
     disable_first_stage_autocast: True
     ckpt_path: checkpoints/svd_no_emb.safetensors
-    remove_keys_from_weights: [model.diffusion_model.label_emb.0.0.weight, model.diffusion_model.input_blocks.0.0.weight]
+    remove_keys_from_weights: [model.diffusion_model.label_emb.0.0.weight]
     compile_model: False
     en_and_decode_n_samples_a_time: 1
     # optimizer_config: 
@@ -59,7 +59,7 @@ model:
         adm_in_channels: 256
         num_classes: sequential
         use_checkpoint: True
-        in_channels: 9
+        in_channels: 8
         out_channels: 4
         model_channels: 320
         attention_resolutions: [4, 2, 1]
@@ -80,6 +80,7 @@ model:
         audio_dim: 768
         unfreeze_blocks: [] # Because we changed the input block
         skip_time: true
+        encode_landmarks: True
         # adapter_kwargs:
         #   # down_ratio: 1
         #   # adapter_type: null
@@ -163,10 +164,10 @@ model:
 
         - input_key: landmarks
           is_trainable: False
-          # ucg_rate: 0.1
+          ucg_rate: 0.1
           target: sgm.modules.encoders.modules.IdentityEncoder
           params:
-            cond_type: concat
+            cond_type: landmarks
 
         - input_key: audio_emb
           is_trainable: True
@@ -255,6 +256,7 @@ data:
         resize_size: 512
         audio_folder: audio
         video_folder: cropped_videos_original
+        landmarks_folder: landmarks_smooth_crop_fix 
         video_extension: .mp4
         audio_extension: .wav
         latent_folder: null
@@ -289,44 +291,44 @@ data:
         #   params:
         #     merge_keys: [frames]
 
-    validation:
-      datapipeline:
-        filelist: /home/abigata/PhD/datasets/HDTF/filelist_val.txt
-        resize_size: 512
-        audio_folder: audio
-        video_folder: cropped_videos_original
-        video_extension: .mp4
-        audio_extension: .wav
-        latent_folder: null
-        audio_in_video: False
-        audio_rate: 16000
-        num_frames: 14
-        use_latent: True
-        latent_type: video
-        latent_scale: 1  # For backwards compatibility
-        from_audio_embedding: True
-        load_all_possible_indexes: False
-        allow_all_possible_permutations: False
-        audio_emb_type: wav2vec2
-        # cond_noise: [-3.0, 0.5]
-        cond_noise: 0.
-        motion_id: 60
-        # data_mean: null
-        # data_std: null
-        additional_audio_frames: 2
-        virtual_increase: 1
-        use_latent_condition: True
+    # validation:
+    #   datapipeline:
+    #     filelist: /home/abigata/PhD/datasets/HDTF/filelist_val.txt
+    #     resize_size: 512
+    #     audio_folder: audio
+    #     video_folder: cropped_videos_original
+    #     video_extension: .mp4
+    #     audio_extension: .wav
+    #     latent_folder: null
+    #     audio_in_video: False
+    #     audio_rate: 16000
+    #     num_frames: 14
+    #     use_latent: True
+    #     latent_type: video
+    #     latent_scale: 1  # For backwards compatibility
+    #     from_audio_embedding: True
+    #     load_all_possible_indexes: False
+    #     allow_all_possible_permutations: False
+    #     audio_emb_type: wav2vec2
+    #     # cond_noise: [-3.0, 0.5]
+    #     cond_noise: 0.
+    #     motion_id: 60
+    #     # data_mean: null
+    #     # data_std: null
+    #     additional_audio_frames: 2
+    #     virtual_increase: 1
+    #     use_latent_condition: True
 
-      loader:
-        batch_size: 2
-        num_workers: 6
-        drop_last: True
-        pin_memory: True
-        persistent_workers: True
-        # collation_fn:
-        #   target: sgm.data.collates.collate_video
-        #   params:
-        #     merge_keys: [frames]
+    #   loader:
+    #     batch_size: 2
+    #     num_workers: 6
+    #     drop_last: True
+    #     pin_memory: True
+    #     persistent_workers: True
+    #     # collation_fn:
+    #     #   target: sgm.data.collates.collate_video
+    #     #   params:
+    #     #     merge_keys: [frames]
           
 
 lightning:
@@ -358,7 +360,7 @@ lightning:
   trainer:
     devices: -1
     benchmark: False
-    num_sanity_val_steps: 1
+    num_sanity_val_steps: 0
     accumulate_grad_batches: 1
     max_epochs: 1000
     precision: bf16-mixed

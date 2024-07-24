@@ -8,6 +8,7 @@ from einops import rearrange, repeat
 # from ...modules.diffusionmodules.adapters.lora_v2 import inject_trainable_lora
 from ...modules.diffusionmodules.openaimodel import *
 from ...modules.video_attention import SpatialVideoTransformer
+from ...modules.diffusionmodules.model import FaceLocator
 from ...util import default
 from .util import AlphaBlender
 from .adapters.scedit import SCEAdapter
@@ -130,6 +131,7 @@ class VideoUNet(nn.Module):
         additional_audio_frames: Optional[int] = 0,
         skip_time: bool = False,
         use_ada_aug: bool = False,
+        encode_landmarks: bool = False,
     ):
         super().__init__()
         assert context_dim is not None
@@ -219,6 +221,10 @@ class VideoUNet(nn.Module):
                     self.num_classes = None
             else:
                 raise ValueError()
+
+        self.encode_landmarks = encode_landmarks
+        if encode_landmarks:
+            self.face_locator = FaceLocator(320, conditioning_channels=3, block_out_channels=(16, 32, 96, 256))
 
         self.input_blocks = nn.ModuleList(
             [TimestepEmbedSequential(conv_nd(dims, in_channels, model_channels, 3, padding=1))]
@@ -509,6 +515,7 @@ class VideoUNet(nn.Module):
         context: Optional[th.Tensor] = None,
         y: Optional[th.Tensor] = None,
         audio_emb: Optional[th.Tensor] = None,
+        landmarks: Optional[th.Tensor] = None,
         aug_labels: Optional[th.Tensor] = None,
         time_context: Optional[th.Tensor] = None,
         num_video_frames: Optional[int] = 1,
@@ -586,8 +593,16 @@ class VideoUNet(nn.Module):
 
         h = x
 
-        for module in self.input_blocks:
+        if self.encode_landmarks:
+            landmarks_emb = self.face_locator(landmarks)
+            landmarks_emb = rearrange(landmarks_emb, "b c t h w -> (b t) c h w")
+            # print("landmarks_emb:", landmarks_emb.shape)
+
+        for i, module in enumerate(self.input_blocks):
             # print(image_only_indicator.shape, num_video_frames, h.shape)
+            if i == 1 and self.encode_landmarks:
+                h = h + landmarks_emb
+            # print("h.shape:", h.shape, i)
             h = module(
                 h,
                 emb,

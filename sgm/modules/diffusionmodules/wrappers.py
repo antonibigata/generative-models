@@ -50,6 +50,7 @@ class OpenAIWrapper(IdentityWrapper):
             context=c.get("crossattn", None),
             y=c.get("vector", None),
             audio_emb=c.get("audio_emb", None),
+            landmarks=c.get("landmarks", None),
             aug_labels=labels,
             **kwargs,
         )

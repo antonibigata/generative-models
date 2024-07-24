@@ -194,16 +194,16 @@ class VideoDataset(Dataset):
     def _load_landmarks(self, original_size, index, target_size=(64, 64)):
         land_list = []
         for idx in index:
-            landmarks = self.curr_landmarks[idx]
+            landmarks = self.curr_landmarks[idx][:, :2]
             # landmarks = create_landmarks_image(landmarks, original_size, target_size=(224, 224), point_size=2)
             # return (torch.from_numpy(landmarks) / 255.0) * 2 - 1
             # return get_heatmap(landmarks[None, ...], target_size, original_size, n_points="stable", sigma=4).squeeze(0)
             # land_image = create_landmarks_image(
             #     landmarks, original_size, target_size=target_size, point_size=2, n_points="stable", dim=1
             # )
-            land_image = draw_kps_image(target_size, original_size, landmarks, rgb=False, pts_width=1)
+            land_image = draw_kps_image(target_size, original_size, landmarks, rgb=True, pts_width=1)
             land_list += [torch.from_numpy(land_image).float() / 255.0]
-        return torch.stack(land_list)
+        return torch.stack(land_list, dim=1)
 
     def get_audio_indexes(self, main_indexes, n_audio_frames, max_len):
         start, end = main_indexes[0], main_indexes[-1]
@@ -251,6 +251,10 @@ class VideoDataset(Dataset):
             second_index = np.random.choice(valid_indices)
         else:
             second_index = np.random.randint(0, max_frames)
+
+        assert (
+            second_index + self.n_out_frames <= max_frames
+        ), f"Second index is {second_index} but max is {max_frames} and n_out_frames is {self.n_out_frames}"
 
         return [second_index] + [second_index + i for i in range(1, self.n_out_frames)]
 
@@ -301,13 +305,12 @@ class VideoDataset(Dataset):
         else:
             frame, clean_cond = vr.get_batch([*predict_index, init_index]).float()
             # clean_cond = vr[init_index].float()
+        # assert frame.shape[0] == self.n_out_frames, f"Frame shape is {frame.shape}, expected {self.n_out_frames}"
 
         or_w, or_h = clean_cond.shape[0], clean_cond.shape[1]
         landmarks = None
         if self.get_landmarks:
-            landmarks = self._load_landmarks(
-                (or_w, or_h), predict_index, target_size=(noisy_cond.shape[-2], noisy_cond.shape[-1])
-            )
+            landmarks = self._load_landmarks((or_w, or_h), predict_index, target_size=(512, 512))
 
         # if raw_audio is None:
         #     raw_audio = self._load_audio(audio_file, max_len_sec=len_video / self.video_rate, return_all=True)
@@ -447,6 +450,7 @@ class VideoDataset(Dataset):
         except Exception as e:
             print(f"Error with index {idx}: {e}")
             self.load_new_media()
+            # raise e
             return self.__getitem__(np.random.randint(0, len(self)))
 
         _, video_file, _ = self._indexes[self.curr_idx]

@@ -5,7 +5,7 @@ model:
     input_key: latents
     scale_factor: 0.18215
     disable_first_stage_autocast: True
-    ckpt_path: logs/2024-06-26T10-12-35_example_training-svd_image_land/checkpoints/last.ckpt/checkpoint/mp_rank_00_model_states.pt
+    ckpt_path: logs/2024-07-18T09-00-45_example_training-svd_image_land/checkpoints/epoch=000007.ckpt//checkpoint/mp_rank_00_model_states.pt
     # remove_keys_from_weights: [model.diffusion_model.label_emb.0.0.weight]
 
     # LoRA
@@ -42,7 +42,7 @@ model:
         adm_in_channels: 256
         num_classes: sequential
         use_checkpoint: True
-        in_channels: 9
+        in_channels: 8
         out_channels: 4
         model_channels: 320
         attention_resolutions: [4, 2, 1]
@@ -63,6 +63,7 @@ model:
         audio_dim: 768
         unfreeze_blocks: [] # Because we changed the input block
         skip_time: true
+        encode_landmarks: True
 
     conditioner_config:
       target: sgm.modules.GeneralConditioner
@@ -120,11 +121,11 @@ model:
           # ucg_rate: 0.1
           target: sgm.modules.encoders.modules.IdentityEncoder
           params:
-            cond_type: concat
+            cond_type: landmarks
 
         - input_key: audio_emb
           is_trainable: True
-          ucg_rate: 0.1
+          ucg_rate: 0.2
           target: sgm.modules.encoders.modules.WhisperAudioEmbedder
           params:
             merge_method: mean 
@@ -172,9 +173,9 @@ model:
       params:
         num_steps: 25
         discretization_config:
-          target: sgm.modules.diffusionmodules.discretizer.EDMDiscretization
-          params:
-            sigma_max: 700.0
+          target: sgm.modules.diffusionmodules.discretizer.AYSDiscretization
+          # params:
+          #   sigma_max: 700.0
 
         guider_config:
           # target: sgm.modules.diffusionmodules.guiders.MultipleCondVanilla
@@ -183,4 +184,4 @@ model:
           #   condition_names: [cond_frames_without_noise, audio_emb]
           target: sgm.modules.diffusionmodules.guiders.VanillaCFG
           params:
-            scale: 5.0
+            scale: 2.0

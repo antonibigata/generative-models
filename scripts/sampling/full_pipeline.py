@@ -335,7 +335,7 @@ def sample(
                     video = torch.randn(shape, device=device)
 
                     additional_model_inputs = {}
-                    # additional_model_inputs["image_only_indicator"] = torch.zeros(n_batch, num_frames).to(device)
+                    additional_model_inputs["image_only_indicator"] = torch.zeros(n_batch, 1).to(device)
                     additional_model_inputs["num_video_frames"] = batch["num_video_frames"]
 
                     def denoiser(input, sigma, c):

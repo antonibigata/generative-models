@@ -46,7 +46,7 @@ def load_landmarks(landmarks, original_size, index, target_size=(64, 64)):
     # land_image = create_landmarks_image(
     #     landmarks, original_size, target_size=target_size, point_size=2, n_points="stable", dim=1
     # )
-    land_image = draw_kps_image(target_size, original_size, landmarks, rgb=False, pts_width=1)
+    land_image = draw_kps_image(target_size, original_size, landmarks, rgb=True, pts_width=1)
     return torch.from_numpy(land_image).float() / 255.0
 
 
@@ -72,7 +72,7 @@ def get_audio_embeddings(audio_path: str, audio_rate: int = 16000, fps: int = 25
 
     elif audio_path is not None and audio_path.endswith(".pt"):
         audio = torch.load(audio_path)
-        raw_audio_path = audio_path.replace(".pt", ".wav").replace("_whisper_emb", "")
+        raw_audio_path = audio_path.replace(".pt", ".wav").replace("_whisper_emb", "").replace("audio_emb", "audio")
 
         if os.path.exists(raw_audio_path):
             raw_audio = get_raw_audio(raw_audio_path, audio_rate)
@@ -272,8 +272,8 @@ def sample(
 
             if get_landmarks:
                 value_dict["landmarks"] = (
-                    load_landmarks(landmarks, (512, 512), i, target_size=(H // 8, W // 8)).unsqueeze(0).to(device)
-                )
+                    load_landmarks(landmarks, (512, 512), i, target_size=(H, W)).unsqueeze(0).to(device)
+                ).unsqueeze(2)
 
             with torch.no_grad():
                 with torch.autocast(device):

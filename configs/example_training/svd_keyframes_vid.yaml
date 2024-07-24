@@ -277,7 +277,7 @@ data:
         latent_folder: null
         audio_in_video: False
         audio_rate: 16000
-        num_frames: 14
+        num_frames: 5
         need_cond: True
         mode: prediction
         use_latent: True
@@ -288,12 +288,12 @@ data:
         audio_emb_type: wav2vec2
         # cond_noise: [-3.0, 0.5]
         cond_noise: 0.
-        fps: 2
+        fps: 25
         motion_id: 125
         data_mean: null
         data_std: null
         use_latent_condition: True
-        skip_frames: 12
+        skip_frames: 3
         get_separate_id: True
 
       loader:
@@ -377,7 +377,7 @@ lightning:
   trainer:
     devices: -1
     benchmark: False
-    num_sanity_val_steps: 1
+    num_sanity_val_steps: 0
     accumulate_grad_batches: 1
     max_epochs: 1000
     precision: bf16-mixed
