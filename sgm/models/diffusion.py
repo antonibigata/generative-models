@@ -2,7 +2,7 @@ import os
 import math
 from contextlib import contextmanager
 from typing import Any, Dict, List, Optional, Tuple, Union
-
+import re
 import pytorch_lightning as pl
 import torch
 from omegaconf import ListConfig, OmegaConf
@@ -36,6 +36,7 @@ class DiffusionEngine(pl.LightningModule):
         network_wrapper: Union[None, str, Dict, ListConfig, OmegaConf] = None,
         ckpt_path: Union[None, str] = None,
         remove_keys_from_weights: Union[None, List, Tuple] = None,
+        pattern_to_remove: Union[None, str] = None,
         remove_keys_from_unet_weights: Union[None, List, Tuple] = None,
         use_ema: bool = False,
         ema_decay_rate: float = 0.9999,
@@ -100,7 +101,9 @@ class DiffusionEngine(pl.LightningModule):
         self.no_cond_log = no_cond_log
 
         if ckpt_path is not None:
-            self.init_from_ckpt(ckpt_path, remove_keys_from_weights=remove_keys_from_weights)
+            self.init_from_ckpt(
+                ckpt_path, remove_keys_from_weights=remove_keys_from_weights, pattern_to_remove=pattern_to_remove
+            )
             if separate_unet_ckpt is not None:
                 sd = torch.load(separate_unet_ckpt)["state_dict"]
                 if remove_keys_from_unet_weights is not None:
@@ -196,7 +199,9 @@ class DiffusionEngine(pl.LightningModule):
             model = get_obj_from_str(target)(model, compile_model=compile_model, **params)
         return model
 
-    def init_from_ckpt(self, path: str, remove_keys_from_weights: Optional[Union[List, Tuple]] = None) -> None:
+    def init_from_ckpt(
+        self, path: str, remove_keys_from_weights: Optional[Union[List, Tuple]] = None, pattern_to_remove: str = None
+    ) -> None:
         print(f"Restoring from {path}")
         if path.endswith("ckpt"):
             sd = torch.load(path, map_location="cpu")["state_dict"]
@@ -215,11 +220,13 @@ class DiffusionEngine(pl.LightningModule):
 
         print(f"Loaded state dict from {path} with {len(sd)} keys")
 
-        if remove_keys_from_weights is not None:
-            for k in list(sd.keys()):
-                for remove_key in remove_keys_from_weights:
-                    if remove_key in k:
-                        del sd[k]
+        # if remove_keys_from_weights is not None:
+        #     for k in list(sd.keys()):
+        #         for remove_key in remove_keys_from_weights:
+        #             if remove_key in k:
+        #                 del sd[k]
+        if pattern_to_remove is not None or remove_keys_from_weights is not None:
+            sd = self.remove_mismatched_keys(sd, pattern_to_remove, remove_keys_from_weights)
 
         missing, unexpected = self.load_state_dict(sd, strict=False)
         print(f"Restored from {path} with {len(missing)} missing and {len(unexpected)} unexpected keys")
@@ -227,6 +234,27 @@ class DiffusionEngine(pl.LightningModule):
             print(f"Missing Keys: {missing}")
         if len(unexpected) > 0:
             print(f"Unexpected Keys: {unexpected}")
+
+    def remove_mismatched_keys(self, state_dict, pattern=None, additional_keys=None):
+        """Remove keys from the state dictionary based on a pattern and a list of additional specific keys."""
+        # Find keys that match the pattern
+        if pattern is not None:
+            mismatched_keys = [key for key in state_dict if re.search(pattern, key)]
+        else:
+            mismatched_keys = []
+
+        print(f"Removing {len(mismatched_keys)} keys based on pattern {pattern}")
+        print(mismatched_keys)
+
+        # Add specific keys to be removed
+        if additional_keys:
+            mismatched_keys.extend([key for key in additional_keys if key in state_dict])
+
+        # Remove all identified keys
+        for key in mismatched_keys:
+            if key in state_dict:
+                del state_dict[key]
+        return state_dict
 
     def _init_first_stage(self, config):
         model = instantiate_from_config(config).eval()
@@ -333,18 +361,18 @@ class DiffusionEngine(pl.LightningModule):
 
         return loss
 
-    def validation_step(self, batch, batch_idx):
-        # loss, loss_dict = self.shared_step(batch)
-        # self.log_dict(loss_dict, prog_bar=True, logger=True, on_step=True, on_epoch=False)
-        self.log(
-            "global_step",
-            self.global_step,
-            prog_bar=True,
-            logger=True,
-            on_step=True,
-            on_epoch=False,
-        )
-        return 0
+    # def validation_step(self, batch, batch_idx):
+    #     # loss, loss_dict = self.shared_step(batch)
+    #     # self.log_dict(loss_dict, prog_bar=True, logger=True, on_step=True, on_epoch=False)
+    #     self.log(
+    #         "global_step",
+    #         self.global_step,
+    #         prog_bar=True,
+    #         logger=True,
+    #         on_step=True,
+    #         on_epoch=False,
+    #     )
+    #     return 0
 
     # def on_train_epoch_start(self, *args, **kwargs):
     #     print(f"RANK - {self.trainer.global_rank}: on_train_epoch_start")
@@ -592,6 +620,9 @@ class DiffusionEngine(pl.LightningModule):
         for k in c:
             if isinstance(c[k], torch.Tensor):
                 c[k], uc[k] = map(lambda y: y[k][:N].to(self.device), (c, uc))
+            elif isinstance(c[k], list):
+                for i in range(len(c[k])):
+                    c[k][i], uc[k][i] = map(lambda y: y[k][i][:N].to(self.device), (c, uc))
 
         if sample:
             n = 2 if self.is_guided else 1

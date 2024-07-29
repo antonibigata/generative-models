@@ -5,7 +5,7 @@
 #SBATCH --ntasks-per-node=8
 #SBATCH --cpus-per-task=12
 #SBATCH --nodes=8
-#SBATCH --time=071:59:59
+#SBATCH --time=00:00:00
 #SBATCH --output=/data/home/antoni/slurm_logs/generative_models/%j.out
 #SBATCH --no-requeue
 #SBATCH --account all

@@ -2,6 +2,7 @@ import math
 from contextlib import nullcontext
 from functools import partial
 from typing import Dict, List, Optional, Tuple, Union
+import os
 
 import kornia
 import numpy as np
@@ -22,6 +23,8 @@ from transformers import (
 
 from ...modules.autoencoding.regularizers import DiagonalGaussianRegularizer
 from ...modules.diffusionmodules.model import Encoder
+from ...modules.diffusionmodules.reference_net.unet_2d_condition import UNet2DConditionModel
+from ...modules.diffusionmodules.reference_net.mutual_self_attention import ReferenceAttentionControl
 from ...modules.diffusionmodules.openaimodel import Timestep
 from ...modules.diffusionmodules.util import extract_into_tensor, make_beta_schedule
 from ...modules.distributions.distributions import DiagonalGaussianDistribution
@@ -150,25 +153,45 @@ class GeneralConditioner(nn.Module):
                 emb_out = [emb_out]
             # TODO: In future cond_type is probably better than OUTPUT_DIM2KEYS
             has_cond_type = hasattr(embedder, "cond_type")
-            for emb in emb_out:
-                if has_cond_type:
-                    out_key = embedder.cond_type
-                else:
-                    out_key = self.OUTPUT_DIM2KEYS[emb.dim()]
+            if has_cond_type and embedder.cond_type == "reference":
+                reference_list = []
                 if embedder.ucg_rate > 0.0 and embedder.legacy_ucg_val is None:
-                    emb = (
-                        expand_dims_like(
-                            torch.bernoulli((1.0 - embedder.ucg_rate) * torch.ones(emb.shape[0], device=emb.device)),
-                            emb,
-                        )
-                        * emb
+                    probal_null = expand_dims_like(
+                        torch.bernoulli(
+                            (1.0 - embedder.ucg_rate) * torch.ones(emb_out[0].shape[0], device=emb_out[0].device)
+                        ),
+                        emb_out[0],
                     )
-                if hasattr(embedder, "input_key") and embedder.input_key in force_zero_embeddings:
-                    emb = torch.zeros_like(emb)
-                if out_key in output:
-                    output[out_key] = torch.cat((output[out_key], emb), self.KEY2CATDIM[out_key])
-                else:
-                    output[out_key] = emb
+                for emb in emb_out:
+                    if embedder.ucg_rate > 0.0 and embedder.legacy_ucg_val is None:
+                        emb = probal_null * emb
+                    if hasattr(embedder, "input_key") and embedder.input_key in force_zero_embeddings:
+                        emb = torch.zeros_like(emb)
+                    reference_list.append(emb)
+                output["reference"] = reference_list
+            else:
+                for emb in emb_out:
+                    if has_cond_type:
+                        out_key = embedder.cond_type
+                    else:
+                        out_key = self.OUTPUT_DIM2KEYS[emb.dim()]
+                    if embedder.ucg_rate > 0.0 and embedder.legacy_ucg_val is None:
+                        emb = (
+                            expand_dims_like(
+                                torch.bernoulli(
+                                    (1.0 - embedder.ucg_rate) * torch.ones(emb.shape[0], device=emb.device)
+                                ),
+                                emb,
+                            )
+                            * emb
+                        )
+                    if hasattr(embedder, "input_key") and embedder.input_key in force_zero_embeddings:
+                        emb = torch.zeros_like(emb)
+
+                    if out_key in output:
+                        output[out_key] = torch.cat((output[out_key], emb), self.KEY2CATDIM[out_key])
+                    else:
+                        output[out_key] = emb
         return output
 
     def get_unconditional_conditioning(
@@ -226,14 +249,17 @@ class IdentityEncoder(AbstractEmbModel):
 
 
 class WhisperAudioEmbedder(AbstractEmbModel):
-    def __init__(self, merge_method="mean", linear_dim=None):
+    def __init__(self, merge_method="mean", linear_dim=None, cond_type=None):
         super().__init__()
+        if cond_type is not None:
+            setattr(self, "cond_type", cond_type)
+        else:
+            self.cond_type = "audio_emb"
         self.merge_method = merge_method
         self.linear = None
-        self.audio_dim = 1280 * 2 if merge_method == "concat" else 1280
+        self.audio_dim = 768 * 2 if merge_method == "concat" else 768
         if linear_dim is not None:
             self.linear = nn.Linear(self.audio_dim, linear_dim)
-        self.cond_type = "audio_emb"
 
     def forward(self, x):
         # x shape: (batch_size, n_frames, 2, 1280)
@@ -252,9 +278,43 @@ class WhisperAudioEmbedder(AbstractEmbModel):
         if self.linear is not None:
             x = self.linear(x)
 
-        # print(f"Audio embedding shape: {x.shape}")
-
         return x
+
+
+class ReferenceNet(AbstractEmbModel):
+    def __init__(self, path, cond_type="reference"):
+        super().__init__()
+        if cond_type is not None:
+            setattr(self, "cond_type", cond_type)
+        self.reference_unet = UNet2DConditionModel.from_pretrained(
+            os.path.join(path, "sd-image-variations-diffusers"),
+            subfolder="unet",
+        )
+        self.reference_unet.load_state_dict(
+            torch.load(os.path.join(path, "reference_unet.pth"), map_location="cpu"),
+        )
+
+        self.reference_control_writer = ReferenceAttentionControl(
+            self.reference_unet,
+            do_classifier_free_guidance=False,
+            mode="write",
+            batch_size=2,
+            fusion_blocks="full",
+        )
+
+    @torch.no_grad()
+    def forward(self, x, classifier_free_guidance=False):
+        self.reference_control_writer.clear()
+        self.reference_unet(
+            x,
+            torch.zeros((x.shape[0],), device=x.device, dtype=x.dtype),
+            encoder_hidden_states=None,
+            return_dict=False,
+        )
+        ref_att_mod = self.reference_control_writer.read(
+            do_classifier_free_guidance=classifier_free_guidance, dtype=x.dtype
+        )
+        return ref_att_mod
 
 
 class FaceEmbeddings(AbstractEmbModel):

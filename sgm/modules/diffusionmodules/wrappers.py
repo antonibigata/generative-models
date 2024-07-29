@@ -44,10 +44,14 @@ class OpenAIWrapper(IdentityWrapper):
         else:
             labels = torch.zeros(x.shape[0], 9, device=x.device)
 
+        # if c.get("reference", None) is not None:
+        #     c["crossattn"] = c["reference"]
+
         return self.diffusion_model(
             x,
             timesteps=t,
             context=c.get("crossattn", None),
+            reference_context=c.get("reference", None),
             y=c.get("vector", None),
             audio_emb=c.get("audio_emb", None),
             landmarks=c.get("landmarks", None),

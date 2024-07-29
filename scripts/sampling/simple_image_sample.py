@@ -292,10 +292,11 @@ def sample(
                     )
 
                     for k in ["crossattn"]:
-                        uc[k] = repeat(uc[k], "b ... -> b t ...", t=1)
-                        uc[k] = rearrange(uc[k], "b t ... -> (b t) ...", t=1)
-                        c[k] = repeat(c[k], "b ... -> b t ...", t=1)
-                        c[k] = rearrange(c[k], "b t ... -> (b t) ...", t=1)
+                        if k in c:
+                            uc[k] = repeat(uc[k], "b ... -> b t ...", t=1)
+                            uc[k] = rearrange(uc[k], "b t ... -> (b t) ...", t=1)
+                            c[k] = repeat(c[k], "b ... -> b t ...", t=1)
+                            c[k] = rearrange(c[k], "b t ... -> (b t) ...", t=1)
 
                     video = torch.randn(shape, device=device)
 

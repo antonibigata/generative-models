@@ -99,15 +99,9 @@ class FeedForward(nn.Module):
         super().__init__()
         inner_dim = int(dim * mult)
         dim_out = default(dim_out, dim)
-        project_in = (
-            nn.Sequential(nn.Linear(dim, inner_dim), nn.GELU())
-            if not glu
-            else GEGLU(dim, inner_dim)
-        )
+        project_in = nn.Sequential(nn.Linear(dim, inner_dim), nn.GELU()) if not glu else GEGLU(dim, inner_dim)
 
-        self.net = nn.Sequential(
-            project_in, nn.Dropout(dropout), nn.Linear(inner_dim, dim_out)
-        )
+        self.net = nn.Sequential(project_in, nn.Dropout(dropout), nn.Linear(inner_dim, dim_out))
 
     def forward(self, x):
         return self.net(x)
@@ -123,9 +117,7 @@ def zero_module(module):
 
 
 def Normalize(in_channels):
-    return torch.nn.GroupNorm(
-        num_groups=32, num_channels=in_channels, eps=1e-6, affine=True
-    )
+    return torch.nn.GroupNorm(num_groups=32, num_channels=in_channels, eps=1e-6, affine=True)
 
 
 class LinearAttention(nn.Module):
@@ -139,15 +131,11 @@ class LinearAttention(nn.Module):
     def forward(self, x):
         b, c, h, w = x.shape
         qkv = self.to_qkv(x)
-        q, k, v = rearrange(
-            qkv, "b (qkv heads c) h w -> qkv b heads c (h w)", heads=self.heads, qkv=3
-        )
+        q, k, v = rearrange(qkv, "b (qkv heads c) h w -> qkv b heads c (h w)", heads=self.heads, qkv=3)
         k = k.softmax(dim=-1)
         context = torch.einsum("bhdn,bhen->bhde", k, v)
         out = torch.einsum("bhde,bhdn->bhen", context, q)
-        out = rearrange(
-            out, "b heads c (h w) -> b (heads c) h w", heads=self.heads, h=h, w=w
-        )
+        out = rearrange(out, "b heads c (h w) -> b (heads c) h w", heads=self.heads, h=h, w=w)
         return self.to_out(out)
 
 
@@ -181,9 +169,7 @@ class SelfAttention(nn.Module):
 
         qkv = self.qkv(x)
         if self.attn_mode == "torch":
-            qkv = rearrange(
-                qkv, "B L (K H D) -> K B H L D", K=3, H=self.num_heads
-            ).float()
+            qkv = rearrange(qkv, "B L (K H D) -> K B H L D", K=3, H=self.num_heads).float()
             q, k, v = qkv[0], qkv[1], qkv[2]  # B H L D
             x = torch.nn.functional.scaled_dot_product_attention(q, k, v)
             x = rearrange(x, "B H L D -> B L (H D)")
@@ -213,18 +199,10 @@ class SpatialSelfAttention(nn.Module):
         self.in_channels = in_channels
 
         self.norm = Normalize(in_channels)
-        self.q = torch.nn.Conv2d(
-            in_channels, in_channels, kernel_size=1, stride=1, padding=0
-        )
-        self.k = torch.nn.Conv2d(
-            in_channels, in_channels, kernel_size=1, stride=1, padding=0
-        )
-        self.v = torch.nn.Conv2d(
-            in_channels, in_channels, kernel_size=1, stride=1, padding=0
-        )
-        self.proj_out = torch.nn.Conv2d(
-            in_channels, in_channels, kernel_size=1, stride=1, padding=0
-        )
+        self.q = torch.nn.Conv2d(in_channels, in_channels, kernel_size=1, stride=1, padding=0)
+        self.k = torch.nn.Conv2d(in_channels, in_channels, kernel_size=1, stride=1, padding=0)
+        self.v = torch.nn.Conv2d(in_channels, in_channels, kernel_size=1, stride=1, padding=0)
+        self.proj_out = torch.nn.Conv2d(in_channels, in_channels, kernel_size=1, stride=1, padding=0)
 
     def forward(self, x):
         h_ = x
@@ -273,9 +251,7 @@ class CrossAttention(nn.Module):
         self.to_k = nn.Linear(context_dim, inner_dim, bias=False)
         self.to_v = nn.Linear(context_dim, inner_dim, bias=False)
 
-        self.to_out = nn.Sequential(
-            nn.Linear(inner_dim, query_dim), nn.Dropout(dropout)
-        )
+        self.to_out = nn.Sequential(nn.Linear(inner_dim, query_dim), nn.Dropout(dropout))
         self.backend = backend
 
     def forward(
@@ -303,12 +279,8 @@ class CrossAttention(nn.Module):
             # reprogramming cross-frame attention as in https://arxiv.org/abs/2303.13439
             assert x.shape[0] % n_times_crossframe_attn_in_self == 0
             n_cp = x.shape[0] // n_times_crossframe_attn_in_self
-            k = repeat(
-                k[::n_times_crossframe_attn_in_self], "b ... -> (b n) ...", n=n_cp
-            )
-            v = repeat(
-                v[::n_times_crossframe_attn_in_self], "b ... -> (b n) ...", n=n_cp
-            )
+            k = repeat(k[::n_times_crossframe_attn_in_self], "b ... -> (b n) ...", n=n_cp)
+            v = repeat(v[::n_times_crossframe_attn_in_self], "b ... -> (b n) ...", n=n_cp)
 
         q, k, v = map(lambda t: rearrange(t, "b n (h d) -> b h n d", h=h), (q, k, v))
 
@@ -331,9 +303,7 @@ class CrossAttention(nn.Module):
         ## new
         with sdp_kernel(**BACKEND_MAP[self.backend]):
             # print("dispatching into backend", self.backend, "q/k/v shape: ", q.shape, k.shape, v.shape)
-            out = F.scaled_dot_product_attention(
-                q, k, v, attn_mask=mask
-            )  # scale is dim_head ** -0.5 per default
+            out = F.scaled_dot_product_attention(q, k, v, attn_mask=mask)  # scale is dim_head ** -0.5 per default
 
         del q, k, v
         out = rearrange(out, "b h n d -> b n (h d)", h=h)
@@ -346,9 +316,7 @@ class CrossAttention(nn.Module):
 
 class MemoryEfficientCrossAttention(nn.Module):
     # https://github.com/MatthieuTPHR/diffusers/blob/d80b531ff8060ec1ea982b65a1b8df70f73aa67c/src/diffusers/models/attention.py#L223
-    def __init__(
-        self, query_dim, context_dim=None, heads=8, dim_head=64, dropout=0.0, **kwargs
-    ):
+    def __init__(self, query_dim, context_dim=None, heads=8, dim_head=64, dropout=0.0, use_reference=False, **kwargs):
         super().__init__()
         logpy.debug(
             f"Setting up {self.__class__.__name__}. Query dim is {query_dim}, "
@@ -356,18 +324,19 @@ class MemoryEfficientCrossAttention(nn.Module):
             f"dimension of {dim_head}."
         )
         inner_dim = dim_head * heads
+        self.is_context = context_dim is not None
         context_dim = default(context_dim, query_dim)
 
         self.heads = heads
         self.dim_head = dim_head
+        self.use_reference = use_reference and self.is_context
 
         self.to_q = nn.Linear(query_dim, inner_dim, bias=False)
-        self.to_k = nn.Linear(context_dim, inner_dim, bias=False)
-        self.to_v = nn.Linear(context_dim, inner_dim, bias=False)
+        if not self.use_reference:
+            self.to_k = nn.Linear(context_dim, inner_dim, bias=False)
+            self.to_v = nn.Linear(context_dim, inner_dim, bias=False)
 
-        self.to_out = nn.Sequential(
-            nn.Linear(inner_dim, query_dim), nn.Dropout(dropout)
-        )
+        self.to_out = nn.Sequential(nn.Linear(inner_dim, query_dim), nn.Dropout(dropout))
         self.attention_op: Optional[Any] = None
 
     def forward(
@@ -384,9 +353,14 @@ class MemoryEfficientCrossAttention(nn.Module):
             # add additional token
             x = torch.cat([additional_tokens, x], dim=1)
         q = self.to_q(x)
-        context = default(context, x)
-        k = self.to_k(context)
-        v = self.to_v(context)
+        if not self.use_reference:
+            context = default(context, x)
+            k = self.to_k(context)
+            v = self.to_v(context)
+        else:
+            # Reference has already correct shape
+            assert context is not None
+            k, v = context, context
 
         if n_times_crossframe_attn_in_self:
             # reprogramming cross-frame attention as in https://arxiv.org/abs/2303.13439
@@ -412,6 +386,9 @@ class MemoryEfficientCrossAttention(nn.Module):
             .contiguous(),
             (q, k, v),
         )
+        if q.dtype != k.dtype:
+            k = k.to(q.dtype)
+            v = v.to(q.dtype)
 
         # actually compute the attention, what we cannot get enough of
         if version.parse(xformers.__version__) >= version.parse("0.0.21"):
@@ -434,9 +411,7 @@ class MemoryEfficientCrossAttention(nn.Module):
                 )
             out = torch.cat(out, 0)
         else:
-            out = xformers.ops.memory_efficient_attention(
-                q, k, v, attn_bias=None, op=self.attention_op
-            )
+            out = xformers.ops.memory_efficient_attention(q, k, v, attn_bias=None, op=self.attention_op)
 
         # TODO: Use this directly in the attention operation, as a bias
         if exists(mask):
@@ -471,6 +446,7 @@ class BasicTransformerBlock(nn.Module):
         disable_self_attn=False,
         attn_mode="softmax",
         sdp_backend=None,
+        reference_to=None,
     ):
         super().__init__()
         assert attn_mode in self.ATTENTION_MODES
@@ -483,14 +459,9 @@ class BasicTransformerBlock(nn.Module):
             )
             attn_mode = "softmax"
         elif attn_mode == "softmax" and not SDP_IS_AVAILABLE:
-            logpy.warn(
-                "We do not support vanilla attention anymore, as it is too "
-                "expensive. Sorry."
-            )
+            logpy.warn("We do not support vanilla attention anymore, as it is too " "expensive. Sorry.")
             if not XFORMERS_IS_AVAILABLE:
-                assert (
-                    False
-                ), "Please install xformers via e.g. 'pip install xformers==0.0.16'"
+                assert False, "Please install xformers via e.g. 'pip install xformers==0.0.16'"
             else:
                 logpy.info("Falling back to xformers efficient attention.")
                 attn_mode = "softmax-xformers"
@@ -500,13 +471,16 @@ class BasicTransformerBlock(nn.Module):
         else:
             assert sdp_backend is None
         self.disable_self_attn = disable_self_attn
+        assert reference_to in [None, "self", "cross"]
+        self.reference_to = reference_to
         self.attn1 = attn_cls(
             query_dim=dim,
             heads=n_heads,
             dim_head=d_head,
             dropout=dropout,
-            context_dim=context_dim if self.disable_self_attn else None,
+            context_dim=context_dim if (self.disable_self_attn or reference_to == "self") else None,
             backend=sdp_backend,
+            use_reference=reference_to == "self",
         )  # is a self-attention if not self.disable_self_attn
         self.ff = FeedForward(dim, dropout=dropout, glu=gated_ff)
         self.attn2 = attn_cls(
@@ -516,6 +490,7 @@ class BasicTransformerBlock(nn.Module):
             dim_head=d_head,
             dropout=dropout,
             backend=sdp_backend,
+            use_reference=reference_to == "cross",
         )  # is self-attn if context is none
         self.norm1 = nn.LayerNorm(dim)
         self.norm2 = nn.LayerNorm(dim)
@@ -525,49 +500,49 @@ class BasicTransformerBlock(nn.Module):
             logpy.debug(f"{self.__class__.__name__} is using checkpointing")
 
     def forward(
-        self, x, context=None, additional_tokens=None, n_times_crossframe_attn_in_self=0
+        self, x, context=None, reference_context=None, additional_tokens=None, n_times_crossframe_attn_in_self=0
     ):
         kwargs = {"x": x}
 
         if context is not None:
             kwargs.update({"context": context})
 
+        if reference_context is not None:
+            kwargs.update({"reference_context": reference_context})
+
         if additional_tokens is not None:
             kwargs.update({"additional_tokens": additional_tokens})
 
         if n_times_crossframe_attn_in_self:
-            kwargs.update(
-                {"n_times_crossframe_attn_in_self": n_times_crossframe_attn_in_self}
-            )
+            kwargs.update({"n_times_crossframe_attn_in_self": n_times_crossframe_attn_in_self})
 
         # return mixed_checkpoint(self._forward, kwargs, self.parameters(), self.checkpoint)
         if self.checkpoint:
             # inputs = {"x": x, "context": context}
-            return checkpoint(self._forward, x, context)
+            return checkpoint(self._forward, x, context, reference_context)
             # return checkpoint(self._forward, inputs, self.parameters(), self.checkpoint)
         else:
             return self._forward(**kwargs)
 
     def _forward(
-        self, x, context=None, additional_tokens=None, n_times_crossframe_attn_in_self=0
+        self, x, context=None, reference_context=None, additional_tokens=None, n_times_crossframe_attn_in_self=0
     ):
+        self_context = reference_context if self.reference_to == "self" else context
+        # print(self.reference_to)
+        # print("context: ", context.shape if context is not None else None)
+        # print("reference_context: ", reference_context.shape if reference_context is not None else None)
+
         x = (
             self.attn1(
                 self.norm1(x),
-                context=context if self.disable_self_attn else None,
+                context=self_context if (self.disable_self_attn or self.reference_to == "self") else None,
                 additional_tokens=additional_tokens,
-                n_times_crossframe_attn_in_self=n_times_crossframe_attn_in_self
-                if not self.disable_self_attn
-                else 0,
+                n_times_crossframe_attn_in_self=n_times_crossframe_attn_in_self if not self.disable_self_attn else 0,
             )
             + x
         )
-        x = (
-            self.attn2(
-                self.norm2(x), context=context, additional_tokens=additional_tokens
-            )
-            + x
-        )
+        cross_context = reference_context if self.reference_to == "cross" else context
+        x = self.attn2(self.norm2(x), context=cross_context, additional_tokens=additional_tokens) + x
         x = self.ff(self.norm3(x)) + x
         return x
 
@@ -575,7 +550,7 @@ class BasicTransformerBlock(nn.Module):
 class BasicTransformerSingleLayerBlock(nn.Module):
     ATTENTION_MODES = {
         "softmax": CrossAttention,  # vanilla attention
-        "softmax-xformers": MemoryEfficientCrossAttention  # on the A100s not quite as fast as the above version
+        "softmax-xformers": MemoryEfficientCrossAttention,  # on the A100s not quite as fast as the above version
         # (todo might depend on head_dim, check, falls back to semi-optimized kernels for dim!=[16,32,64,128])
     }
 
@@ -640,6 +615,7 @@ class SpatialTransformer(nn.Module):
         use_checkpoint=True,
         # sdp_backend=SDPBackend.FLASH_ATTENTION
         sdp_backend=None,
+        reference_to=None,
     ):
         super().__init__()
         logpy.debug(
@@ -668,9 +644,7 @@ class SpatialTransformer(nn.Module):
         inner_dim = n_heads * d_head
         self.norm = Normalize(in_channels)
         if not use_linear:
-            self.proj_in = nn.Conv2d(
-                in_channels, inner_dim, kernel_size=1, stride=1, padding=0
-            )
+            self.proj_in = nn.Conv2d(in_channels, inner_dim, kernel_size=1, stride=1, padding=0)
         else:
             self.proj_in = nn.Linear(in_channels, inner_dim)
 
@@ -686,14 +660,13 @@ class SpatialTransformer(nn.Module):
                     attn_mode=attn_type,
                     checkpoint=use_checkpoint,
                     sdp_backend=sdp_backend,
+                    reference_to=reference_to,
                 )
                 for d in range(depth)
             ]
         )
         if not use_linear:
-            self.proj_out = zero_module(
-                nn.Conv2d(inner_dim, in_channels, kernel_size=1, stride=1, padding=0)
-            )
+            self.proj_out = zero_module(nn.Conv2d(inner_dim, in_channels, kernel_size=1, stride=1, padding=0))
         else:
             # self.proj_out = zero_module(nn.Linear(in_channels, inner_dim))
             self.proj_out = zero_module(nn.Linear(inner_dim, in_channels))

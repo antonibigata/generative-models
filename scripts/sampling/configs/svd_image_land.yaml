@@ -5,7 +5,7 @@ model:
     input_key: latents
     scale_factor: 0.18215
     disable_first_stage_autocast: True
-    ckpt_path: logs/2024-07-18T09-00-45_example_training-svd_image_land/checkpoints/epoch=000007.ckpt//checkpoint/mp_rank_00_model_states.pt
+    ckpt_path: logs/2024-07-18T09-00-45_example_training-svd_image_land/checkpoints/last.ckpt//checkpoint/mp_rank_00_model_states.pt
     # remove_keys_from_weights: [model.diffusion_model.label_emb.0.0.weight]
 
     # LoRA

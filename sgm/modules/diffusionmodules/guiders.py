@@ -34,6 +34,10 @@ class VanillaCFG(Guider):
         for k in c:
             if k in ["vector", "crossattn", "concat", "audio_emb", "image_embeds", "landmarks"]:
                 c_out[k] = torch.cat((uc[k], c[k]), 0)
+            elif k == "reference":
+                c_out["reference"] = []
+                for i in range(len(c[k])):
+                    c_out["reference"].append(torch.cat((uc[k][i], c[k][i]), 0))
             else:
                 assert c[k] == uc[k]
                 c_out[k] = c[k]
@@ -50,7 +54,7 @@ class KarrasGuider(VanillaCFG):
         c_out = dict()
 
         for k in c:
-            if k in ["vector", "crossattn", "concat", "audio_emb", "image_embeds", "landmarks"]:
+            if k in ["vector", "crossattn", "concat", "audio_emb", "image_embeds", "landmarks", "reference"]:
                 c_out[k] = torch.cat((c[k], c[k]), 0)
             else:
                 assert c[k] == uc[k]
@@ -85,7 +89,7 @@ class MultipleCondVanilla(Guider):
 
         # The first element is the full condition
         for k in c:
-            if k in ["vector", "crossattn", "concat", "audio_emb", "image_embeds", "landmarks"]:
+            if k in ["vector", "crossattn", "concat", "audio_emb", "image_embeds", "landmarks", "reference"]:
                 c_out[k] = c[k]
             else:
                 assert c[k] == uc[k]
@@ -96,7 +100,7 @@ class MultipleCondVanilla(Guider):
             if not isinstance(cond_name, list):
                 cond_name = [cond_name]
             for k in c:
-                if k in ["vector", "crossattn", "concat", "audio_emb", "image_embeds", "landmarks"]:
+                if k in ["vector", "crossattn", "concat", "audio_emb", "image_embeds", "landmarks", "reference"]:
                     c_out[k] = torch.cat((c_out[k], uc[k] if k in cond_name else c[k]), 0)
 
         return torch.cat([x] * (self.n_conditions + 1)), torch.cat([s] * (self.n_conditions + 1)), c_out
@@ -152,7 +156,7 @@ class LinearPredictionGuider(Guider):
         c_out = dict()
 
         for k in c:
-            if k in ["vector", "crossattn", "concat", "audio_emb"] + self.additional_cond_keys:
+            if k in ["vector", "crossattn", "concat", "audio_emb", "reference"] + self.additional_cond_keys:
                 c_out[k] = torch.cat((uc[k], c[k]), 0)
             else:
                 assert c[k] == uc[k]
