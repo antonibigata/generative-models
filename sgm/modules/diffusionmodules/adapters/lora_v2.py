@@ -9,6 +9,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from diffusers.models.lora import LoRACompatibleLinear
+
 try:
     from safetensors.torch import safe_open
     from safetensors.torch import save_file as safe_save
@@ -204,6 +206,9 @@ def _find_modules_v2(
         # this, incase you want to naively iterate over all modules.
         ancestors = [(name, module) for (name, module) in model.named_modules()]
 
+    # for name, module in model.named_modules():
+    #     print(name, module.__class__.__name__)
+
     keep_layers = []
     exclude_layers_copy = []
     for name in exclude_layers:
@@ -334,7 +339,8 @@ def inject_trainable_lora_extended(
     for _module, name, _child_module in _find_modules(
         model, target_replace_module, search_class=search_class, exclude_layers=exclude_layers
     ):
-        if _child_module.__class__ == nn.Linear:
+        # print(_child_module.__class__)
+        if _child_module.__class__ in [nn.Linear, LoRACompatibleLinear]:
             weight = _child_module.weight
             bias = _child_module.bias
             if verbose:

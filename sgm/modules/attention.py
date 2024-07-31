@@ -316,7 +316,17 @@ class CrossAttention(nn.Module):
 
 class MemoryEfficientCrossAttention(nn.Module):
     # https://github.com/MatthieuTPHR/diffusers/blob/d80b531ff8060ec1ea982b65a1b8df70f73aa67c/src/diffusers/models/attention.py#L223
-    def __init__(self, query_dim, context_dim=None, heads=8, dim_head=64, dropout=0.0, use_reference=False, **kwargs):
+    def __init__(
+        self,
+        query_dim,
+        context_dim=None,
+        heads=8,
+        dim_head=64,
+        dropout=0.0,
+        use_reference=False,
+        extra_linear=False,
+        **kwargs,
+    ):
         super().__init__()
         logpy.debug(
             f"Setting up {self.__class__.__name__}. Query dim is {query_dim}, "
@@ -335,6 +345,11 @@ class MemoryEfficientCrossAttention(nn.Module):
         if not self.use_reference:
             self.to_k = nn.Linear(context_dim, inner_dim, bias=False)
             self.to_v = nn.Linear(context_dim, inner_dim, bias=False)
+        else:
+            if extra_linear:
+                self.to_k = nn.Linear(inner_dim, inner_dim, bias=False)
+                self.to_v = nn.Linear(inner_dim, inner_dim, bias=False)
+        self.extra_linear = extra_linear
 
         self.to_out = nn.Sequential(nn.Linear(inner_dim, query_dim), nn.Dropout(dropout))
         self.attention_op: Optional[Any] = None
@@ -360,6 +375,9 @@ class MemoryEfficientCrossAttention(nn.Module):
         else:
             # Reference has already correct shape
             assert context is not None
+            if self.extra_linear:
+                k = self.to_k(context)
+                v = self.to_v(context)
             k, v = context, context
 
         if n_times_crossframe_attn_in_self:
@@ -471,6 +489,9 @@ class BasicTransformerBlock(nn.Module):
         else:
             assert sdp_backend is None
         self.disable_self_attn = disable_self_attn
+        extra_linear = "extra" in reference_to
+        if extra_linear:
+            reference_to = reference_to.replace("_extra", "")
         assert reference_to in [None, "self", "cross"]
         self.reference_to = reference_to
         self.attn1 = attn_cls(
@@ -481,6 +502,7 @@ class BasicTransformerBlock(nn.Module):
             context_dim=context_dim if (self.disable_self_attn or reference_to == "self") else None,
             backend=sdp_backend,
             use_reference=reference_to == "self",
+            extra_linear=extra_linear,
         )  # is a self-attention if not self.disable_self_attn
         self.ff = FeedForward(dim, dropout=dropout, glu=gated_ff)
         self.attn2 = attn_cls(
@@ -491,6 +513,7 @@ class BasicTransformerBlock(nn.Module):
             dropout=dropout,
             backend=sdp_backend,
             use_reference=reference_to == "cross",
+            extra_linear=extra_linear,
         )  # is self-attn if context is none
         self.norm1 = nn.LayerNorm(dim)
         self.norm2 = nn.LayerNorm(dim)

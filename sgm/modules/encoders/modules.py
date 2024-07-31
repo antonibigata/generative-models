@@ -37,6 +37,7 @@ from ...util import (
     expand_dims_like,
     instantiate_from_config,
 )
+from ...modules.diffusionmodules.adapters.lora_v2 import inject_trainable_lora_extended
 
 from facenet_pytorch import MTCNN, InceptionResnetV1
 from insightface.app import FaceAnalysis
@@ -282,7 +283,7 @@ class WhisperAudioEmbedder(AbstractEmbModel):
 
 
 class ReferenceNet(AbstractEmbModel):
-    def __init__(self, path, cond_type="reference"):
+    def __init__(self, path, cond_type="reference", lora_config=None):
         super().__init__()
         if cond_type is not None:
             setattr(self, "cond_type", cond_type)
@@ -293,6 +294,22 @@ class ReferenceNet(AbstractEmbModel):
         self.reference_unet.load_state_dict(
             torch.load(os.path.join(path, "reference_unet.pth"), map_location="cpu"),
         )
+
+        if lora_config is not None:
+            for p in self.reference_unet.parameters():
+                p.requires_grad = False
+            search_class_str = lora_config.pop("search_class_str", "Linear")
+            search_class_list = []
+            if search_class_str.lower() in ["linear", "both"]:
+                search_class_list.append(torch.nn.Linear)
+            if search_class_str.lower() in ["conv2d", "both"]:
+                search_class_list.append(torch.nn.Conv2d)
+
+            inject_trainable_lora_extended(
+                self.reference_unet,
+                search_class=search_class_list,
+                **lora_config,
+            )
 
         self.reference_control_writer = ReferenceAttentionControl(
             self.reference_unet,
