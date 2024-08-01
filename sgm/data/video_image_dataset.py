@@ -258,13 +258,22 @@ class VideoDataset(Dataset):
 
         return [second_index] + [second_index + i for i in range(1, self.n_out_frames)]
 
+    def convert_indexes(self, indexes_25fps, fps_from=25, fps_to=60):
+        ratio = fps_to / fps_from
+        indexes_60fps = [int(index * ratio) for index in indexes_25fps]
+        return indexes_60fps
+
     def _get_frames_and_audio(self, idx):
         vr = self.curr_video
         if self.load_all_possible_indexes:
             indexes, _, _, _ = self._indexes[self.curr_idx]
             len_video = len(vr)
+            if "AA_processed" in self.curr_file:
+                len_video *= 25 / 60
         else:
             len_video = len(vr)
+            if "AA_processed" in self.curr_file:
+                len_video *= 25 / 60
             init_index = np.random.randint(0, len_video)
             predict_index = self.get_predict_index_with_buffer(len_video, init_index)
             indexes = [init_index, *predict_index]
@@ -277,6 +286,11 @@ class VideoDataset(Dataset):
         audio_indexes, left_copies, right_copies = self.get_audio_indexes(
             predict_index, self.additional_audio_frames, len(vr)
         )
+
+        if "AA_processed" in self.curr_file:
+            indexes = self.convert_indexes(indexes, fps_from=25, fps_to=60)
+            init_index = indexes[0]
+            predict_index = indexes[1:]
         # print(audio_indexes, indexes)
 
         audio_frames = None
@@ -425,6 +439,7 @@ class VideoDataset(Dataset):
             else:
                 vr = decord.VideoReader(video_file)
 
+        self.curr_file = video_file
         self.curr_video = vr
         if self.get_landmarks:
             self.curr_landmarks = np.load(land_file)
