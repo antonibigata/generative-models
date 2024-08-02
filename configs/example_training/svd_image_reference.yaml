@@ -116,7 +116,6 @@ model:
           params:
             path: /data/home/antoni/code/EchoMimic/pretrained_weights
             cond_type: reference
-            lora_config: null
               # search_class_str: Linear
               # target_replace_module: ["BasicTransformerBlock"]
               # r_linear: 16

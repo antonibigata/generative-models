@@ -21,6 +21,14 @@ python main.py --base configs/example_training/svd_image_reference.yaml --wandb 
 
 Ensure that the data configuration is correctly set in the configuration file or via command line.
 
+If need to resume the training you can use the `--resume` flag with the path to the checkpoint you want to resume from.
+E.g.:
+
+```bash
+python main.py --resume logs/2024-07-23T14-34-12_example_training-svd_image --base configs/example_training/svd_image.yaml --wandb True lightning.trainer.num_nodes 8 \
+    ........
+```
+
 ## Testing
 
 To run inference on a trained model, you can use the `scripts/sampling/simple_image_sample.py` script. For example, to generate a sequence of frames from a single image, you can run the following command:
