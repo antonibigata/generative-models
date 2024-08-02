@@ -489,7 +489,7 @@ class BasicTransformerBlock(nn.Module):
         else:
             assert sdp_backend is None
         self.disable_self_attn = disable_self_attn
-        extra_linear = "extra" in reference_to
+        extra_linear = (reference_to is not None) and ("extra" in reference_to)
         if extra_linear:
             reference_to = reference_to.replace("_extra", "")
         assert reference_to in [None, "self", "cross"]

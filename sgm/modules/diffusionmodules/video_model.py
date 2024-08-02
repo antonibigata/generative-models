@@ -150,6 +150,12 @@ class VideoUNet(nn.Module):
         self.additional_audio_frames = additional_audio_frames
         audio_multiplier = additional_audio_frames * 2 + 1
         audio_dim = audio_dim * audio_multiplier
+
+        self.audio_is_context = audio_cond_method == "both"
+
+        if "both" in audio_cond_method:
+            audio_cond_method = "to_time_emb_image"
+
         if "to_time_emb" in audio_cond_method:
             adm_in_channels += audio_dim
 
@@ -525,6 +531,9 @@ class VideoUNet(nn.Module):
         num_video_frames: Optional[int] = 1,
         image_only_indicator: Optional[th.Tensor] = None,
     ):
+        if self.audio_is_context:
+            assert audio_emb is None
+            audio_emb = context
         # assert (y is not None) == (
         #     self.num_classes is not None
         # ), "must specify y if and only if the model is class-conditional -> no, relax this TODO"

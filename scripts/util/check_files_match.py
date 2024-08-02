@@ -50,7 +50,7 @@ with open(NEW_FILE_LIST, "w") as new_file_list:
 
             # Check if all required files exist
             if check_files(base_path, base_name):
-                new_file_list.write(f"{file}\n")
+                new_file_list.write(f"/fsx/behavioural_computing_data/face_generation_data/AA_processed/{file}\n")
             else:
                 missing_count += 1
 

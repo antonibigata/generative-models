@@ -83,7 +83,7 @@ model:
         fine_tuning_method: null
         audio_cond_method: cross
         additional_audio_frames: &add_audio 2
-        audio_dim: 768
+        audio_dim: 1024
         unfreeze_blocks: [] # Because we changed the input block
         skip_time: True
         use_ada_aug: *ada

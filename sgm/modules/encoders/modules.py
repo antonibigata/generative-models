@@ -295,21 +295,21 @@ class ReferenceNet(AbstractEmbModel):
             torch.load(os.path.join(path, "reference_unet.pth"), map_location="cpu"),
         )
 
-        if lora_config is not None:
-            for p in self.reference_unet.parameters():
-                p.requires_grad = False
-            search_class_str = lora_config.pop("search_class_str", "Linear")
-            search_class_list = []
-            if search_class_str.lower() in ["linear", "both"]:
-                search_class_list.append(torch.nn.Linear)
-            if search_class_str.lower() in ["conv2d", "both"]:
-                search_class_list.append(torch.nn.Conv2d)
+        # if lora_config is not None:
+        #     for p in self.reference_unet.parameters():
+        #         p.requires_grad = False
+        #     search_class_str = lora_config.pop("search_class_str", "Linear")
+        #     search_class_list = []
+        #     if search_class_str.lower() in ["linear", "both"]:
+        #         search_class_list.append(torch.nn.Linear)
+        #     if search_class_str.lower() in ["conv2d", "both"]:
+        #         search_class_list.append(torch.nn.Conv2d)
 
-            inject_trainable_lora_extended(
-                self.reference_unet,
-                search_class=search_class_list,
-                **lora_config,
-            )
+        #     inject_trainable_lora_extended(
+        #         self.reference_unet,
+        #         search_class=search_class_list,
+        #         **lora_config,
+        #     )
 
         self.reference_control_writer = ReferenceAttentionControl(
             self.reference_unet,
