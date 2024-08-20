@@ -3,6 +3,7 @@ from typing import Dict, List, Optional, Tuple, Union
 import torch
 import torch.nn as nn
 from einops import rearrange, repeat
+import lpips
 
 from ...modules.autoencoding.lpips.loss.lpips import LPIPS
 from ...modules.encoders.modules import GeneralConditioner, ConcatTimestepEmbedderND
@@ -37,6 +38,7 @@ class StandardDiffusionLoss(nn.Module):
         batch2model_keys: Optional[Union[str, List[str]]] = None,
         lambda_lower: float = 1.0,
         fix_image_leak: bool = False,
+        add_lpips: bool = False,
     ):
         super().__init__()
 
@@ -48,9 +50,13 @@ class StandardDiffusionLoss(nn.Module):
         self.loss_type = loss_type
         self.offset_noise_level = offset_noise_level
         self.lambda_lower = lambda_lower
+        self.add_lpips = add_lpips
 
         if loss_type == "lpips":
             self.lpips = LPIPS().eval()
+
+        if add_lpips:
+            self.lpips = lpips.LPIPS(net="alex").eval()
 
         if not batch2model_keys:
             batch2model_keys = []
@@ -126,17 +132,32 @@ class StandardDiffusionLoss(nn.Module):
             # model_output = rearrange(model_output, "b c t h w -> (b t) c h w")
             # w = rearrange(w, "b ... -> b t ...")
 
+        # other_losses_mask = torch.clone(w)
+
         if self.lambda_lower != 1.0:
             weight_lower = torch.ones_like(model_output, device=w.device)
             weight_lower[:, :, model_output.shape[2] // 2 :] *= self.lambda_lower
             w = weight_lower * w
 
+        loss_dict = {}
+
         if self.loss_type == "l2":
-            return torch.mean((w * (model_output - target) ** 2).reshape(target.shape[0], -1), 1)
+            loss = torch.mean((w * (model_output - target) ** 2).reshape(target.shape[0], -1), 1)
         elif self.loss_type == "l1":
-            return torch.mean((w * (model_output - target).abs()).reshape(target.shape[0], -1), 1)
+            loss = torch.mean((w * (model_output - target).abs()).reshape(target.shape[0], -1), 1)
         elif self.loss_type == "lpips":
             loss = self.lpips(model_output, target).reshape(-1)
-            return loss
         else:
             raise NotImplementedError(f"Unknown loss type {self.loss_type}")
+
+        loss_dict[self.loss_type] = loss.clone()
+        loss_dict["loss"] = loss
+
+        if self.add_lpips:
+            loss_dict["lpips"] = w[:, 0, 0, 0] * self.lpips(
+                (model_output[:, :3] * 0.18215).clip(-1, 1),
+                (target[:, :3] * 0.18215).clip(-1, 1),
+            ).reshape(-1)
+            loss_dict["loss"] += loss_dict["lpips"].mean()
+
+        return loss_dict

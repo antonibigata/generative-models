@@ -5,7 +5,7 @@ model:
     input_key: latents
     scale_factor: 0.18215
     disable_first_stage_autocast: True
-    ckpt_path: logs/2024-07-26T14-56-14_example_training-svd_image_reference/checkpoints/last.ckpt/checkpoint/mp_rank_00_model_states.pt
+    ckpt_path: logs/2024-08-05T09-15-15_example_training-svd_image_reference/checkpoints/last.ckpt/checkpoint/mp_rank_00_model_states.pt
     # remove_keys_from_weights: [model.diffusion_model.label_emb.0.0.weight]
     bad_model_path: logs/2024-07-11T17-03-22_example_training-svd_image/checkpoints/last.ckpt/checkpoint/mp_rank_00_model_states.pt
 
@@ -59,12 +59,12 @@ model:
         merge_strategy: learned_with_images
         video_kernel_size: [3, 1, 1]
         fine_tuning_method: null
-        audio_cond_method: cross
+        audio_cond_method: bite
         additional_audio_frames: 2
-        audio_dim: 768
+        audio_dim: 1024
         unfreeze_blocks: [] # Because we changed the input block
         skip_time: true
-        reference_to: self
+        reference_to: self_extra
 
     conditioner_config:
       target: sgm.modules.GeneralConditioner
@@ -140,4 +140,4 @@ model:
           #   condition_names: [cond_frames, cond_frames_without_noise, audio_emb]
           target: sgm.modules.diffusionmodules.guiders.VanillaCFG
           params:
-            scale: 3.5
+            scale: 2.

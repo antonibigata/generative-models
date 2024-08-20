@@ -230,6 +230,7 @@ model:
       target: sgm.modules.diffusionmodules.loss.StandardDiffusionLoss
       params:
         lambda_lower: 1.
+        add_lpips: False
         batch2model_keys:
           - image_only_indicator
           - num_video_frames

@@ -285,7 +285,7 @@ data:
         latent_type: video
         latent_scale: 1  # For backwards compatibility
         from_audio_embedding: True
-        load_all_possible_indexes: True
+        load_all_possible_indexes: False
         audio_emb_type: wav2vec2
         # cond_noise: [-3.0, 0.5]
         cond_noise: 0.

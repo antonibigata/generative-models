@@ -270,10 +270,12 @@ class VideoDataset(Dataset):
             len_video = len(vr)
             if "AA_processed" in self.curr_file:
                 len_video *= 25 / 60
+                len_video = int(len_video)
         else:
             len_video = len(vr)
             if "AA_processed" in self.curr_file:
                 len_video *= 25 / 60
+                len_video = int(len_video)
             init_index = np.random.randint(0, len_video)
             predict_index = self.get_predict_index_with_buffer(len_video, init_index)
             indexes = [init_index, *predict_index]
@@ -319,7 +321,7 @@ class VideoDataset(Dataset):
         else:
             frame, clean_cond = vr.get_batch([*predict_index, init_index]).float()
             # clean_cond = vr[init_index].float()
-        # assert frame.shape[0] == self.n_out_frames, f"Frame shape is {frame.shape}, expected {self.n_out_frames}"
+        assert frame.shape[0] == self.n_out_frames, f"Frame shape is {frame.shape}, expected {self.n_out_frames}"
 
         or_w, or_h = clean_cond.shape[0], clean_cond.shape[1]
         landmarks = None
@@ -342,6 +344,7 @@ class VideoDataset(Dataset):
                 audio_frames = torch.cat([audio_frames[0][None, :]] * left_copies + [audio_frames])
             if right_copies > 0:
                 audio_frames = torch.cat([audio_frames] + [audio_frames[-1][None, :]] * right_copies)
+            assert audio_frames.shape[0] == (self.additional_audio_frames * 2 + 1)
 
         diff_score = None
         if self.get_difference_score:
@@ -439,34 +442,44 @@ class VideoDataset(Dataset):
             else:
                 vr = decord.VideoReader(video_file)
 
+        audio_file = audio_file.replace("_output_output", "")
         self.curr_file = video_file
         self.curr_video = vr
+
+        audio_path_extra = f"_{self.audio_emb_type}_emb.safetensors"
+        video_path_extra = f"_{self.latent_type}_512_latent.safetensors"
+        allow_pickle = False
+        if "AA_processed" in video_file:
+            audio_path_extra = ".safetensors"
+            video_path_extra = f"_{self.latent_type}_512_latent.safetensors"
+            land_file = land_file.replace("_output_output", "_output_keypoints") if self.get_landmarks else None
+            allow_pickle = True
+
         if self.get_landmarks:
-            self.curr_landmarks = np.load(land_file)
-        with safe_open(audio_file.split(".")[0] + f"_{self.audio_emb_type}_emb.safetensors", framework="pt") as f:
+            self.curr_landmarks = np.load(land_file, allow_pickle=allow_pickle)
+
+        with safe_open(audio_file.split(".")[0] + audio_path_extra, framework="pt") as f:
             self.curr_audio = f.get_slice("audio")
         # self.curr_audio = torch.load(audio_file.split(".")[0] + f"_{self.audio_emb_type}_emb.pt")
         if self.use_latent:
-            latent_file = video_file.replace(self.video_ext, f"_{self.latent_type}_512_latent.safetensors").replace(
+            latent_file = video_file.replace(self.video_ext, video_path_extra).replace(
                 self.video_folder, self.latent_folder
             )
             with safe_open(latent_file, framework="pt") as f:
                 self.curr_latents = f.get_slice("latents")
             # self.curr_latents = load_file(latent_file)["latents"]
 
-    def __getitem__(self, idx):
-        if np.random.rand() > (1 - self.change_file_proba) or self.curr_video is None:
-            self.load_new_media()
-
+    def __getitem__(self, idx, error=False):
         try:
+            if error or (np.random.rand() > (1 - self.change_file_proba) or self.curr_video is None):
+                self.load_new_media()
             clean_cond, noisy_cond, target, landmarks, audio, diff_score, cond_noise = self._get_frames_and_audio(
                 idx % len(self._indexes)
             )
         except Exception as e:
             print(f"Error with index {idx}: {e}")
-            self.load_new_media()
             # raise e
-            return self.__getitem__(np.random.randint(0, len(self)))
+            return self.__getitem__(np.random.randint(0, len(self)), error=True)
 
         _, video_file, _ = self._indexes[self.curr_idx]
 

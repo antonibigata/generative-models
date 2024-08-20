@@ -91,6 +91,7 @@ def sample(
     resize_size: Optional[int] = None,
     video_folder: Optional[str] = None,
     latent_folder: Optional[str] = None,
+    landmark_folder: Optional[str] = None,
     version: str = "svd_image",
     fps_id: int = 25,
     motion_bucket_id: int = 127,
@@ -193,8 +194,12 @@ def sample(
 
         landmarks = None
         if get_landmarks:
-            landmarks = np.load(video_path.replace(".mp4", ".npy"))
-            landmarks = scale_landmarks(landmarks, (h, w), (512, 512))
+            if landmark_folder is not None:
+                video_path = video_path.replace(video_folder, landmark_folder)
+            landmarks = np.load(
+                video_path.replace(".mp4", ".npy").replace("_output_output", "_output_keypoints"), allow_pickle=True
+            )
+            landmarks = scale_landmarks(landmarks[:, :, :2], (h, w), (512, 512))
 
         h, w = video.shape[2:]
         # if degradation > 1:
@@ -225,8 +230,9 @@ def sample(
         #     height = min(height, 576)
         #     video = torch.nn.functional.interpolate(video, (height, width), mode="bilinear")
         # video = model.encode_first_stage(video.cuda())
-        cond = model_input[0]
-        emb = video_emb[0] if video_emb is not None else None
+        idx_cond = np.random.randint(0, len(model_input))
+        cond = model_input[idx_cond]
+        emb = video_emb[idx_cond] if video_emb is not None else None
 
         samples_list = []
         samples_list_gt = [torch.clamp((cond.unsqueeze(0) + 1.0) / 2.0, min=0.0, max=1.0)]
