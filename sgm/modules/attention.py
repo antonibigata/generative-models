@@ -554,6 +554,7 @@ class BasicTransformerBlock(nn.Module):
         # print(self.reference_to)
         # print("context: ", context.shape if context is not None else None)
         # print("reference_context: ", reference_context.shape if reference_context is not None else None)
+        # print("x: ", x.shape)
 
         x = (
             self.attn1(

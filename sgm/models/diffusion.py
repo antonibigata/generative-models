@@ -69,13 +69,6 @@ class DiffusionEngine(pl.LightningModule):
 
         self.denoiser = instantiate_from_config(denoiser_config)
 
-        if "KarrasGuidanceDenoiser" in denoiser_config.target:
-            assert bad_model_path is not None, "bad_model_path must be provided for KarrasGuidanceDenoiser"
-            bad_model = self.initialize_network(network_config, network_wrapper, compile_model=compile_model)
-            state_dict = self.load_bad_model_weights(bad_model_path)
-            bad_model.load_state_dict(state_dict)
-            self.denoiser.set_bad_network(bad_model)
-
         self.sampler = instantiate_from_config(sampler_config) if sampler_config is not None else None
         self.is_guided = True
         if self.sampler and "IdentityGuider" in sampler_config["params"]["guider_config"]["target"]:
@@ -180,11 +173,20 @@ class DiffusionEngine(pl.LightningModule):
 
             self.model.diffusion_model = thunder.jit(self.model.diffusion_model)
 
+        if "Karras" in denoiser_config.target:
+            assert bad_model_path is not None, "bad_model_path must be provided for KarrasGuidanceDenoiser"
+            bad_model = self.initialize_network(network_config, network_wrapper, compile_model=compile_model)
+            state_dict = self.load_bad_model_weights(bad_model_path)
+            bad_model.load_state_dict(state_dict)
+            self.denoiser.set_bad_network(bad_model)
+
     def load_bad_model_weights(self, path: str) -> None:
         print(f"Restoring bad model from {path}")
         state_dict = torch.load(path, map_location="cpu")
         new_dict = {}
         for k, v in state_dict["module"].items():
+            if "learned_mask" in k:
+                new_dict[k.replace("_forward_module.", "").replace("model.", "")] = v
             if "diffusion_model" in k:
                 new_dict["diffusion_model" + k.split("diffusion_model")[1]] = v
         return new_dict

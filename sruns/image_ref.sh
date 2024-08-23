@@ -10,7 +10,6 @@
 #SBATCH --error=/data/home/antoni/slurm_errors/generative_models/%j.err
 #SBATCH --no-requeue
 #SBATCH --account all
-#SBATCH --exclude=a100-st-p4d24xlarge-77
 source /data/home/antoni/miniconda3/etc/profile.d/conda.sh
 conda activate svd
 export WANDB_ENTITY=animator
@@ -28,6 +27,6 @@ srun python main.py --base configs/example_training/svd_image_reference.yaml --w
     data.params.train.datapipeline.audio_in_video=False \
     data.params.train.datapipeline.load_all_possible_indexes=False \
     lightning.trainer.devices=4 lightning.trainer.accumulate_grad_batches=1 data.params.train.datapipeline.virtual_increase=1000 \
-    model.params.network_config.params.audio_cond_method=both data.params.train.loader.batch_size=28 \
+    model.params.network_config.params.audio_cond_method=bite data.params.train.loader.batch_size=28 \
     model.params.loss_fn_config.params.lambda_lower=2. model.params.network_config.params.skip_time=True \
-    data.params.train.datapipeline.change_file_proba=1. model.params.network_config.params.reference_to=self_extra model.params.loss_fn_config.params.add_lpips=True
+    data.params.train.datapipeline.change_file_proba=1. model.params.network_config.params.reference_to=self_extra 

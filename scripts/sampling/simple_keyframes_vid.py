@@ -115,6 +115,9 @@ def sample(
     num_frames: Optional[int] = None,
     num_steps: Optional[int] = None,
     resize_size: Optional[int] = None,
+    video_folder: Optional[str] = None,
+    latent_folder: Optional[str] = None,
+    landmark_folder: Optional[str] = None,
     version: str = "svd",
     fps_id: int = 24,
     motion_bucket_id: int = 127,
@@ -210,6 +213,8 @@ def sample(
         video = torch.nn.functional.interpolate(video, (512, 512), mode="bilinear")
 
         video_embedding_path = video_path.replace(".mp4", "_video_512_latent.safetensors")
+        if video_folder is not None and latent_folder is not None:
+            video_embedding_path = video_embedding_path.replace(video_folder, latent_folder)
         video_emb = None
         if use_latent:
             video_emb = load_safetensors(video_embedding_path)["latents"]

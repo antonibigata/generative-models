@@ -54,8 +54,12 @@ class KarrasGuider(VanillaCFG):
         c_out = dict()
 
         for k in c:
-            if k in ["vector", "crossattn", "concat", "audio_emb", "image_embeds", "landmarks", "reference"]:
+            if k in ["vector", "crossattn", "concat", "audio_emb", "image_embeds", "landmarks"]:
                 c_out[k] = torch.cat((c[k], c[k]), 0)
+            elif k == "reference":
+                c_out["reference"] = []
+                for i in range(len(c[k])):
+                    c_out["reference"].append(torch.cat((c[k][i], c[k][i]), 0))
             else:
                 assert c[k] == uc[k]
                 c_out[k] = c[k]

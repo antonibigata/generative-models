@@ -6,9 +6,10 @@ model:
     # ckpt_path: /vol/paramonos2/projects/antoni/code/Personal/generative-models/checkpoints/svd.safetensors
     ckpt_path: logs/2024-08-02T15-04-08_example_training-svd_interpolation_no_emb/checkpoints/last.ckpt/checkpoint/mp_rank_00_model_states.pt
     # remove_keys_from_weights: [model.diffusion_model.input_blocks.0.0.weight]
+    bad_model_path: logs/2024-08-21T12-15-52_example_training-svd_interpolation_no_emb/checkpoints/last.ckpt/checkpoint/mp_rank_00_model_states.pt
 
     denoiser_config:
-      target: sgm.modules.diffusionmodules.denoiser.DenoiserTemporalMultiDiffusion
+      target: sgm.modules.diffusionmodules.denoiser.KarrasTemporalMultiDiffusion
       params:
         scaling_config:
           target: sgm.modules.diffusionmodules.denoiser_scaling.VScalingWithEDMcNoise
@@ -188,7 +189,7 @@ model:
         #     num_frames: 14
 
         guider_config:
-          target: sgm.modules.diffusionmodules.guiders.VanillaCFG
+          target: sgm.modules.diffusionmodules.guiders.KarrasGuider
           params:
             scale: 2.0
             # num_frames: 14

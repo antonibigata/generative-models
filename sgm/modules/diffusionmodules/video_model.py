@@ -151,10 +151,12 @@ class VideoUNet(nn.Module):
         audio_multiplier = additional_audio_frames * 2 + 1
         audio_dim = audio_dim * audio_multiplier
 
-        self.audio_is_context = audio_cond_method == "both"
+        self.audio_is_context = "both" in audio_cond_method
 
-        if "both" in audio_cond_method:
+        if "both" == audio_cond_method:
             audio_cond_method = "to_time_emb_image"
+        elif "both_keyframes" == audio_cond_method:
+            audio_cond_method = "to_time_emb"
 
         if "to_time_emb" in audio_cond_method:
             adm_in_channels += audio_dim
@@ -538,14 +540,18 @@ class VideoUNet(nn.Module):
         #     self.num_classes is not None
         # ), "must specify y if and only if the model is class-conditional -> no, relax this TODO"
         curr_context_idx = None
+        num_video_frames = num_video_frames if isinstance(num_video_frames, int) else num_video_frames[0]
         if reference_context is not None:
             copy_context = copy.deepcopy(reference_context)
             mid = copy_context.pop(-1)
             copy_context.insert((len(copy_context) // 2) - 1, mid)
             reference_context = copy_context
             curr_context_idx = 0
+            if num_video_frames > 1:
+                reference_context = [
+                    repeat(ref_context, "b h w -> (b t) h w", t=num_video_frames) for ref_context in reference_context
+                ]
 
-        num_video_frames = num_video_frames if isinstance(num_video_frames, int) else num_video_frames[0]
         or_batch_size = x.shape[0] // num_video_frames
         if image_only_indicator is not None and image_only_indicator.shape[0] != or_batch_size:
             # TODO: fix this

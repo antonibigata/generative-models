@@ -79,7 +79,13 @@ def add_text_to_keyframes(
 
 
 def create_interpolation_inputs(video, audio, num_frames, video_emb=None, overlap=1):
-    assert video.shape[0] == audio.shape[0], "Video and audio must have the same number of frames"
+    diff_length = abs(video.shape[0] - audio.shape[0])
+    if diff_length < 10:
+        min_length = min(video.shape[0], audio.shape[0])
+        video = video[:min_length]
+        audio = audio[:min_length]
+    else:
+        raise ValueError("Video and audio don't have same length")
     video_chunks = []
     audio_chunks = []
     video_emb_chunks = []
@@ -262,6 +268,7 @@ def sample(
         video_emb = None
         if use_latent:
             video_emb = load_safetensors(video_embedding_path)["latents"]
+            # video_emb = repeat(video_emb[np.random.randint(0, len(video_emb))], "c h w -> t c h w", t=len(video_emb))
 
         audio, raw_audio = get_audio_embeddings(audio_path, 16000, fps_id + 1, audio_folder, audio_emb_folder)
         if max_seconds is not None:

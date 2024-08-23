@@ -7,7 +7,7 @@ model:
     disable_first_stage_autocast: True
     ckpt_path: logs/2024-08-05T09-14-27_example_training-svd_image_reference_land/checkpoints/last.ckpt/checkpoint/mp_rank_00_model_states.pt
     # remove_keys_from_weights: [model.diffusion_model.label_emb.0.0.weight]
-    bad_model_path: logs/2024-07-11T17-03-22_example_training-svd_image/checkpoints/last.ckpt/checkpoint/mp_rank_00_model_states.pt
+    bad_model_path: logs/2024-08-21T09-49-18_example_training-svd_image_reference_land/checkpoints/last.ckpt/checkpoint/mp_rank_00_model_states.pt
 
     # LoRA
     use_lora: False
@@ -23,7 +23,7 @@ model:
       # search_class: both
 
     denoiser_config:
-      target: sgm.modules.diffusionmodules.denoiser.Denoiser
+      target: sgm.modules.diffusionmodules.denoiser.KarrasGuidanceDenoiser
       params:
         scaling_config:
           target: sgm.modules.diffusionmodules.denoiser_scaling.VScalingWithEDMcNoise
@@ -146,6 +146,6 @@ model:
           # params:
           #   scales: [0.1, 0.5, 0.5]
           #   condition_names: [cond_frames, cond_frames_without_noise, audio_emb]
-          target: sgm.modules.diffusionmodules.guiders.VanillaCFG
+          target: sgm.modules.diffusionmodules.guiders.KarrasGuider
           params:
-            scale: 3.5
+            scale: 2.

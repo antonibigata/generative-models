@@ -14,6 +14,9 @@ import soundfile as sf
 from torchvision.transforms import RandomHorizontalFlip
 from audiomentations import Compose, AddGaussianNoise, PitchShift
 from safetensors.torch import load_file
+from tqdm import tqdm
+import cv2
+
 
 torchaudio.set_audio_backend("sox_io")
 decord.bridge.set_bridge("torch")
@@ -78,6 +81,7 @@ class VideoDataset(Dataset):
         skip_frames=0,
         get_separate_id=False,
         virtual_increase=1,
+        filter_by_length=False,
     ):
         self.audio_folder = audio_folder
         self.from_audio_embedding = from_audio_embedding
@@ -164,21 +168,23 @@ class VideoDataset(Dataset):
         a2v_ratio = self.video_rate / float(self.audio_rate)
         self.samples_per_frame = math.ceil(1 / a2v_ratio)
 
-        self.num_frames = num_frames
         if get_separate_id:
             assert mode == "prediction", "Separate identity frame is only supported for prediction mode"
             # No need for extra frame if we are getting a separate identity frame
             self.need_cond = True
             num_frames -= 1
+        self.num_frames = num_frames
         self.load_all_possible_indexes = load_all_possible_indexes
         if load_all_possible_indexes:
             self._indexes = self._get_indexes(self.filelist, self.audio_filelist)
         else:
-            self._indexes = list(zip(self.filelist, self.audio_filelist))
-        self.total_len = len(self._indexes)
+            if filter_by_length:
+                self._indexes = self.filter_by_length(self.filelist, self.audio_filelist)
+            else:
+                self._indexes = list(zip(self.filelist, self.audio_filelist))
 
     def __len__(self):
-        return self.total_len * self.virtual_increase
+        return len(self._indexes) * self.virtual_increase
 
     def get_frame_indices(self, total_video_frames):
         # Calculate the maximum possible start index
@@ -378,6 +384,30 @@ class VideoDataset(Dataset):
 
         return clean_cond, noisy_cond, target, audio_frames, raw_audio, cond_noise
 
+    def filter_by_length(self, video_filelist, audio_filelist):
+        def with_opencv(filename):
+            video = cv2.VideoCapture(filename)
+            frame_count = video.get(cv2.CAP_PROP_FRAME_COUNT)
+
+            return int(frame_count)
+
+        filtered_video = []
+        filtered_audio = []
+        min_length = (self.num_frames - 1) * (self.skip_frames + 1) + 1
+        for vid_file, audio_file in tqdm(
+            zip(video_filelist, audio_filelist), total=len(video_filelist), desc="Filtering"
+        ):
+            # vr = decord.VideoReader(vid_file)
+
+            len_video = with_opencv(vid_file)
+            # Short videos
+            if len_video < min_length:
+                continue
+            filtered_video.append(vid_file)
+            filtered_audio.append(audio_file)
+        print(f"New number of files: {len(filtered_video)}")
+        return filtered_video, filtered_audio
+
     def _get_indexes(self, video_filelist, audio_filelist):
         indexes = []
         self.og_shape = None
@@ -422,6 +452,8 @@ class VideoDataset(Dataset):
             )
         except Exception as e:
             print(f"Error with index {idx}: {e}")
+            # Removing the file from the list
+            self._indexes.pop(idx % len(self._indexes))
             return self.__getitem__(np.random.randint(0, len(self)))
         out_data = {}
         # out_data = {"cond": cond, "video": target, "audio": audio, "video_file": video_file}

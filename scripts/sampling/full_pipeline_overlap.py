@@ -465,6 +465,10 @@ def sample(
         # condition = condition.unsqueeze(0).to(device)
         embbedings = torch.stack(interpolation_cond_list_emb).to(device)
 
+        # Free up some memory from the keyframes
+        del model_keyframes
+        torch.cuda.empty_cache()
+
         # condition = repeat(condition, "b c h w -> (b d) c h w", d=audio_cond.shape[0])
         # condition_emb = repeat(condition_emb, "b c h w -> (b d) c h w", d=audio_cond.shape[0])
 
