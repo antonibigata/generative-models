@@ -23,6 +23,7 @@ from tqdm import tqdm
 
 from scripts.util.utilities import save_image, make_path
 
+
 def default(value, default):
     return default if value is None else value
 
@@ -42,6 +43,8 @@ python scripts/util/video_to_latent.py --filelist /data/home/stellab/projects/du
 python scripts/util/video_to_latent.py --filelist /data/home/stellab/projects/dubbing_gans/libs/dataset_preprocessing_stella/filelists/file_list_train_internal.txt \
       --diffusion_type video --resolution 512 --chunk_size 10
 """
+
+
 def process_image(image, resolution=None):
     if resolution is not None:
         image = torch.nn.functional.interpolate(image.float(), size=resolution, mode="bilinear", align_corners=False)
@@ -66,7 +69,7 @@ def main():
     args = parser.parse_args()
 
     # video_files = ['/fsx/rs2517/data/HDTF/cropped_videos_original/RD_Radio18_000.mp4']
-    output_path = '/fsx/behavioural_computing_data/face_generation_data/AA_processed/'
+    output_path = "/fsx/behavioural_computing_data/face_generation_data/AA_processed/"
     video_path = output_path
     video_files = []
     for filelist in args.filelist:
@@ -79,42 +82,40 @@ def main():
 
     # num_videos = 1000
     # video_files = video_files[num_videos:]
-    print('Run pipeline on {} videos'.format(len(video_files)))
+    print("Run pipeline on {} videos".format(len(video_files)))
     # Load the model
-    
+
     model = VaeWrapper(args.diffusion_type)
     # for name, param in model.named_parameters():
     #     print(name, param.shape)
 
-    # random.shuffle(video_files)
+    random.shuffle(video_files)
     missing = 0
 
     count = 0
     for video_file in tqdm(video_files, desc="Generating latent vectors"):
-        
         video_file = str(video_file)
-        
-        part_name = video_file.split('/')[0]
-        save_path = os.path.join(output_path, part_name, 'video_512_latent')
+
+        part_name = video_file.split("/")[0]
+        save_path = os.path.join(output_path, part_name, "video_512_latent")
         make_path(save_path)
-        
+
         is_safe = "safetensors" if not args.save_as_tensor else "pt"
         out_file = Path(video_file).stem + f"_{args.diffusion_type}_{args.resolution}" + f"_latent.{is_safe}"
         out_path = os.path.join(save_path, out_file)
         if not os.path.exists(out_path):
             count += 1
-    print('Not computed: {}/{}'.format(count, len(video_files)))
+    print("Not computed: {}/{}".format(count, len(video_files)))
     # model.disable_slicing()
-   
+
     for video_file in tqdm(video_files, desc="Generating latent vectors"):
-        
         try:
             video_file = str(video_file)
-            
-            part_name = video_file.split('/')[0]
-            save_path = os.path.join(output_path, part_name, 'video_512_latent')
+
+            part_name = video_file.split("/")[0]
+            save_path = os.path.join(output_path, part_name, "video_512_latent")
             make_path(save_path)
-           
+
             is_safe = "safetensors" if not args.save_as_tensor else "pt"
             out_file = Path(video_file).stem + f"_{args.diffusion_type}_{args.resolution}" + f"_latent.{is_safe}"
             out_path = os.path.join(save_path, out_file)
@@ -122,7 +123,6 @@ def main():
                 continue
             video_file = os.path.join(video_path, video_file)
 
-            
             if args.only_missing:
                 missing += 1
                 continue
