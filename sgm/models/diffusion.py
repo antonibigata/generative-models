@@ -2,7 +2,7 @@ import os
 import math
 from contextlib import contextmanager
 from typing import Any, Dict, List, Optional, Tuple, Union
-
+import re
 import pytorch_lightning as pl
 import torch
 from omegaconf import ListConfig, OmegaConf
@@ -36,6 +36,7 @@ class DiffusionEngine(pl.LightningModule):
         network_wrapper: Union[None, str, Dict, ListConfig, OmegaConf] = None,
         ckpt_path: Union[None, str] = None,
         remove_keys_from_weights: Union[None, List, Tuple] = None,
+        pattern_to_remove: Union[None, str] = None,
         remove_keys_from_unet_weights: Union[None, List, Tuple] = None,
         use_ema: bool = False,
         ema_decay_rate: float = 0.9999,
@@ -55,6 +56,7 @@ class DiffusionEngine(pl.LightningModule):
         separate_unet_ckpt: Optional[str] = None,
         use_thunder: Optional[bool] = False,
         is_dubbing: Optional[bool] = False,
+        bad_model_path: Optional[str] = None,
     ):
         super().__init__()
 
@@ -65,17 +67,10 @@ class DiffusionEngine(pl.LightningModule):
         self.input_key = input_key
         self.is_dubbing = is_dubbing
         self.optimizer_config = default(optimizer_config, {"target": "torch.optim.AdamW"})
-        model = instantiate_from_config(network_config)
-        if isinstance(network_wrapper, str) or network_wrapper is None:
-            self.model = get_obj_from_str(default(network_wrapper, OPENAIUNETWRAPPER))(
-                model, compile_model=compile_model
-            )
-        else:
-            target = network_wrapper["target"]
-            params = network_wrapper.get("params", dict())
-            self.model = get_obj_from_str(target)(model, compile_model=compile_model, **params)
+        self.model = self.initialize_network(network_config, network_wrapper, compile_model=compile_model)
 
         self.denoiser = instantiate_from_config(denoiser_config)
+
         self.sampler = instantiate_from_config(sampler_config) if sampler_config is not None else None
         self.is_guided = True
         if self.sampler and "IdentityGuider" in sampler_config["params"]["guider_config"]["target"]:
@@ -101,7 +96,9 @@ class DiffusionEngine(pl.LightningModule):
         self.no_cond_log = no_cond_log
 
         if ckpt_path is not None:
-            self.init_from_ckpt(ckpt_path, remove_keys_from_weights=remove_keys_from_weights)
+            self.init_from_ckpt(
+                ckpt_path, remove_keys_from_weights=remove_keys_from_weights, pattern_to_remove=pattern_to_remove
+            )
             if separate_unet_ckpt is not None:
                 sd = torch.load(separate_unet_ckpt)["state_dict"]
                 if remove_keys_from_unet_weights is not None:
@@ -112,11 +109,12 @@ class DiffusionEngine(pl.LightningModule):
                 self.model.diffusion_model.load_state_dict(sd, strict=False)
 
         self.en_and_decode_n_samples_a_time = en_and_decode_n_samples_a_time
+        print("Using", self.en_and_decode_n_samples_a_time, "samples at a time for encoding and decoding")
 
         if use_lora:
             assert not only_train_ipadapter, "Cannot use both Lora and IPAdapter at the same time"
-            # for p in self.model.parameters():
-            #     p.requires_grad = False
+            for p in self.model.parameters():
+                p.requires_grad = False
             search_class_str = lora_config.pop("search_class_str", "Linear")
             search_class_list = []
             if search_class_str.lower() in ["linear", "both"]:
@@ -130,18 +128,9 @@ class DiffusionEngine(pl.LightningModule):
                 **lora_config,
             )
 
-            # for p in self.model.diffusion_model.input_blocks.parameters():
-            #     print(p.requires_grad)
-            # filters = [".transformer_blocks"]
-            # module_names = get_module_names(self.model, filters=filters, all_modules_in_filter=True)
-            # lora_config = LoraConfig(
-            #     inference_mode=False,
-            #     r=16,
-            #     lora_alpha=32,
-            #     lora_dropout=0.1,
-            #     target_modules=module_names,
-            # )
-            # self.model = LoraModel(self.model, lora_config, "bite")
+            for name, p in self.named_parameters():
+                if p.requires_grad:
+                    print(name)
 
         if to_freeze:
             for name, p in self.model.diffusion_model.named_parameters():
@@ -181,16 +170,42 @@ class DiffusionEngine(pl.LightningModule):
                 for p in getattr(self.model.diffusion_model, name).parameters():
                     p.requires_grad = True
 
-            # for name, p in self.named_parameters():
-            #     if p.requires_grad:
-            #         print(name)
-
         if use_thunder:
             import thunder
 
             self.model.diffusion_model = thunder.jit(self.model.diffusion_model)
 
-    def init_from_ckpt(self, path: str, remove_keys_from_weights: Optional[Union[List, Tuple]] = None) -> None:
+        if "Karras" in denoiser_config.target:
+            assert bad_model_path is not None, "bad_model_path must be provided for KarrasGuidanceDenoiser"
+            bad_model = self.initialize_network(network_config, network_wrapper, compile_model=compile_model)
+            state_dict = self.load_bad_model_weights(bad_model_path)
+            bad_model.load_state_dict(state_dict)
+            self.denoiser.set_bad_network(bad_model)
+
+    def load_bad_model_weights(self, path: str) -> None:
+        print(f"Restoring bad model from {path}")
+        state_dict = torch.load(path, map_location="cpu")
+        new_dict = {}
+        for k, v in state_dict["module"].items():
+            if "learned_mask" in k:
+                new_dict[k.replace("_forward_module.", "").replace("model.", "")] = v
+            if "diffusion_model" in k:
+                new_dict["diffusion_model" + k.split("diffusion_model")[1]] = v
+        return new_dict
+
+    def initialize_network(self, network_config, network_wrapper, compile_model=False):
+        model = instantiate_from_config(network_config)
+        if isinstance(network_wrapper, str) or network_wrapper is None:
+            model = get_obj_from_str(default(network_wrapper, OPENAIUNETWRAPPER))(model, compile_model=compile_model)
+        else:
+            target = network_wrapper["target"]
+            params = network_wrapper.get("params", dict())
+            model = get_obj_from_str(target)(model, compile_model=compile_model, **params)
+        return model
+
+    def init_from_ckpt(
+        self, path: str, remove_keys_from_weights: Optional[Union[List, Tuple]] = None, pattern_to_remove: str = None
+    ) -> None:
         print(f"Restoring from {path}")
         if path.endswith("ckpt"):
             sd = torch.load(path, map_location="cpu")["state_dict"]
@@ -209,11 +224,13 @@ class DiffusionEngine(pl.LightningModule):
 
         print(f"Loaded state dict from {path} with {len(sd)} keys")
 
-        if remove_keys_from_weights is not None:
-            for k in list(sd.keys()):
-                for remove_key in remove_keys_from_weights:
-                    if remove_key in k:
-                        del sd[k]
+        # if remove_keys_from_weights is not None:
+        #     for k in list(sd.keys()):
+        #         for remove_key in remove_keys_from_weights:
+        #             if remove_key in k:
+        #                 del sd[k]
+        if pattern_to_remove is not None or remove_keys_from_weights is not None:
+            sd = self.remove_mismatched_keys(sd, pattern_to_remove, remove_keys_from_weights)
 
         missing, unexpected = self.load_state_dict(sd, strict=False)
         print(f"Restored from {path} with {len(missing)} missing and {len(unexpected)} unexpected keys")
@@ -221,6 +238,27 @@ class DiffusionEngine(pl.LightningModule):
             print(f"Missing Keys: {missing}")
         if len(unexpected) > 0:
             print(f"Unexpected Keys: {unexpected}")
+
+    def remove_mismatched_keys(self, state_dict, pattern=None, additional_keys=None):
+        """Remove keys from the state dictionary based on a pattern and a list of additional specific keys."""
+        # Find keys that match the pattern
+        if pattern is not None:
+            mismatched_keys = [key for key in state_dict if re.search(pattern, key)]
+        else:
+            mismatched_keys = []
+
+        print(f"Removing {len(mismatched_keys)} keys based on pattern {pattern}")
+        print(mismatched_keys)
+
+        # Add specific keys to be removed
+        if additional_keys:
+            mismatched_keys.extend([key for key in additional_keys if key in state_dict])
+
+        # Remove all identified keys
+        for key in mismatched_keys:
+            if key in state_dict:
+                del state_dict[key]
+        return state_dict
 
     def _init_first_stage(self, config):
         model = instantiate_from_config(config).eval()
@@ -231,7 +269,7 @@ class DiffusionEngine(pl.LightningModule):
         if self.input_key == "latents":
             # Remove encoder to save memory
             self.first_stage_model.encoder = None
-            torch.cuda.empty_cache()
+        torch.cuda.empty_cache()
 
     def get_input(self, batch):
         # assuming unified data format, dataloader returns a dict.
@@ -286,10 +324,12 @@ class DiffusionEngine(pl.LightningModule):
         return z
 
     def forward(self, x, batch):
-        loss = self.loss_fn(self.model, self.denoiser, self.conditioner, x, batch)
-        loss_mean = loss.mean()
-        loss_dict = {"loss": loss_mean}
-        return loss_mean, loss_dict
+        loss_dict = self.loss_fn(self.model, self.denoiser, self.conditioner, x, batch)
+        # loss_mean = loss.mean()
+        for k in loss_dict:
+            loss_dict[k] = loss_dict[k].mean()
+        # loss_dict = {"loss": loss_mean}
+        return loss_dict["loss"], loss_dict
 
     def shared_step(self, batch: Dict) -> Any:
         x = self.get_input(batch)
@@ -326,6 +366,19 @@ class DiffusionEngine(pl.LightningModule):
         # self.trainer.strategy.barrier()
 
         return loss
+
+    # def validation_step(self, batch, batch_idx):
+    #     # loss, loss_dict = self.shared_step(batch)
+    #     # self.log_dict(loss_dict, prog_bar=True, logger=True, on_step=True, on_epoch=False)
+    #     self.log(
+    #         "global_step",
+    #         self.global_step,
+    #         prog_bar=True,
+    #         logger=True,
+    #         on_step=True,
+    #         on_epoch=False,
+    #     )
+    #     return 0
 
     # def on_train_epoch_start(self, *args, **kwargs):
     #     print(f"RANK - {self.trainer.global_rank}: on_train_epoch_start")
@@ -577,13 +630,16 @@ class DiffusionEngine(pl.LightningModule):
         for k in c:
             if isinstance(c[k], torch.Tensor):
                 c[k], uc[k] = map(lambda y: y[k][:N].to(self.device), (c, uc))
+            elif isinstance(c[k], list):
+                for i in range(len(c[k])):
+                    c[k][i], uc[k][i] = map(lambda y: y[k][i][:N].to(self.device), (c, uc))
 
         if sample:
             n = 2 if self.is_guided else 1
-            if num_frames == 1:
-                sampling_kwargs["image_only_indicator"] = torch.ones(n, num_frames).to(self.device)
-            else:
-                sampling_kwargs["image_only_indicator"] = torch.zeros(n, num_frames).to(self.device)
+            # if num_frames == 1:
+            #     sampling_kwargs["image_only_indicator"] = torch.ones(n, num_frames).to(self.device)
+            # else:
+            sampling_kwargs["image_only_indicator"] = torch.zeros(n, num_frames).to(self.device)
             sampling_kwargs["num_video_frames"] = batch["num_video_frames"]
 
             with self.ema_scope("Plotting"):
@@ -594,10 +650,10 @@ class DiffusionEngine(pl.LightningModule):
             log["samples"] = samples
 
             # Without guidance
-            if num_frames == 1:
-                sampling_kwargs["image_only_indicator"] = torch.ones(1, num_frames).to(self.device)
-            else:
-                sampling_kwargs["image_only_indicator"] = torch.zeros(1, num_frames).to(self.device)
+            # if num_frames == 1:
+            #     sampling_kwargs["image_only_indicator"] = torch.ones(1, num_frames).to(self.device)
+            # else:
+            sampling_kwargs["image_only_indicator"] = torch.zeros(1, num_frames).to(self.device)
             sampling_kwargs["num_video_frames"] = batch["num_video_frames"]
 
             with self.ema_scope("Plotting"):

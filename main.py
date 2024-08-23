@@ -483,6 +483,7 @@ if __name__ == "__main__":
     # default to ddp if not further specified
     default_strategy_config = {
         "target": "pytorch_lightning.strategies.DDPStrategy",
+        # "target": "sgm.callbacks.custom_ddp.CustomDDPPlugin",
         # "timeout": 60,
         # "num_nodes": lightning_config.trainer.num_nodes,
         # "process_group_backend": "gloo",
@@ -600,7 +601,7 @@ if __name__ == "__main__":
     print(f"trainer_opt: {trainer_opt}")
     # exit()
 
-    trainer = Trainer(**trainer_opt, **trainer_kwargs, limit_train_batches=1.0)
+    trainer = Trainer(**trainer_opt, **trainer_kwargs)
 
     trainer.logdir = logdir  ###
 

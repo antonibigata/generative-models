@@ -34,6 +34,32 @@ class VanillaCFG(Guider):
         for k in c:
             if k in ["vector", "crossattn", "concat", "audio_emb", "image_embeds", "landmarks", "masks", "gt"]:
                 c_out[k] = torch.cat((uc[k], c[k]), 0)
+            elif k == "reference":
+                c_out["reference"] = []
+                for i in range(len(c[k])):
+                    c_out["reference"].append(torch.cat((uc[k][i], c[k][i]), 0))
+            else:
+                assert c[k] == uc[k]
+                c_out[k] = c[k]
+        return torch.cat([x] * 2), torch.cat([s] * 2), c_out
+
+
+class KarrasGuider(VanillaCFG):
+    def __call__(self, x: torch.Tensor, sigma: torch.Tensor) -> torch.Tensor:
+        x_u, x_c = x.chunk(2)
+        x_pred = x_u + self.scale * (x_c - x_u)
+        return x_pred
+
+    def prepare_inputs(self, x, s, c, uc):
+        c_out = dict()
+
+        for k in c:
+            if k in ["vector", "crossattn", "concat", "audio_emb", "image_embeds", "landmarks"]:
+                c_out[k] = torch.cat((c[k], c[k]), 0)
+            elif k == "reference":
+                c_out["reference"] = []
+                for i in range(len(c[k])):
+                    c_out["reference"].append(torch.cat((c[k][i], c[k][i]), 0))
             else:
                 assert c[k] == uc[k]
                 c_out[k] = c[k]
@@ -44,8 +70,15 @@ class MultipleCondVanilla(Guider):
     def __init__(self, scales, condition_names) -> None:
         assert len(scales) == len(condition_names)
         self.scales = scales
-        self.condition_names = condition_names
+        # self.condition_names = condition_names
         self.n_conditions = len(scales)
+        self.map_cond_name = {
+            "audio_emb": "audio_emb",
+            "cond_frames_without_noise": "crossattn",
+            "cond_frames": "concat",
+        }
+        self.condition_names = [self.map_cond_name.get(cond_name, cond_name) for cond_name in condition_names]
+        print("Condition names: ", self.condition_names)
 
     def __call__(self, x: torch.Tensor, sigma: torch.Tensor) -> torch.Tensor:
         outs = x.chunk(self.n_conditions + 1)

@@ -20,20 +20,34 @@ import torchvision
 
 # from scripts.util.detection.nsfw_and_watermark_dectection import DeepFloydDataFiltering
 from sgm.util import default, instantiate_from_config, trim_pad_audio, get_raw_audio, save_audio_video
+from sgm.data.data_utils import draw_kps_image, scale_landmarks
 
 # from sgm.models.components.audio.Whisper import Whisper
 
 
 def get_audio_indexes(main_index, n_audio_frames, max_len):
+    start, end = main_index[0], main_index[-1]
     # Get indexes for audio from both sides of the main index
     audio_ids = []
     # get audio embs from both sides of the GT frame
-    audio_ids += [0] * max(n_audio_frames - main_index, 0)
-    for i in range(max(main_index - n_audio_frames, 0), min(main_index + n_audio_frames + 1, max_len)):
+    audio_ids += [0] * max(n_audio_frames - start, 0)
+    for i in range(max(start - n_audio_frames, 0), min(end + n_audio_frames + 1, max_len)):
         # for i in range(frame_ids[0], min(frame_ids[0] + self.n_audio_motion_embs + 1, n_frames)):
         audio_ids += [i]
-    audio_ids += [max_len - 1] * max(main_index + n_audio_frames - max_len + 1, 0)
+    audio_ids += [max_len - 1] * max(end + n_audio_frames - max_len + 1, 0)
     return audio_ids
+
+
+def load_landmarks(landmarks, original_size, index, target_size=(64, 64)):
+    landmarks = landmarks[index]
+    # landmarks = create_landmarks_image(landmarks, original_size, target_size=(224, 224), point_size=2)
+    # return (torch.from_numpy(landmarks) / 255.0) * 2 - 1
+    # return get_heatmap(landmarks[None, ...], target_size, original_size, n_points="stable", sigma=4).squeeze(0)
+    # land_image = create_landmarks_image(
+    #     landmarks, original_size, target_size=target_size, point_size=2, n_points="stable", dim=1
+    # )
+    land_image = draw_kps_image(target_size, original_size, landmarks, rgb=True, pts_width=1)
+    return torch.from_numpy(land_image).float() / 255.0
 
 
 def get_audio_embeddings(audio_path: str, audio_rate: int = 16000, fps: int = 25):
@@ -58,7 +72,7 @@ def get_audio_embeddings(audio_path: str, audio_rate: int = 16000, fps: int = 25
 
     elif audio_path is not None and audio_path.endswith(".pt"):
         audio = torch.load(audio_path)
-        raw_audio_path = audio_path.replace(".pt", ".wav").replace("_whisper_emb", "")
+        raw_audio_path = audio_path.replace(".pt", ".wav").replace("_whisper_emb", "").replace("audio_emb", "audio")
 
         if os.path.exists(raw_audio_path):
             raw_audio = get_raw_audio(raw_audio_path, audio_rate)
@@ -75,10 +89,13 @@ def sample(
     num_frames: Optional[int] = None,
     num_steps: Optional[int] = None,
     resize_size: Optional[int] = None,
+    video_folder: Optional[str] = None,
+    latent_folder: Optional[str] = None,
+    landmark_folder: Optional[str] = None,
     version: str = "svd_image",
     fps_id: int = 25,
     motion_bucket_id: int = 127,
-    cond_aug: float = 0.02,
+    cond_aug: float = 0.0,
     seed: int = 23,
     decoding_t: int = 14,  # Number of frames decoded at a time! This eats most VRAM. Reduce if necessary.
     device: str = "cuda",
@@ -94,6 +111,9 @@ def sample(
         "cond_frames",
         "cond_frames_without_noise",
     ],
+    get_landmarks: bool = False,
+    out_frames: int = 1,
+    n_audio_frames: int = 2,
 ):
     """
     Simple script to generate a single sample conditioned on an image `input_path` or multiple images, one for each
@@ -104,12 +124,10 @@ def sample(
         num_frames = default(num_frames, 14)
         output_folder = default(output_folder, "outputs/simple_image_sample/sd_2_1/")
         model_config = "scripts/sampling/configs/sd_2_1.yaml"
-        n_audio_frames = 2
     elif version == "svd_image":
         num_frames = default(num_frames, 14)
         output_folder = default(output_folder, "outputs/simple_image_sample/svd_image/")
-        model_config = "scripts/sampling/configs/svd_image.yaml"
-        n_audio_frames = 2
+        model_config = default(model_config, "scripts/sampling/configs/svd_image_bad.yaml")
 
     if use_latent:
         input_key = "latents"
@@ -154,8 +172,12 @@ def sample(
         #     )
         video = read_video(video_path, output_format="TCHW")[0]
         video = (video / 255.0) * 2.0 - 1.0
+        h, w = video.shape[2:]
+        video = torch.nn.functional.interpolate(video, (512, 512), mode="bilinear")
 
         video_embedding_path = video_path.replace(".mp4", "_video_512_latent.safetensors")
+        if video_folder is not None and latent_folder is not None:
+            video_embedding_path = video_embedding_path.replace(video_folder, latent_folder)
         video_emb = None
         if use_latent:
             video_emb = load_safetensors(video_embedding_path)["latents"]
@@ -169,6 +191,15 @@ def sample(
                 video_emb = video_emb[:max_frames] if video_emb is not None else None
                 raw_audio = raw_audio[:max_frames] if raw_audio is not None else None
         audio = audio.cuda()
+
+        landmarks = None
+        if get_landmarks:
+            if landmark_folder is not None:
+                video_path = video_path.replace(video_folder, landmark_folder)
+            landmarks = np.load(
+                video_path.replace(".mp4", ".npy").replace("_output_output", "_output_keypoints"), allow_pickle=True
+            )
+            landmarks = scale_landmarks(landmarks[:, :, :2], (h, w), (512, 512))
 
         h, w = video.shape[2:]
         # if degradation > 1:
@@ -199,8 +230,9 @@ def sample(
         #     height = min(height, 576)
         #     video = torch.nn.functional.interpolate(video, (height, width), mode="bilinear")
         # video = model.encode_first_stage(video.cuda())
-        cond = model_input[0]
-        emb = video_emb[0] if video_emb is not None else None
+        idx_cond = np.random.randint(0, len(model_input))
+        cond = model_input[idx_cond]
+        emb = video_emb[idx_cond] if video_emb is not None else None
 
         samples_list = []
         samples_list_gt = [torch.clamp((cond.unsqueeze(0) + 1.0) / 2.0, min=0.0, max=1.0)]
@@ -208,7 +240,7 @@ def sample(
             range(num_frames - 1, len(audio), num_frames), desc="Autoregressive", total=len(audio) // num_frames
         ):
             condition = cond
-            audio_indexes = get_audio_indexes(i, n_audio_frames, len(audio))
+            audio_indexes = get_audio_indexes(list(range(i, i + out_frames)), n_audio_frames, len(audio))
             audio_cond = audio[audio_indexes].unsqueeze(0).cuda()
             # audio_cond = audio_list[i].unsqueeze(0).to(device)
             condition = condition.unsqueeze(0).to(device)
@@ -218,7 +250,7 @@ def sample(
             assert condition.shape[1] == 3
             F = 8
             C = 4
-            shape = (1, C, H // F, W // F)
+            shape = (out_frames, C, H // F, W // F)
             if (H, W) != (576, 1024):
                 print(
                     "WARNING: The conditioning frame you provided is not 576x1024. This leads to suboptimal performance as model was only trained on 576x1024. Consider increasing `cond_aug`."
@@ -244,13 +276,18 @@ def sample(
             value_dict["cond_aug"] = cond_aug
             value_dict["audio_emb"] = audio_cond
 
+            if get_landmarks:
+                value_dict["landmarks"] = (
+                    load_landmarks(landmarks, (512, 512), i, target_size=(H, W)).unsqueeze(0).to(device)
+                ).unsqueeze(2)
+
             with torch.no_grad():
                 with torch.autocast(device):
                     batch, batch_uc = get_batch(
                         get_unique_embedder_keys_from_conditioner(model.conditioner),
                         value_dict,
                         [1, 1],
-                        T=1,
+                        T=out_frames,
                         device=device,
                     )
 
@@ -261,15 +298,16 @@ def sample(
                     )
 
                     for k in ["crossattn"]:
-                        uc[k] = repeat(uc[k], "b ... -> b t ...", t=1)
-                        uc[k] = rearrange(uc[k], "b t ... -> (b t) ...", t=1)
-                        c[k] = repeat(c[k], "b ... -> b t ...", t=1)
-                        c[k] = rearrange(c[k], "b t ... -> (b t) ...", t=1)
+                        if k in c:
+                            uc[k] = repeat(uc[k], "b ... -> b t ...", t=1)
+                            uc[k] = rearrange(uc[k], "b t ... -> (b t) ...", t=1)
+                            c[k] = repeat(c[k], "b ... -> b t ...", t=1)
+                            c[k] = rearrange(c[k], "b t ... -> (b t) ...", t=1)
 
                     video = torch.randn(shape, device=device)
 
                     additional_model_inputs = {}
-                    # additional_model_inputs["image_only_indicator"] = torch.zeros(n_batch, num_frames).to(device)
+                    additional_model_inputs["image_only_indicator"] = torch.zeros(n_batch, out_frames).to(device)
                     additional_model_inputs["num_video_frames"] = batch["num_video_frames"]
 
                     def denoiser(input, sigma, c):
@@ -335,7 +373,7 @@ def get_batch(keys, value_dict, N, T, device):
             batch[key] = value_dict[key]
 
     # if T is not None:
-    batch["num_video_frames"] = 1
+    batch["num_video_frames"] = T
 
     for key in batch.keys():
         if key not in batch_uc and isinstance(batch[key], torch.Tensor):
@@ -351,10 +389,10 @@ def load_model(
     input_key: str,
 ):
     config = OmegaConf.load(config)
-    if device == "cuda":
-        config.model.params.conditioner_config.params.emb_models[
-            0
-        ].params.open_clip_embedding_config.params.init_device = device
+    # if device == "cuda":
+    #     config.model.params.conditioner_config.params.emb_models[
+    #         0
+    #     ].params.open_clip_embedding_config.params.init_device = device
 
     config["model"]["params"]["input_key"] = input_key
 

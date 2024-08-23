@@ -4,6 +4,7 @@ from packaging import version
 from einops import repeat, rearrange
 from diffusers.utils import _get_model_file
 from diffusers.models.modeling_utils import load_state_dict
+from ...modules.diffusionmodules.augment_pipeline import AugmentPipe
 
 
 OPENAIUNETWRAPPER = "sgm.modules.diffusionmodules.wrappers.OpenAIWrapper"
@@ -24,18 +25,38 @@ class IdentityWrapper(nn.Module):
 
 
 class OpenAIWrapper(IdentityWrapper):
+    def __init__(self, diffusion_model, compile_model: bool = False, ada_aug_percent=0.0):
+        super().__init__(diffusion_model, compile_model)
+
+        self.augment_pipe = None
+        if ada_aug_percent > 0.0:
+            augment_kwargs = dict(xflip=1e8, yflip=1, scale=1, rotate_frac=1, aniso=1, translate_frac=1)
+            self.augment_pipe = AugmentPipe(ada_aug_percent, **augment_kwargs)
+
     def forward(self, x: torch.Tensor, t: torch.Tensor, c: dict, **kwargs) -> torch.Tensor:
         cond_cat = c.get("concat", torch.Tensor([]).type_as(x))
         if len(cond_cat.shape) and cond_cat.shape[0] and x.shape[0] != cond_cat.shape[0]:
             cond_cat = repeat(cond_cat, "b c h w -> b c t h w", t=x.shape[0] // cond_cat.shape[0])
             cond_cat = rearrange(cond_cat, "b c t h w -> (b t) c h w")
         x = torch.cat((x, cond_cat), dim=1)
+
+        if self.augment_pipe is not None:
+            x, labels = self.augment_pipe(x)
+        else:
+            labels = torch.zeros(x.shape[0], 9, device=x.device)
+
+        # if c.get("reference", None) is not None:
+        #     c["crossattn"] = c["reference"]
+
         return self.diffusion_model(
             x,
             timesteps=t,
             context=c.get("crossattn", None),
+            reference_context=c.get("reference", None),
             y=c.get("vector", None),
             audio_emb=c.get("audio_emb", None),
+            landmarks=c.get("landmarks", None),
+            aug_labels=labels,
             **kwargs,
         )
 

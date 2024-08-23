@@ -222,7 +222,8 @@ model:
 
     loss_fn_config:
       target: sgm.modules.diffusionmodules.loss.StandardDiffusionLoss
-      params:        
+      params:  
+        lambda_lower: 1.      
         batch2model_keys:
           - image_only_indicator
           - num_video_frames
@@ -271,6 +272,7 @@ data:
         resize_size: 512
         audio_folder: audio
         video_folder: cropped_videos_original
+        audio_emb_folder: null
         video_extension: .mp4
         audio_extension: .wav
         latent_folder: null
@@ -283,7 +285,7 @@ data:
         latent_type: video
         latent_scale: 1  # For backwards compatibility
         from_audio_embedding: True
-        load_all_possible_indexes: True
+        load_all_possible_indexes: False
         audio_emb_type: wav2vec2
         # cond_noise: [-3.0, 0.5]
         cond_noise: 0.

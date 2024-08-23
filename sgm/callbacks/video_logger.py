@@ -5,7 +5,7 @@ from pytorch_lightning.utilities import rank_zero_only
 from typing import Union
 import pytorch_lightning as pl
 import os
-from sgm.util import exists, suppress_output
+from sgm.util import exists, suppress_output, default
 import torchvision
 from PIL import Image
 import torch
@@ -103,6 +103,7 @@ class VideoLogger(Callback):
         log_videos_kwargs=None,
         log_before_first_step=False,
         enable_autocast=True,
+        batch_frequency_val=None,
     ):
         super().__init__()
         self.enable_autocast = enable_autocast
@@ -112,6 +113,10 @@ class VideoLogger(Callback):
         self.log_steps = [2**n for n in range(int(np.log2(self.batch_freq)) + 1)]
         if not increase_log_steps:
             self.log_steps = [self.batch_freq]
+        self.batch_freq_val = default(batch_frequency_val, self.batch_freq)
+        self.log_steps_val = [2**n for n in range(int(np.log2(self.batch_freq_val)) + 1)]
+        if not increase_log_steps:
+            self.log_steps_val = [self.batch_freq_val]
         self.clamp = clamp
         self.disabled = disabled
         self.log_on_batch_idx = log_on_batch_idx
@@ -196,8 +201,9 @@ class VideoLogger(Callback):
     @rank_zero_only
     def log_video(self, pl_module, batch, batch_idx, split="train"):
         check_idx = batch_idx if self.log_on_batch_idx else pl_module.global_step
+        # print(f"check_idx: {check_idx}", f"split: {split}")
         if (
-            self.check_frequency(check_idx)
+            self.check_frequency(check_idx, split=split)
             and hasattr(pl_module, "log_videos")  # batch_idx % self.batch_freq == 0
             and callable(pl_module.log_videos)
             and
@@ -241,7 +247,20 @@ class VideoLogger(Callback):
             if is_train:
                 pl_module.train()
 
-    def check_frequency(self, check_idx):
+    def check_frequency(self, check_idx, split="train"):
+        if split == "val":
+            if check_idx:
+                check_idx -= 1
+            if ((check_idx % self.batch_freq_val) == 0 or (check_idx in self.log_steps_val)) and (
+                check_idx > 0 or self.log_first_step
+            ):
+                try:
+                    self.log_steps_val.pop(0)
+                except IndexError as e:
+                    print(e)
+                    pass
+                return True
+            return False
         if check_idx:
             check_idx -= 1
         if ((check_idx % self.batch_freq) == 0 or (check_idx in self.log_steps)) and (
@@ -268,7 +287,7 @@ class VideoLogger(Callback):
 
     @rank_zero_only
     def on_validation_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, *args, **kwargs):
-        if not self.disabled and pl_module.global_step > 0:
+        if not self.disabled and (pl_module.global_step > 0 or self.log_first_step):
             self.log_video(pl_module, batch, batch_idx, split="val")
         if hasattr(pl_module, "calibrate_grad_norm"):
             if (pl_module.calibrate_grad_norm and batch_idx % 25 == 0) and batch_idx > 0:

@@ -590,6 +590,10 @@ def do_sample(
                     else:
                         additional_model_inputs[k] = batch[k]
 
+                additional_model_inputs = {}
+                additional_model_inputs["image_only_indicator"] = torch.zeros(2, 1).to("cuda")
+                additional_model_inputs["num_video_frames"] = T
+
                 shape = (math.prod(num_samples), C, H // F, W // F)
                 randn = torch.randn(shape).to("cuda")
 

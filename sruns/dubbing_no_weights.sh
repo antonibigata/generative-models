@@ -9,6 +9,10 @@
 #SBATCH --output=/data/home/antoni/slurm_logs/generative_models/%j.out
 #SBATCH --no-requeue
 #SBATCH --account all
+<<<<<<< HEAD
+=======
+#SBATCH --exclude=a100-st-p4d24xlarge-46
+>>>>>>> a7c72244eb98547df261bd0ed5fa6c63cabc80be
 source /data/home/antoni/miniconda3/etc/profile.d/conda.sh
 conda activate svd
 export WANDB_ENTITY=animator
@@ -21,4 +25,8 @@ srun python main.py --base configs/example_training/svd_dubbing_half.yaml --wand
     data.params.train.datapipeline.filelist=/fsx/rs2517/data/lists/HDTF/filelist_videos_train.txt \
     lightning.trainer.devices=4 lightning.trainer.accumulate_grad_batches=1 \
     model.params.network_config.params.audio_cond_method=to_time_emb data.params.train.datapipeline.what_mask=box \
+<<<<<<< HEAD
     data.params.train.loader.batch_size=2 'model.params.remove_keys_from_weights=[model.diffusion_model]' \
+=======
+    data.params.train.loader.batch_size=1 'model.params.remove_keys_from_weights=[model.diffusion_model]' \
+>>>>>>> a7c72244eb98547df261bd0ed5fa6c63cabc80be

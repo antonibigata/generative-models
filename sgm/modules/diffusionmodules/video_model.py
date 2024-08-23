@@ -2,12 +2,14 @@ from functools import partial
 from typing import List, Optional, Union
 
 from einops import rearrange, repeat
+import copy
 
 # from ...modules.diffusionmodules.adapters.lora import apply_lora
 # from ...modules.diffusionmodules.adapters.lora import get_module_names
 # from ...modules.diffusionmodules.adapters.lora_v2 import inject_trainable_lora
 from ...modules.diffusionmodules.openaimodel import *
 from ...modules.video_attention import SpatialVideoTransformer
+from ...modules.diffusionmodules.model import FaceLocator
 from ...util import default
 from .util import AlphaBlender
 from .adapters.scedit import SCEAdapter
@@ -129,6 +131,9 @@ class VideoUNet(nn.Module):
         audio_dim: Optional[int] = 0,
         additional_audio_frames: Optional[int] = 0,
         skip_time: bool = False,
+        use_ada_aug: bool = False,
+        encode_landmarks: bool = False,
+        reference_to: str = None,
     ):
         super().__init__()
         assert context_dim is not None
@@ -145,6 +150,14 @@ class VideoUNet(nn.Module):
         self.additional_audio_frames = additional_audio_frames
         audio_multiplier = additional_audio_frames * 2 + 1
         audio_dim = audio_dim * audio_multiplier
+
+        self.audio_is_context = "both" in audio_cond_method
+
+        if "both" == audio_cond_method:
+            audio_cond_method = "to_time_emb_image"
+        elif "both_keyframes" == audio_cond_method:
+            audio_cond_method = "to_time_emb"
+
         if "to_time_emb" in audio_cond_method:
             adm_in_channels += audio_dim
 
@@ -183,6 +196,10 @@ class VideoUNet(nn.Module):
             linear(time_embed_dim, time_embed_dim),
         )
 
+        self.use_ada_aug = use_ada_aug
+        if use_ada_aug:
+            self.map_aug = linear(9, time_embed_dim)
+
         if self.num_classes is not None:
             if isinstance(self.num_classes, int):
                 self.label_emb = nn.Embedding(num_classes, time_embed_dim)
@@ -214,6 +231,10 @@ class VideoUNet(nn.Module):
                     self.num_classes = None
             else:
                 raise ValueError()
+
+        self.encode_landmarks = encode_landmarks
+        if encode_landmarks:
+            self.face_locator = FaceLocator(320, conditioning_channels=3, block_out_channels=(16, 32, 96, 256))
 
         self.input_blocks = nn.ModuleList(
             [TimestepEmbedSequential(conv_nd(dims, in_channels, model_channels, 3, padding=1))]
@@ -253,6 +274,7 @@ class VideoUNet(nn.Module):
                 disable_temporal_crossattention=disable_temporal_crossattention,
                 max_time_embed_period=max_ddpm_temb_period,
                 skip_time=skip_time,
+                reference_to=reference_to,
             )
 
         def get_resblock(
@@ -440,7 +462,7 @@ class VideoUNet(nn.Module):
                             dim_head,
                             depth=transformer_depth[level],
                             context_dim=context_dim,
-                            audio_context_dim=audio_dim if "cross_attention" in audio_cond_method else None,
+                            audio_context_dim=audio_dim if "new_cross_attention" == audio_cond_method else None,
                             use_checkpoint=use_checkpoint,
                             disabled_sa=False,
                         )
@@ -502,34 +524,44 @@ class VideoUNet(nn.Module):
         x: th.Tensor,
         timesteps: th.Tensor,
         context: Optional[th.Tensor] = None,
+        reference_context: Optional[th.Tensor] = None,
         y: Optional[th.Tensor] = None,
         audio_emb: Optional[th.Tensor] = None,
+        landmarks: Optional[th.Tensor] = None,
+        aug_labels: Optional[th.Tensor] = None,
         time_context: Optional[th.Tensor] = None,
         num_video_frames: Optional[int] = 1,
         image_only_indicator: Optional[th.Tensor] = None,
     ):
+        if self.audio_is_context:
+            assert audio_emb is None
+            audio_emb = context
         # assert (y is not None) == (
         #     self.num_classes is not None
         # ), "must specify y if and only if the model is class-conditional -> no, relax this TODO"
-
+        curr_context_idx = None
         num_video_frames = num_video_frames if isinstance(num_video_frames, int) else num_video_frames[0]
+        if reference_context is not None:
+            copy_context = copy.deepcopy(reference_context)
+            mid = copy_context.pop(-1)
+            copy_context.insert((len(copy_context) // 2) - 1, mid)
+            reference_context = copy_context
+            curr_context_idx = 0
+            if num_video_frames > 1:
+                reference_context = [
+                    repeat(ref_context, "b h w -> (b t) h w", t=num_video_frames) for ref_context in reference_context
+                ]
+
         or_batch_size = x.shape[0] // num_video_frames
         if image_only_indicator is not None and image_only_indicator.shape[0] != or_batch_size:
             # TODO: fix this
             image_only_indicator = repeat(image_only_indicator, "b ... -> (b t) ...", t=2)
 
-        if x.shape[0] != context.shape[0]:
-            # print("x.shape:", x.shape)
-            # print("context.shape:", context.shape)
-            # exit()
-            # num_video_frames = num_video_frames[0].item()
-            # num_frames = x.shape[2]
-            # num_video_frames = default(num_video_frames, num_frames)
-            # x = rearrange(x, "b c t h w -> (b t) c h w")
+        if context is not None and x.shape[0] != context.shape[0]:
             context = repeat(context, "b ... -> b t ...", t=num_video_frames)
             context = rearrange(context, "b t ... -> (b t) ...", t=num_video_frames)
 
-        if self.audio_cond_method == "cross_attention":
+        if "cross_attention" in self.audio_cond_method:
             assert audio_emb is not None
             if audio_emb.ndim == 4:
                 audio_emb = rearrange(audio_emb, "b t d c -> b (t d) c")
@@ -571,45 +603,64 @@ class VideoUNet(nn.Module):
                     y = th.cat([y, audio_emb], dim=1)
                 else:
                     y = audio_emb
-            assert y.shape[0] == x.shape[0]
+            assert y.shape[0] == x.shape[0], f"{y.shape} != {x.shape}"
             emb = emb + self.label_emb(y)
+
+        if self.use_ada_aug:
+            assert aug_labels is not None, "must provide aug_labels if use_ada_aug is True"
+            emb = emb + self.map_aug(aug_labels)
 
         h = x
 
-        for module in self.input_blocks:
+        if self.encode_landmarks:
+            landmarks_emb = self.face_locator(landmarks)
+            landmarks_emb = rearrange(landmarks_emb, "b c t h w -> (b t) c h w")
+            # print("landmarks_emb:", landmarks_emb.shape)
+        for i, module in enumerate(self.input_blocks):
             # print(image_only_indicator.shape, num_video_frames, h.shape)
-            h = module(
+            if i == 1 and self.encode_landmarks:
+                h = h + landmarks_emb
+            # print("h.shape:", h.shape, i)
+            h, is_attention = module(
                 h,
                 emb,
                 context=context,
+                reference_context=reference_context[curr_context_idx] if reference_context is not None else None,
                 audio_context=audio_emb if "cross_attention" in self.audio_cond_method else None,
                 image_only_indicator=image_only_indicator,
                 time_context=time_context,
                 num_video_frames=num_video_frames,
             )
+            if is_attention:
+                curr_context_idx = None if curr_context_idx is None else curr_context_idx + 1
             hs.append(h)
-        h = self.middle_block(
+        h, is_attention = self.middle_block(
             h,
             emb,
             context=context,
+            reference_context=reference_context[curr_context_idx] if reference_context is not None else None,
             audio_context=audio_emb if "cross_attention" in self.audio_cond_method else None,
             image_only_indicator=image_only_indicator,
             time_context=time_context,
             num_video_frames=num_video_frames,
         )
+        curr_context_idx = None if curr_context_idx is None else curr_context_idx + 1
         for i, module in enumerate(self.output_blocks):
             skip_x = hs.pop()
             if self.adapter is not None:
                 skip_x = self.adapter[i](skip_x, n_frames=num_video_frames, condition=audio_emb)
             h = th.cat([h, skip_x], dim=1)
-            h = module(
+            h, is_attention = module(
                 h,
                 emb,
                 context=context,
+                reference_context=reference_context[curr_context_idx] if reference_context is not None else None,
                 audio_context=audio_emb if "cross_attention" in self.audio_cond_method else None,
                 image_only_indicator=image_only_indicator,
                 time_context=time_context,
                 num_video_frames=num_video_frames,
             )
+            if is_attention:
+                curr_context_idx = None if curr_context_idx is None else curr_context_idx + 1
         # h = h.type(x.dtype)
         return self.out(h)

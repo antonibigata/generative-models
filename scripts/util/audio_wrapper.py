@@ -134,10 +134,7 @@ class AudioWrapper(nn.Module):
         # chunk_size = max(audio_frames.shape[1] // 4, chunks)
         # Get audio embeddings
         audio_embeddings = []
-        for chunk in self.calculate_splits(
-            audio_frames, 16000 * 200
-        ):  # 750 is the max size of the audio chunks that can be processed by the model (= 30 seconds)
-            # print(chunk.shape)
+        for chunk in self.calculate_splits(audio_frames, chunks):
             hidden_states = self.model.wav2vec2(chunk.cuda())[0]
             audio_embeddings.append(hidden_states)
         audio_embeddings = torch.cat(audio_embeddings, dim=1)

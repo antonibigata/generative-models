@@ -3,9 +3,11 @@ import os
 from glob import glob
 from pathlib import Path
 from typing import Optional
+from PIL import Image
 
 import numpy as np
 import torch
+import torchvision
 from einops import rearrange, repeat
 from fire import Fire
 from omegaconf import OmegaConf
@@ -53,7 +55,7 @@ def create_pipeline_inputs(video, audio, num_frames, video_emb, overlap=1, addit
     return gt_chunks, audio_interpolation_chunks, audio_image_preds, video_emb[0], video[0]
 
 
-def get_audio_embeddings(audio_path: str, audio_rate: int = 16000, fps: int = 25, audio_emb_type="whisper"):
+def get_audio_embeddings(audio_path: str, audio_rate: int = 16000, fps: int = 25, audio_emb_type="wav2vec2"):
     # Process audio
     audio = None
     raw_audio = None
@@ -83,6 +85,7 @@ def get_audio_embeddings(audio_path: str, audio_rate: int = 16000, fps: int = 25
             # audio = torch.cat(audio_embeddings, dim=1).squeeze(0)
     elif audio_path is not None and audio_path.endswith(".pt"):
         audio = torch.load(audio_path)
+        print(f"Loaded audio embeddings from {audio_path} {audio.shape}.")
         raw_audio_path = audio_path.replace(".pt", ".wav").replace(f"_{audio_emb_type}_emb", "")
 
         if os.path.exists(raw_audio_path):
@@ -100,8 +103,10 @@ def sample(
     num_frames: Optional[int] = None,
     num_steps: Optional[int] = None,
     resize_size: Optional[int] = None,
+    video_folder: Optional[str] = None,
+    latent_folder: Optional[str] = None,
     version: str = "svd",
-    fps_id: int = 6,
+    fps_id: int = 24,
     motion_bucket_id: int = 127,
     cond_aug: float = 0.02,
     seed: int = 23,
@@ -115,7 +120,12 @@ def sample(
     model_config: Optional[str] = None,
     model_keyframes_config: Optional[str] = None,
     max_seconds: Optional[int] = None,
-    lora_path: Optional[str] = None,
+    lora_path_interp: Optional[str] = None,
+    lora_path_keyframes: Optional[str] = None,
+    force_uc_zero_embeddings=[
+        "cond_frames",
+        "cond_frames_without_noise",
+    ],
 ):
     """
     Simple script to generate a single sample conditioned on an image `input_path` or multiple images, one for each
@@ -150,8 +160,6 @@ def sample(
     else:
         input_key = "frames"
 
-    # if lora_path is not None:
-    #     model.init_from_ckpt(lora_path, remove_keys_from_weights=None)
     torch.manual_seed(seed)
 
     path = Path(input_path)
@@ -179,8 +187,11 @@ def sample(
         #     )
         video = read_video(video_path, output_format="TCHW")[0]
         video = (video / 255.0) * 2.0 - 1.0
+        video = torch.nn.functional.interpolate(video, (512, 512), mode="bilinear")
 
         video_embedding_path = video_path.replace(".mp4", "_video_512_latent.safetensors")
+        if video_folder is not None and latent_folder is not None:
+            video_embedding_path = video_embedding_path.replace(video_folder, latent_folder)
         video_emb = None
         if use_latent:
             video_emb = load_safetensors(video_embedding_path)["latents"]
@@ -225,6 +236,9 @@ def sample(
             input_key,
         )
 
+        if lora_path_interp is not None:
+            model.init_from_ckpt(lora_path_interp, remove_keys_from_weights=None)
+
         model_keyframes, filter, n_batch_keyframes = load_model(
             model_keyframes_config,
             device,
@@ -233,6 +247,9 @@ def sample(
             input_key,
         )
         print(n_batch, n_batch_keyframes)
+
+        if lora_path_keyframes is not None:
+            model_keyframes.init_from_ckpt(lora_path_keyframes, remove_keys_from_weights=None)
 
         model_keyframes.en_and_decode_n_samples_a_time = decoding_t
         model.en_and_decode_n_samples_a_time = decoding_t
@@ -255,6 +272,9 @@ def sample(
         start_cond = cond
         for i in tqdm(range(len(audio_list)), desc="Autoregressive Keyframes", total=len(audio_list)):
             condition = cond
+            # Image.fromarray(
+            #     (rearrange((condition + 1) / 2, "c h w -> h w c") * 255).cpu().numpy().astype(np.uint8)
+            # ).save(f"test_{i}.png")
             audio_cond = audio_list[i].unsqueeze(0).cuda()
             # audio_cond = audio_list[i].unsqueeze(0).to(device)
             condition = condition.unsqueeze(0).to(device)
@@ -303,10 +323,7 @@ def sample(
                     c, uc = model_keyframes.conditioner.get_unconditional_conditioning(
                         batch,
                         batch_uc=batch_uc,
-                        force_uc_zero_embeddings=[
-                            "cond_frames",
-                            "cond_frames_without_noise",
-                        ],
+                        force_uc_zero_embeddings=force_uc_zero_embeddings,
                     )
 
                     for k in ["crossattn"]:
@@ -318,7 +335,7 @@ def sample(
                     video = torch.randn(shape, device=device)
 
                     additional_model_inputs = {}
-                    # additional_model_inputs["image_only_indicator"] = torch.zeros(n_batch, num_frames).to(device)
+                    additional_model_inputs["image_only_indicator"] = torch.zeros(n_batch, 1).to(device)
                     additional_model_inputs["num_video_frames"] = batch["num_video_frames"]
 
                     def denoiser(input, sigma, c):
@@ -328,17 +345,31 @@ def sample(
 
                     samples_z = model_keyframes.sampler(denoiser, video, cond=c, uc=uc, strength=strength)
                     interpolation_cond_list_emb.append(
-                        torch.stack([start_cond_emb.to(device), samples_z.squeeze(0)], dim=1)
+                        torch.stack([start_cond_emb.to(device), samples_z.squeeze(0).clone()], dim=1)
                     )
-                    start_cond_emb = samples_z.squeeze(0)
+                    start_cond_emb = samples_z.squeeze(0).clone()
 
                     samples_x = model.decode_first_stage(samples_z)
                     samples = torch.clamp((samples_x + 1.0) / 2.0, min=0.0, max=1.0)
-                    interpolation_cond_list.append(torch.stack([start_cond.to(device), samples.squeeze(0)], dim=1))
-                    start_cond = samples.squeeze(0)
+
+                    interpolation_cond_list.append(
+                        torch.stack([start_cond.to(device), samples.squeeze(0).clone()], dim=1)
+                    )
+                    start_cond = samples.squeeze(0).clone()
 
                     # image = samples[-1] * 2.0 - 1.0
                     video = None
+
+        keyframes_gen = torchvision.utils.make_grid(torch.cat(interpolation_cond_list, dim=0), nrow=2)
+        keyframes_gen = (rearrange(keyframes_gen, "c h w -> h w c") * 255).cpu().numpy().astype(np.uint8)
+
+        os.makedirs(output_folder, exist_ok=True)
+        base_count = len(glob(os.path.join(output_folder, "*.mp4")))
+        video_path = os.path.join(output_folder, f"{base_count:06d}.mp4")
+        video_path_gt = os.path.join(output_folder, f"{base_count:06d}_gt.mp4")
+
+        keyframe_path = os.path.join(output_folder, f"{base_count:06d}_keyframes.png")
+        Image.fromarray(keyframes_gen).save(keyframe_path)
 
         samples_list = []
         gt_list = []
@@ -443,10 +474,6 @@ def sample(
         samples = torch.concatenate(samples_list)
         gt = torch.concatenate(gt_list)
 
-        os.makedirs(output_folder, exist_ok=True)
-        base_count = len(glob(os.path.join(output_folder, "*.mp4")))
-        video_path = os.path.join(output_folder, f"{base_count:06d}.mp4")
-        video_path_gt = os.path.join(output_folder, f"{base_count:06d}_gt.mp4")
         # writer = cv2.VideoWriter(
         #     video_path,
         #     cv2.VideoWriter_fourcc(*"MP4V"),
@@ -526,10 +553,10 @@ def load_model(
     input_key: str,
 ):
     config = OmegaConf.load(config)
-    if device == "cuda":
-        config.model.params.conditioner_config.params.emb_models[
-            0
-        ].params.open_clip_embedding_config.params.init_device = device
+    # if device == "cuda":
+    #     config.model.params.conditioner_config.params.emb_models[
+    #         0
+    #     ].params.open_clip_embedding_config.params.init_device = device
 
     config["model"]["params"]["input_key"] = input_key
 

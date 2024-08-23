@@ -5,7 +5,7 @@ model:
     input_key: latents
     scale_factor: 0.18215
     disable_first_stage_autocast: True
-    ckpt_path: /vol/bitbucket/abigata/mp_rank_00_model_states.safetensors
+    ckpt_path: /data/home/antoni/code/generative-models/logs/2024-07-12T14-16-48_example_training-svd_image/checkpoints/last.ckpt/checkpoint/mp_rank_00_model_states.pt
     # remove_keys_from_weights: [model.diffusion_model.label_emb.0.0.weight]
 
     # LoRA
@@ -60,9 +60,9 @@ model:
         fine_tuning_method: null
         audio_cond_method: to_time_emb_image
         additional_audio_frames: 2
-        audio_dim: 1280
+        audio_dim: 768
         unfreeze_blocks: [] # Because we changed the input block
-        skip_time: true
+        skip_time: false
 
     conditioner_config:
       target: sgm.modules.GeneralConditioner

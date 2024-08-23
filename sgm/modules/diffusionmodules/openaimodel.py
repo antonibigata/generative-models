@@ -77,6 +77,7 @@ class TimestepEmbedSequential(nn.Sequential, TimestepBlock):
         x: th.Tensor,
         emb: th.Tensor,
         context: Optional[th.Tensor] = None,
+        reference_context: Optional[th.Tensor] = None,
         audio_context: Optional[th.Tensor] = None,
         image_only_indicator: Optional[th.Tensor] = None,
         time_context: Optional[int] = None,
@@ -84,6 +85,7 @@ class TimestepEmbedSequential(nn.Sequential, TimestepBlock):
     ):
         from ...modules.diffusionmodules.video_model import VideoResBlock
 
+        is_attention = False
         for layer in self:
             module = layer
 
@@ -92,9 +94,11 @@ class TimestepEmbedSequential(nn.Sequential, TimestepBlock):
             elif isinstance(module, VideoResBlock):
                 x = layer(x, emb, num_video_frames, image_only_indicator)
             elif isinstance(module, SpatialVideoTransformer):
+                is_attention = True
                 x = layer(
                     x,
                     context,
+                    reference_context,
                     time_context,
                     audio_context,
                     num_video_frames,
@@ -104,7 +108,8 @@ class TimestepEmbedSequential(nn.Sequential, TimestepBlock):
                 x = layer(x, context)
             else:
                 x = layer(x)
-        return x
+
+        return x, is_attention
 
 
 class Upsample(nn.Module):

@@ -113,8 +113,9 @@ def get_audio_embeddings(audio_path, output_path, model_size, fps):
             sr = info.get("audio_fps", None)
             max_len_sec = frames.shape[0] / fps
 
+            # print(audio.nelement() == 0, audio_file)
             # Load audio
-            if audio is None:
+            if audio is None or audio.nelement() == 0:
                 audio, sr = torchaudio.load(audio_file)
             if sr != audio_rate:
                 audio = torchaudio.functional.resample(audio, orig_freq=sr, new_freq=audio_rate)[0]
@@ -122,6 +123,11 @@ def get_audio_embeddings(audio_path, output_path, model_size, fps):
 
             if args.model_type == "wav2vec2":
                 audio = (audio - audio.mean()) / torch.sqrt(audio.var() + 1e-7)
+                audio = trim_pad_audio(audio, audio_rate, max_len_sec=max_len_sec)[0]
+                audio = make_into_multiple_of(audio, samples_per_frame, dim=0)
+                audio_frames = rearrange(audio, "(f s) -> f s", s=samples_per_frame)
+                assert audio_frames.shape[0] == frames.shape[0], f"{audio_frames.shape} != {frames.shape}"
+                audio = rearrange(audio_frames, "f s -> () (f s)")
                 # print(audio.shape, max_len_sec * audio_rate)
                 audio_embeddings = model.encode_audio(audio)
                 if audio_embeddings.shape[0] - frames.shape[0] == 1:
