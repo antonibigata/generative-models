@@ -37,6 +37,7 @@ class StandardDiffusionLoss(nn.Module):
         offset_noise_level: float = 0.0,
         batch2model_keys: Optional[Union[str, List[str]]] = None,
         lambda_lower: float = 1.0,
+        lambda_upper: float = 1.0,
         fix_image_leak: bool = False,
         add_lpips: bool = False,
     ):
@@ -50,6 +51,7 @@ class StandardDiffusionLoss(nn.Module):
         self.loss_type = loss_type
         self.offset_noise_level = offset_noise_level
         self.lambda_lower = lambda_lower
+        self.lambda_upper = lambda_upper
         self.add_lpips = add_lpips
 
         if loss_type == "lpips":
@@ -121,10 +123,15 @@ class StandardDiffusionLoss(nn.Module):
             # print(cond["concat"].shape, cond["vector"].shape, noise.shape, noise_aug.shape, noise_emb.shape)
 
         model_output = denoiser(network, noised_input, sigmas, cond, **additional_model_inputs)
+        mask = cond.get("mask", None)
         w = append_dims(self.loss_weighting(sigmas), input.ndim)
-        return self.get_loss(model_output, input, w)
+        return self.get_loss(model_output, input, w, mask)
 
-    def get_loss(self, model_output, target, w):
+    def get_loss(self, model_output, target, w, mask=None):
+        if mask is not None:
+            print(w.shape, mask.shape)
+            w = w * mask
+
         if target.ndim == 5:
             target = rearrange(target, "b c t h w -> (b t) c h w")
             B = w.shape[0]
@@ -139,6 +146,10 @@ class StandardDiffusionLoss(nn.Module):
             weight_lower[:, :, model_output.shape[2] // 2 :] *= self.lambda_lower
             w = weight_lower * w
 
+        if self.lambda_upper != 1.0:
+            weight_upper = torch.ones_like(model_output, device=w.device)
+            weight_upper[:, :, : model_output.shape[2] // 2] *= self.lambda_upper
+            w = weight_upper * w
         loss_dict = {}
 
         if self.loss_type == "l2":

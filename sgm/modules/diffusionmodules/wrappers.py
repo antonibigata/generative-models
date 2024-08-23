@@ -6,6 +6,7 @@ from diffusers.utils import _get_model_file
 from diffusers.models.modeling_utils import load_state_dict
 from ...modules.diffusionmodules.augment_pipeline import AugmentPipe
 
+
 OPENAIUNETWRAPPER = "sgm.modules.diffusionmodules.wrappers.OpenAIWrapper"
 
 
@@ -122,6 +123,50 @@ class StabilityWrapper(IdentityWrapper):
             audio_emb=c.get("audio_emb", None),
             **kwargs,
         )[0]
+
+
+class DubbingWrapper(IdentityWrapper):
+    def __init__(self, diffusion_model, compile_model: bool = False, mask_input=False):
+        super().__init__(diffusion_model, compile_model)
+        self.mask_input = mask_input
+
+    def forward(self, x: torch.Tensor, t: torch.Tensor, c: dict, **kwargs) -> torch.Tensor:
+        cond_cat = c.get("concat", torch.Tensor([]).type_as(x))
+        if len(cond_cat.shape):
+            T = x.shape[0] // cond_cat.shape[0]
+            if cond_cat.shape[1] == 4:
+                cond_cat = repeat(cond_cat, "b c h w -> b (t c) h w", t=T)
+            cond_cat = rearrange(cond_cat, "b (t c) h w -> (b t) c h w", t=T)
+            # cond_cat = rearrange(cond_cat, "b c t h w -> (b t) c h w")
+
+        masks = c.get("masks", None)
+        if masks is not None:
+            if masks.dim() == 5:
+                masks = rearrange(masks, "b c t h w -> (b t) c h w")
+            if self.mask_input:
+                # gt = c.get("gt", torch.Tensor([]).type_as(x))
+                # gt = rearrange(gt, "b c t h w -> (b t) c h w")
+                # # masks = repeat(masks, "b c h w -> b (c d) h w", d=3)
+                # x = x * masks + gt * (1.0 - masks)
+                pass
+            else:
+                x = torch.cat((x, masks), dim=1)
+
+        x = torch.cat((x, cond_cat), dim=1)
+        out = self.diffusion_model(
+            x,
+            timesteps=t,
+            context=c.get("crossattn", None),
+            y=c.get("vector", None),
+            audio_emb=c.get("audio_emb", None),
+            **kwargs,
+        )
+
+        # if self.mask_input:
+        #     out = out * masks + gt * (1.0 - masks)
+        # # We only learn to predict the lower half of the image
+        # out[:, :, : x.shape[-2]] = cond_cat[:, :, : x.shape[-2]]
+        return out
 
 
 class InterpolationWrapper(IdentityWrapper):

@@ -8,6 +8,49 @@ from .denoiser_scaling import DenoiserScaling
 from .discretizer import Discretization
 
 
+# def chunk_network(network, input, c_in, c_noise, cond, additional_model_inputs, chunk_size, num_frames=1):
+#     out = []
+
+#     for i in range(0, input.shape[0], chunk_size):
+#         start_idx = i
+#         end_idx = i + chunk_size
+
+#         input_chunk = input[start_idx:end_idx]
+#         c_in_chunk = (
+#             c_in[start_idx:end_idx]
+#             if c_in.shape[0] == input.shape[0]
+#             else c_in[start_idx // num_frames : end_idx // num_frames]
+#         )
+#         c_noise_chunk = (
+#             c_noise[start_idx:end_idx]
+#             if c_noise.shape[0] == input.shape[0]
+#             else c_noise[start_idx // num_frames : end_idx // num_frames]
+#         )
+
+#         cond_chunk = {}
+#         for k, v in cond.items():
+#             if isinstance(v, torch.Tensor) and v.shape[0] == input.shape[0]:
+#                 cond_chunk[k] = v[start_idx:end_idx]
+#             elif isinstance(v, torch.Tensor):
+#                 cond_chunk[k] = v[start_idx // num_frames : end_idx // num_frames]
+#             else:
+#                 cond_chunk[k] = v
+
+#         additional_model_inputs_chunk = {}
+#         for k, v in additional_model_inputs.items():
+#             if isinstance(v, torch.Tensor):
+#                 or_size = v.shape[0]
+#                 additional_model_inputs_chunk[k] = repeat(
+#                     v, "b c -> (b t) c", t=input_chunk.shape[0] // num_frames // or_size
+#                 )
+#             else:
+#                 additional_model_inputs_chunk[k] = v
+
+#         out.append(network(input_chunk * c_in_chunk, c_noise_chunk, cond_chunk, **additional_model_inputs_chunk))
+
+#     return torch.cat(out, dim=0)
+
+
 class Denoiser(nn.Module):
     def __init__(self, scaling_config: Dict):
         super().__init__()
@@ -32,14 +75,87 @@ class Denoiser(nn.Module):
         if input.ndim == 5:
             T = input.shape[2]
             input = rearrange(input, "b c t h w -> (b t) c h w")
-            sigma = repeat(sigma, "b ... -> b t ...", t=T)
-            sigma = rearrange(sigma, "b t ... -> (b t) ...")
+            if sigma.shape[0] != input.shape[0]:
+                sigma = repeat(sigma, "b ... -> b t ...", t=T)
+                sigma = rearrange(sigma, "b t ... -> (b t) ...")
         sigma_shape = sigma.shape
         sigma = append_dims(sigma, input.ndim)
         c_skip, c_out, c_in, c_noise = self.scaling(sigma)
         c_noise = self.possibly_quantize_c_noise(c_noise.reshape(sigma_shape))
         out = network(input * c_in, c_noise, cond, **additional_model_inputs)
         return out * c_out + input * c_skip
+
+
+class DenoiserDub(nn.Module):
+    def __init__(self, scaling_config: Dict):
+        super().__init__()
+
+        self.scaling: DenoiserScaling = instantiate_from_config(scaling_config)
+
+    def possibly_quantize_sigma(self, sigma: torch.Tensor) -> torch.Tensor:
+        return sigma
+
+    def possibly_quantize_c_noise(self, c_noise: torch.Tensor) -> torch.Tensor:
+        return c_noise
+
+    def forward(
+        self,
+        network: nn.Module,
+        input: torch.Tensor,
+        sigma: torch.Tensor,
+        cond: Dict,
+        num_overlap_frames: int = 1,
+        num_frames: int = 14,
+        n_skips: int = 1,
+        chunk_size: int = None,
+        **additional_model_inputs,
+    ) -> torch.Tensor:
+        sigma = self.possibly_quantize_sigma(sigma)
+        if input.ndim == 5:
+            T = input.shape[2]
+            input = rearrange(input, "b c t h w -> (b t) c h w")
+            if sigma.shape[0] != input.shape[0]:
+                sigma = repeat(sigma, "b ... -> b t ...", t=T)
+                sigma = rearrange(sigma, "b t ... -> (b t) ...")
+        sigma_shape = sigma.shape
+        sigma = append_dims(sigma, input.ndim)
+        c_skip, c_out, c_in, c_noise = self.scaling(sigma)
+        c_noise = self.possibly_quantize_c_noise(c_noise.reshape(sigma_shape))
+        gt = cond.get("gt", torch.Tensor([]).type_as(input))
+        if gt.dim() == 5:
+            gt = rearrange(gt, "b c t h w -> (b t) c h w")
+        masks = cond.get("masks", None)
+        if masks.dim() == 5:
+            masks = rearrange(masks, "b c t h w -> (b t) c h w")
+        input = input * masks + gt * (1.0 - masks)
+
+        # additional_model_inputs["image_only_indicator"] = repeat(
+        #     additional_model_inputs["image_only_indicator"], "b c -> (b t) c", t=input.shape[0] // num_frames
+        # )
+        if chunk_size is not None:
+            assert chunk_size % num_frames == 0, "Chunk size should be multiple of num_frames"
+            out = chunk_network(
+                network, input, c_in, c_noise, cond, additional_model_inputs, chunk_size, num_frames=num_frames
+            )
+        else:
+            out = network(input * c_in, c_noise, cond, **additional_model_inputs)
+        out = out * c_out + input * c_skip
+        out = out * masks + gt * (1.0 - masks)
+        return out
+
+
+# class DenoiserTemporalMultiDiffusion(nn.Module):
+#     def __init__(self, scaling_config: Dict, is_dub: bool = False):
+#         super().__init__()
+
+#         self.scaling: DenoiserScaling = instantiate_from_config(scaling_config)
+#         self.is_dub = is_dub
+
+#     def possibly_quantize_sigma(self, sigma: torch.Tensor) -> torch.Tensor:
+#         return sigma
+
+#     def possibly_quantize_c_noise(self, c_noise: torch.Tensor) -> torch.Tensor:
+#         return c_noise
 
 
 class KarrasGuidanceDenoiser(Denoiser):
