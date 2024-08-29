@@ -54,6 +54,7 @@ class VideoDataset(Dataset):
         resize_size=None,
         audio_folder="Audio",
         video_folder="CroppedVideos",
+        audio_emb_folder=None,
         landmarks_folder=None,
         video_extension=".avi",
         audio_extension=".wav",
@@ -94,6 +95,7 @@ class VideoDataset(Dataset):
         self.n_cond_frames = n_cond_frames
         self.only_predict_mouth = only_predict_mouth
         self.what_mask = what_mask
+        self.audio_emb_folder = audio_emb_folder if audio_emb_folder is not None else audio_folder
         # self.fps = fps
 
         assert not (exists(data_mean) ^ exists(data_std)), "Both data_mean and data_std should be provided"
@@ -119,12 +121,12 @@ class VideoDataset(Dataset):
             for f in files.readlines():
                 f = f.rstrip()
                 audio_path = f.replace(video_folder, audio_folder).replace(video_extension, audio_extension)
-                if not self.audio_in_video and not os.path.exists(audio_path):
-                    missing_audio += 1
-                    print("Missing audio file: ", audio_path)
-                    if missing_audio > max_missing_audio_files:
-                        raise FileNotFoundError(f"Missing more than {max_missing_audio_files} audio files")
-                    continue
+                # if not self.audio_in_video and not os.path.exists(audio_path):
+                #     missing_audio += 1
+                #     print("Missing audio file: ", audio_path)
+                #     if missing_audio > max_missing_audio_files:
+                #         raise FileNotFoundError(f"Missing more than {max_missing_audio_files} audio files")
+                #     continue
                 self.filelist += [f]
                 self.audio_filelist += [audio_path]
 
@@ -187,7 +189,7 @@ class VideoDataset(Dataset):
         self.total_len = len(self._indexes)
 
     def __len__(self):
-        return self.total_len
+        return len(self._indexes)
 
     def _load_landmarks(self, filename, original_size, target_size, indexes):
         landmarks = np.load(filename)[indexes, :]
@@ -246,6 +248,11 @@ class VideoDataset(Dataset):
             latents = ((latents - self.data_mean) / self.data_std) * 0.5
         return latents
 
+    def convert_indexes(self, indexes_25fps, fps_from=25, fps_to=60):
+        ratio = fps_to / fps_from
+        indexes_60fps = [int(index * ratio) for index in indexes_25fps]
+        return indexes_60fps
+
     def _get_frames_and_audio(self, idx):
         if self.load_all_possible_indexes:
             indexes, video_file, audio_file, land_file = self._indexes[idx]
@@ -254,6 +261,9 @@ class VideoDataset(Dataset):
             else:
                 vr = decord.VideoReader(video_file)
             len_video = len(vr)
+            if "AA_processed" in video_file:
+                len_video *= 25 / 60
+                len_video = int(len_video)
         else:
             video_file, audio_file, land_file = self._indexes[idx]
             if self.audio_in_video:
@@ -261,8 +271,21 @@ class VideoDataset(Dataset):
             else:
                 vr = decord.VideoReader(video_file)
             len_video = len(vr)
+            if "AA_processed" in video_file:
+                len_video *= 25 / 60
+                len_video = int(len_video)
             start_idx = np.random.randint(0, len_video - self.num_frames)
             indexes = list(range(start_idx, start_idx + self.num_frames))
+
+        if "AA_processed" in video_file:
+            video_indexes = self.convert_indexes(indexes, fps_from=25, fps_to=60)
+            audio_file = audio_file.replace("_output_output", "")
+            audio_path_extra = ".safetensors"
+            video_path_extra = f"_{self.latent_type}_512_latent.safetensors"
+        else:
+            video_indexes = indexes
+            audio_path_extra = f"_{self.audio_emb_type}_emb.safetensors"
+            video_path_extra = f"_{self.latent_type}_512_latent.safetensors"
 
         raw_audio = None
         frames_video = None
@@ -270,11 +293,11 @@ class VideoDataset(Dataset):
             raw_audio, frames_video = vr.get_batch(indexes)
             raw_audio = rearrange(self.ensure_shape(raw_audio), "f s -> (f s)")
         if self.use_latent and self.precomputed_latent:
-            latent_file = video_file.replace(self.video_ext, f"_{self.latent_type}_512_latent.safetensors").replace(
+            latent_file = video_file.replace(self.video_ext, video_path_extra).replace(
                 self.video_folder, self.latent_folder
             )
             latents = load_file(latent_file)["latents"]
-            frames = latents[indexes, :, :, :]
+            frames = latents[video_indexes, :, :, :]
 
             if frames.shape[-1] != 64:
                 print(f"Frames shape: {frames.shape}, video file: {video_file}")
@@ -299,7 +322,9 @@ class VideoDataset(Dataset):
             audio = raw_audio
             audio_frames = rearrange(audio, "(f s) -> f s", s=self.samples_per_frame)
         else:
-            audio = torch.load(audio_file.split(".")[0] + f"_{self.audio_emb_type}_emb.pt")
+            audio = load_file(
+                audio_file.replace(self.audio_folder, self.audio_emb_folder).split(".")[0] + audio_path_extra
+            )["audio"]
             audio_frames = audio[indexes, :]
 
         audio_frames = audio_frames[1:] if self.need_cond else audio_frames  # Remove audio of first frame

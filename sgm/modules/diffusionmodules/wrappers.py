@@ -132,6 +132,7 @@ class DubbingWrapper(IdentityWrapper):
 
     def forward(self, x: torch.Tensor, t: torch.Tensor, c: dict, **kwargs) -> torch.Tensor:
         cond_cat = c.get("concat", torch.Tensor([]).type_as(x))
+        # print(x.shape, cond_cat.shape)
         if len(cond_cat.shape):
             T = x.shape[0] // cond_cat.shape[0]
             if cond_cat.shape[1] == 4:

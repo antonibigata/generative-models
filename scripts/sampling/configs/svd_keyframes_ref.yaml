@@ -5,14 +5,12 @@ model:
     input_key: latents
     scale_factor: 0.18215
     disable_first_stage_autocast: True
-    ckpt_path: logs/2024-08-21T09-02-31_example_training-svd_image_land/checkpoints/last.ckpt//checkpoint/mp_rank_00_model_states.pt
-    # remove_keys_from_weights: [model.diffusion_model.label_emb.0.0.weight]
-    # bad_model_path: logs/2024-08-27T17-15-41_example_training-svd_image_land/checkpoints/last.ckpt/checkpoint/mp_rank_00_model_states.pt
+    ckpt_path: logs/2024-08-22T15-19-09_example_training-svd_keyframes_reference/checkpoints/last.ckpt/checkpoint/mp_rank_00_model_states.pt
 
     # LoRA
     use_lora: False
     lora_config:
-      search_class_str: linear
+      search_class_str: Linear
       target_replace_module: null
       r_linear: 16
       r_conv: 16
@@ -40,10 +38,10 @@ model:
     network_config:
       target: sgm.modules.diffusionmodules.video_model.VideoUNet
       params:
-        adm_in_channels: 256
+        adm_in_channels: 0
         num_classes: sequential
         use_checkpoint: True
-        in_channels: 8
+        in_channels: 4
         out_channels: 4
         model_channels: 320
         attention_resolutions: [4, 2, 1]
@@ -59,70 +57,52 @@ model:
         merge_strategy: learned_with_images
         video_kernel_size: [3, 1, 1]
         fine_tuning_method: null
-        audio_cond_method: to_time_emb_image
-        additional_audio_frames: 2
-        audio_dim: 768
+        audio_cond_method: both_keyframes
+        additional_audio_frames: 0
+        audio_dim: 1024
         unfreeze_blocks: [] # Because we changed the input block
-        skip_time: true
-        encode_landmarks: True
+        skip_time: False
+        reference_to: self_extra
+        # adapter_kwargs:
+        #   # down_ratio: 1
+        #   # adapter_type: null
+        #   # adapter_weight: null
+        #   # act_layer: gelu
+        #   # zero_init_last: True
+        #   # use_bias: True
+        #   # adapt_on_time: True
+        #   # condition_on: space
+        #   # condition_dim: 1280
+        #   target_replace_module: ["SpatialVideoTransformer"]
+        #   r: 16
+        #   loras: null  # path to lora .pt
+        #   verbose: False
+        #   dropout_p: 0.0
+        #   scale: 1.0
 
     conditioner_config:
       target: sgm.modules.GeneralConditioner
       params:
         emb_models:
         - is_trainable: False
-          input_key: cond_frames_without_noise
+          input_key: cond_frames
           ucg_rate: 0.1
-          target: sgm.modules.encoders.modules.FrozenOpenCLIPImagePredictionEmbedder
+          target: sgm.modules.encoders.modules.ReferenceNet
           params:
-            n_cond_frames: 1
-            n_copies: 1
-            open_clip_embedding_config:
-              target: sgm.modules.encoders.modules.FrozenOpenCLIPImageEmbedder
-              params:
-                freeze: True
+            path: /data/home/antoni/code/EchoMimic/pretrained_weights
+            cond_type: reference
 
-        - input_key: cond_frames
-          is_trainable: False
-          ucg_rate: 0.1
-          target: sgm.modules.encoders.modules.VideoPredictionEmbedderWithEncoder
-          params:
-            disable_encoder_autocast: True
-            n_cond_frames: 1
-            n_copies: 1
-            is_ae: True
-            encoder_config:
-              target: sgm.models.autoencoder.AutoencoderKLModeOnly
-              params:
-                embed_dim: 4
-                monitor: val/rec_loss
-                ddconfig:
-                  attn_type: vanilla-xformers
-                  double_z: True
-                  z_channels: 4
-                  resolution: 256
-                  in_channels: 3
-                  out_ch: 3
-                  ch: 128
-                  ch_mult: [1, 2, 4, 4]
-                  num_res_blocks: 2
-                  attn_resolutions: []
-                  dropout: 0.0
-                lossconfig:
-                  target: torch.nn.Identity
+        # - input_key: fps_id
+        #   is_trainable: False
+        #   target: sgm.modules.encoders.modules.ConcatTimestepEmbedderND
+        #   params:
+        #     outdim: 256
 
-        - input_key: cond_aug
-          is_trainable: False
-          target: sgm.modules.encoders.modules.ConcatTimestepEmbedderND
-          params:
-            outdim: 256
-
-        - input_key: landmarks
-          is_trainable: False
-          # ucg_rate: 0.1
-          target: sgm.modules.encoders.modules.IdentityEncoder
-          params:
-            cond_type: landmarks
+        # - input_key: motion_bucket_id
+        #   is_trainable: False
+        #   target: sgm.modules.encoders.modules.ConcatTimestepEmbedderND
+        #   params:
+        #     outdim: 256
 
         - input_key: audio_emb
           is_trainable: True
@@ -130,7 +110,8 @@ model:
           target: sgm.modules.encoders.modules.WhisperAudioEmbedder
           params:
             merge_method: mean 
-            linear_dim: null
+            linear_dim: 1024
+            cond_type: crossattn
 
     first_stage_config:
       target: sgm.models.autoencoder.AutoencodingEngine
@@ -172,17 +153,15 @@ model:
     sampler_config:
       target: sgm.modules.diffusionmodules.sampling.EulerEDMSampler
       params:
-        num_steps: 25
+        num_steps: 10
         discretization_config:
           target: sgm.modules.diffusionmodules.discretizer.AYSDiscretization
           # params:
-          #   sigma_max: 700.0
+          #   # sigma_max: 700.0
 
         guider_config:
-          # target: sgm.modules.diffusionmodules.guiders.MultipleCondVanilla
-          # params:
-          #   scales: [0.5, 0.5]
-          #   condition_names: [cond_frames_without_noise, audio_emb]
           target: sgm.modules.diffusionmodules.guiders.VanillaCFG
           params:
-            scale: 2.0
+            scale: 2.
+
+   

@@ -29,5 +29,7 @@ srun python main.py --base configs/example_training/svd_keyframes_vid.yaml --wan
     data.params.train.datapipeline.load_all_possible_indexes=False \
     lightning.trainer.devices=4 lightning.trainer.accumulate_grad_batches=1 \
     model.params.network_config.params.audio_cond_method=to_time_emb \
-    'model.params.to_freeze=["time_"]' 'model.params.to_unfreeze=["time_embed"]' data.params.train.loader.batch_size=2 \
+    data.params.train.loader.batch_size=2 \
     model.params.loss_fn_config.params.lambda_lower=2. data.params.train.datapipeline.virtual_increase=1 \
+    model.params.ckpt_path=logs/2024-08-23T10-55-09_example_training-svd_keyframes_vid/checkpoints/last.ckpt/checkpoint/mp_rank_00_model_states.pt \
+    'model.params.remove_keys_from_weights=[]' model.params.scheduler_config=null

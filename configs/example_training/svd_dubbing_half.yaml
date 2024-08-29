@@ -285,6 +285,8 @@ data:
         resize_size: 512
         audio_folder: audio
         video_folder: cropped_videos_original
+        landmarks_folder: landmarks_crop
+        audio_emb_folder: null
         video_extension: .mp4
         audio_extension: .wav
         latent_folder: null

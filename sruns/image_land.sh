@@ -29,5 +29,7 @@ srun python main.py --base configs/example_training/svd_image_land.yaml --wandb 
     lightning.trainer.devices=4 lightning.trainer.accumulate_grad_batches=1 data.params.train.datapipeline.virtual_increase=1000 \
     model.params.network_config.params.audio_cond_method=to_time_emb_image data.params.train.loader.batch_size=32 \
     model.params.loss_fn_config.params.lambda_lower=2. data.params.train.datapipeline.change_file_proba=1. model.params.network_config.params.skip_time=True \
+    # model.params.ckpt_path=logs/2024-08-21T09-02-31_example_training-svd_image_land/checkpoints/last.ckpt//checkpoint/mp_rank_00_model_states.pt \
+    # 'model.params.remove_keys_from_weights=[]' model.params.scheduler_config=null
 
     
