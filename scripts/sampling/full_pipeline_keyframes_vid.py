@@ -3,16 +3,13 @@ import os
 from glob import glob
 from pathlib import Path
 from typing import Optional
-from PIL import Image
 
 import numpy as np
 import torch
 import torch.nn.functional as F
-import torchvision
 from einops import rearrange, repeat
 from fire import Fire
 from omegaconf import OmegaConf
-from tqdm import tqdm
 from torchvision.io import read_video
 import torchaudio
 from safetensors.torch import load_file as load_safetensors
@@ -102,7 +99,7 @@ def create_pipeline_inputs(video, audio, num_frames, video_emb, overlap=1):
     # The first and last are the first and last frames of the interpolation
 
     # Break video into chunks of num_frames with overlap 1
-    assert video.shape[0] == audio.shape[0], "Video and audio must have the same number of frames"
+    # assert video.shape[0] == audio.shape[0], "Video and audio must have the same number of frames"
     audio_interpolation_chunks = []
     audio_image_preds = []
     gt_chunks = []
@@ -114,7 +111,7 @@ def create_pipeline_inputs(video, audio, num_frames, video_emb, overlap=1):
     if step < 1:
         step = 1
     audio_image_preds.append(audio[0])
-    for i in range(0, video.shape[0] - num_frames + 1, step):
+    for i in range(0, audio.shape[0] - num_frames + 1, step):
         segment_end = i + num_frames
         try:
             last = video[segment_end - 1]
@@ -128,10 +125,19 @@ def create_pipeline_inputs(video, audio, num_frames, video_emb, overlap=1):
         audio_interpolation_chunks.append(audio[i:segment_end])
 
     # Since we generate num_frames at a time, we need to ensure that the last chunk is of size num_frames
-    max_num_keyframes = len(audio_image_preds) // num_frames
-    audio_image_preds = audio_image_preds[: max_num_keyframes * num_frames]
-    audio_interpolation_chunks = audio_interpolation_chunks[: max_num_keyframes * num_frames - 1]
-    gt_chunks = gt_chunks[: max_num_keyframes * num_frames - 1]
+    # Calculate the number of frames needed to make audio_image_preds a multiple of num_frames
+    frames_needed = (num_frames - (len(audio_image_preds) % num_frames)) % num_frames
+
+    # Extend from the start of audio_image_preds
+    audio_image_preds = audio_image_preds + audio_image_preds[:frames_needed]
+
+    print(f"Added {frames_needed} frames from the start to make audio_image_preds a multiple of {num_frames}")
+
+    # max_num_keyframes = len(audio_image_preds) // num_frames
+    # audio_interpolation_chunks = audio_interpolation_chunks + audio_interpolation_chunks[:frames_needed]
+    # # audio_interpolation_chunks = audio_interpolation_chunks[: max_num_keyframes * num_frames - 1]
+    # gt_chunks = gt_chunks + gt_chunks[:frames_needed]
+    # gt_chunks = gt_chunks[: max_num_keyframes * num_frames - 1]
 
     # random_cond_idx = np.random.randint(0, len(video_emb))
     random_cond_idx = 0
@@ -143,6 +149,7 @@ def create_pipeline_inputs(video, audio, num_frames, video_emb, overlap=1):
         video_emb[random_cond_idx],
         video[random_cond_idx],
         random_cond_idx,
+        frames_needed,
     )
 
 
@@ -347,8 +354,8 @@ def sample(
                     f"WARNING: Your image is of size {h}x{w} which is not divisible by 64. We are resizing to {height}x{width}!"
                 )
 
-        gt_chunks, audio_interpolation_list, audio_list, emb, cond, _ = create_pipeline_inputs(
-            model_input, audio, num_frames, video_emb
+        gt_chunks, audio_interpolation_list, audio_list, emb, cond, _, added_frames = create_pipeline_inputs(
+            model_input, audio, num_frames, video_emb, overlap=overlap
         )
 
         model, filter, n_batch = load_model(
@@ -497,9 +504,9 @@ def sample(
                     # image = samples[-1] * 2.0 - 1.0
                     video = None
 
-        samples = torch.concat(samples_list)
-        samples_z = torch.concat(samples_z_list)
-        samples_x = torch.concat(samples_x_list)
+        samples = torch.concat(samples_list)[:-added_frames]
+        samples_z = torch.concat(samples_z_list)[:-added_frames]
+        samples_x = torch.concat(samples_x_list)[:-added_frames]
 
         keyframes_gen = (rearrange(samples, "t c h w -> t c h w") * 255).cpu().numpy().astype(np.uint8)
 

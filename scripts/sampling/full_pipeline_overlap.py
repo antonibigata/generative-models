@@ -369,7 +369,7 @@ def sample(
         additional_audio_frames = model_keyframes.model.diffusion_model.additional_audio_frames
         print(f"Additional audio frames: {additional_audio_frames}")
         gt_chunks, audio_interpolation_list, audio_list, emb, cond, random_cond_idx = create_pipeline_inputs(
-            model_input, audio, num_frames, video_emb
+            model_input, audio, num_frames, video_emb, overlap=overlap
         )
 
         # if h % 64 != 0 or w % 64 != 0:

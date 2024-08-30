@@ -282,6 +282,7 @@ class VideoDataset(Dataset):
             audio_file = audio_file.replace("_output_output", "")
             audio_path_extra = ".safetensors"
             video_path_extra = f"_{self.latent_type}_512_latent.safetensors"
+            land_file = land_file.replace("_output_output", "_output_keypoints")
         else:
             video_indexes = indexes
             audio_path_extra = f"_{self.audio_emb_type}_emb.safetensors"

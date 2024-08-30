@@ -25,11 +25,11 @@ while IFS= read -r file_name; do
         --model_keyframes_config=scripts/sampling/configs/svd_keyframes_vid.yaml \
         --get_landmarks=True \
         --landmark_folder=landmarks_crop \
-        --overlap=2 \
+        --overlap=1 \
         --chunk_size=5 \
         --audio_folder=audio \
         --audio_emb_folder=audio_emb \
-        --output_folder=/data/home/antoni/results/keyframes_vid_not_ref \
+        --output_folder=/data/home/antoni/results/keyframes_vid_cat_overlap_1 \
 
     echo "Processed $base_name"
 done < "$file_list"
