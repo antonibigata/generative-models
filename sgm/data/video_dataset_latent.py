@@ -1,4 +1,4 @@
-import os
+import random
 import numpy as np
 from functools import partial
 from torch.utils.data import Dataset
@@ -82,6 +82,7 @@ class VideoDataset(Dataset):
         get_separate_id=False,
         virtual_increase=1,
         filter_by_length=False,
+        select_randomly=False,
     ):
         self.audio_folder = audio_folder
         self.from_audio_embedding = from_audio_embedding
@@ -94,6 +95,7 @@ class VideoDataset(Dataset):
         self.get_separate_id = get_separate_id
         self.fps = fps
         self.virtual_increase = virtual_increase
+        self.select_randomly = select_randomly
         # self.fps = fps
 
         assert not (exists(data_mean) ^ exists(data_std)), "Both data_mean and data_std should be provided"
@@ -186,18 +188,26 @@ class VideoDataset(Dataset):
     def __len__(self):
         return len(self._indexes) * self.virtual_increase
 
-    def get_frame_indices(self, total_video_frames):
-        # Calculate the maximum possible start index
-        max_start_idx = total_video_frames - ((self.num_frames - 1) * (self.skip_frames + 1) + 1)
-
-        # Generate a random start index
-        if max_start_idx > 0:
-            start_idx = np.random.randint(0, max_start_idx)
+    def get_frame_indices(self, total_video_frames, select_randomly=False):
+        if select_randomly:
+            # Randomly select self.num_frames indices from the available range
+            available_indices = list(range(total_video_frames))
+            if len(available_indices) < self.num_frames:
+                raise ValueError("Not enough frames in the video to sample with given parameters.")
+            indexes = random.sample(available_indices, self.num_frames)
+            return sorted(indexes)  # Sort to maintain temporal order
         else:
-            raise ValueError("Not enough frames in the video to sample with given parameters.")
+            # Calculate the maximum possible start index
+            max_start_idx = total_video_frames - ((self.num_frames - 1) * (self.skip_frames + 1) + 1)
 
-        # Generate the indices
-        indexes = [start_idx + i * (self.skip_frames + 1) for i in range(self.num_frames)]
+            # Generate a random start index
+            if max_start_idx > 0:
+                start_idx = np.random.randint(0, max_start_idx)
+            else:
+                raise ValueError("Not enough frames in the video to sample with given parameters.")
+
+            # Generate the indices
+            indexes = [start_idx + i * (self.skip_frames + 1) for i in range(self.num_frames)]
 
         return indexes
 
@@ -273,7 +283,7 @@ class VideoDataset(Dataset):
                 len_video = int(len_video)
             # start_idx = np.random.randint(0, len_video - self.num_frames)
             # indexes = list(range(start_idx, start_idx + self.num_frames))
-            indexes = self.get_frame_indices(len_video)
+            indexes = self.get_frame_indices(len_video, select_randomly=self.select_randomly)
 
         if self.get_separate_id:
             id_idx = np.random.randint(0, len_video)

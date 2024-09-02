@@ -17,7 +17,7 @@ export NCCL_SOCKET_IFNAME=ens32
 export HYDRA_FULL_ERROR=1
 export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
 cd /data/home/antoni/code/generative-models
-srun python main.py --base configs/example_training/svd_dubbing_half.yaml --wandb True lightning.trainer.num_nodes 8 \
+srun python main.py --resume logs/2024-08-28T16-39-19_example_training-svd_dubbing_half --base configs/example_training/svd_dubbing_half.yaml --wandb True lightning.trainer.num_nodes 8 \
     lightning.strategy=deepspeed_stage_1 lightning.trainer.precision=32 model.base_learning_rate=3.e-5 \
     data.params.train.datapipeline.filelist=/data/home/antoni/datasets/filelist_celebhq_text_aa_hdtf.txt \
     data.params.train.datapipeline.video_folder=video_crop  \

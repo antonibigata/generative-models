@@ -192,7 +192,7 @@ class VideoDataset(Dataset):
         return len(self._indexes)
 
     def _load_landmarks(self, filename, original_size, target_size, indexes):
-        landmarks = np.load(filename)[indexes, :]
+        landmarks = np.load(filename, allow_pickle=True)[indexes, :]
         if self.what_mask == "full":
             mask = create_masks_from_landmarks_full_size(landmarks, original_size[0], original_size[1], offset=-0.01)
         elif self.what_mask == "box":
