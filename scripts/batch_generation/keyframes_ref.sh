@@ -30,7 +30,7 @@ while IFS= read -r file_name; do
         --latent_folder=video_crop_emb \
         --video_folder=video_crop \
         --model_config=scripts/sampling/configs/svd_interpolation.yaml \
-        --model_keyframes_config=scripts/sampling/configs/svd_keyframes_vid.yaml \
+        --model_keyframes_config=scripts/sampling/configs/svd_keyframes_ref.yaml \
         --get_landmarks=True \
         --landmark_folder=landmarks_crop \
         --overlap=${overlapping} \
@@ -38,7 +38,7 @@ while IFS= read -r file_name; do
         --audio_folder=audio \
         --audio_emb_folder=audio_emb \
         --output_folder=/data/home/antoni/results/${output_folder} \
-        --keyframes_ckpt=${keyframes_ckpt} \
+        # --keyframes_ckpt=${keyframes_ckpt} \
 
     echo "Processed $base_name"
 done < "$file_list"

@@ -9,8 +9,6 @@ output_folder=$1
 # Get the keyframes_ckpt from the command line argument, default to none if not provided
 keyframes_ckpt=${2:-null}
 
-overlapping=${3:-1}
-
 # Loop through each line in the file list
 while IFS= read -r file_name; do
     # Extract the base name without extension
@@ -29,11 +27,11 @@ while IFS= read -r file_name; do
         --force_uc_zero_embeddings='[cond_frames, audio_emb]' \
         --latent_folder=video_crop_emb \
         --video_folder=video_crop \
-        --model_config=scripts/sampling/configs/svd_interpolation.yaml \
+        --model_config=scripts/sampling/configs/svd_interpolation_no_bad.yaml \
         --model_keyframes_config=scripts/sampling/configs/svd_keyframes_vid.yaml \
         --get_landmarks=True \
         --landmark_folder=landmarks_crop \
-        --overlap=${overlapping} \
+        --overlap=1 \
         --chunk_size=5 \
         --audio_folder=audio \
         --audio_emb_folder=audio_emb \

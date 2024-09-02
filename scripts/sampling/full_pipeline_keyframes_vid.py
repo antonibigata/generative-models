@@ -110,19 +110,32 @@ def create_pipeline_inputs(video, audio, num_frames, video_emb, overlap=1):
     # Ensure there's at least one step forward on each iteration
     if step < 1:
         step = 1
-    audio_image_preds.append(audio[0])
+    # audio_image_preds.append(audio[0])
+    audio_image_preds_idx = []
     for i in range(0, audio.shape[0] - num_frames + 1, step):
-        segment_end = i + num_frames
         try:
-            last = video[segment_end - 1]
+            last = video[i + num_frames - 1]
         except IndexError:
             break  # Last chunk is smaller than num_frames
+        segment_end = i + num_frames
         gt_chunks.append(video[i:segment_end])
         # audio_indexes = get_audio_indexes(segment_end - 1, 2, len(audio))
         # print(i, audio_indexes, 2 * additional_audio_frames + 1)
-        audio_image_preds.append(audio[segment_end - 1])
-        print(segment_end - 1)
+        if i not in audio_image_preds_idx:
+            audio_image_preds.append(audio[i])
+            audio_image_preds_idx.append(i)
+        if segment_end - 1 not in audio_image_preds_idx:
+            audio_image_preds_idx.append(segment_end - 1)
+            audio_image_preds.append(audio[segment_end - 1])
+
         audio_interpolation_chunks.append(audio[i:segment_end])
+        print(i, segment_end - 1)
+
+    interpolation_cond_list = []
+    for i in range(0, len(audio_image_preds_idx) - 1, overlap if overlap > 0 else 2):
+        interpolation_cond_list.append([audio_image_preds_idx[i], audio_image_preds_idx[i + 1]])
+    print(audio_image_preds_idx)
+    print(interpolation_cond_list)
 
     # Since we generate num_frames at a time, we need to ensure that the last chunk is of size num_frames
     # Calculate the number of frames needed to make audio_image_preds a multiple of num_frames
@@ -240,6 +253,8 @@ def sample(
     chunk_size: int = None,  # Useful if the model gets OOM
     overlap: int = 1,  # Overlap between frames (i.e Multi-diffusion)
     is_dub: bool = False,
+    keyframes_ckpt: Optional[str] = None,
+    interpolation_ckpt: Optional[str] = None,
 ):
     """
     Simple script to generate a single sample conditioned on an image `input_path` or multiple images, one for each
@@ -364,6 +379,7 @@ def sample(
             num_frames,
             num_steps,
             input_key,
+            interpolation_ckpt,
         )
 
         if lora_path_interp is not None:
@@ -375,6 +391,7 @@ def sample(
             num_frames,
             num_steps,
             input_key,
+            keyframes_ckpt,
         )
         print(n_batch, n_batch_keyframes)
 
@@ -529,7 +546,7 @@ def sample(
         # The first and last are the first and last frames of the interpolation
         interpolation_cond_list = []
         interpolation_cond_list_emb = []
-        for i in range(0, len(samples_z) - 1):
+        for i in range(0, len(samples_z) - 1, overlap if overlap > 0 else 2):
             interpolation_cond_list.append(torch.stack([samples_x[i], samples_x[i + 1]], dim=1))
             interpolation_cond_list_emb.append(torch.stack([samples_z[i], samples_z[i + 1]], dim=1))
 
@@ -537,8 +554,6 @@ def sample(
         audio_cond = torch.stack(audio_interpolation_list).to(device)
         # condition = condition.unsqueeze(0).to(device)
         embbedings = torch.stack(interpolation_cond_list_emb).to(device)
-
-        print(condition.shape, embbedings.shape, audio_cond.shape)
 
         # Free up some memory from the keyframes
         del model_keyframes
@@ -606,6 +621,8 @@ def sample(
                 additional_model_inputs = {}
                 additional_model_inputs["image_only_indicator"] = torch.zeros(n_batch_keyframes, num_frames).to(device)
                 additional_model_inputs["num_video_frames"] = batch["num_video_frames"]
+
+                print(condition.shape, embbedings.shape, audio_cond.shape, shape, additional_model_inputs)
 
                 if chunk_size is not None:
                     chunk_size = chunk_size * num_frames
@@ -747,6 +764,7 @@ def load_model(
     num_frames: int,
     num_steps: int,
     input_key: str,
+    ckpt: Optional[str] = None,
 ):
     config = OmegaConf.load(config)
     # if device == "cuda":
@@ -755,6 +773,9 @@ def load_model(
     #     ].params.open_clip_embedding_config.params.init_device = device
 
     config["model"]["params"]["input_key"] = input_key
+
+    if ckpt is not None:
+        config.model.params.ckpt_path = ckpt
 
     config.model.params.sampler_config.params.num_steps = num_steps
     if "num_frames" in config.model.params.sampler_config.params.guider_config.params:
