@@ -1,5 +1,6 @@
 from typing import Dict, List, Optional, Tuple, Union
 
+import math
 import torch
 import torch.nn as nn
 from einops import rearrange, repeat
@@ -7,8 +8,9 @@ import lpips
 
 from ...modules.autoencoding.lpips.loss.lpips import LPIPS
 from ...modules.encoders.modules import GeneralConditioner, ConcatTimestepEmbedderND
-from ...util import append_dims, instantiate_from_config
+from ...util import append_dims, instantiate_from_config, default
 from .denoiser import Denoiser
+from ...modules.autoencoding.temporal_ae import VideoDecoder
 
 
 def logit_normal_sampler(m, s=1, beta_m=15, sample_num=1000000):
@@ -40,6 +42,8 @@ class StandardDiffusionLoss(nn.Module):
         lambda_upper: float = 1.0,
         fix_image_leak: bool = False,
         add_lpips: bool = False,
+        # weight_pixel: float = 0.0,
+        # n_frames_pixel: Optional[int] = 1,
     ):
         super().__init__()
 
@@ -53,6 +57,8 @@ class StandardDiffusionLoss(nn.Module):
         self.lambda_lower = lambda_lower
         self.lambda_upper = lambda_upper
         self.add_lpips = add_lpips
+        # self.weight_pixel = weight_pixel
+        # self.n_frames_pixel = n_frames_pixel
 
         if loss_type == "lpips":
             self.lpips = LPIPS().eval()
@@ -77,6 +83,28 @@ class StandardDiffusionLoss(nn.Module):
     def get_noised_input(self, sigmas_bc: torch.Tensor, noise: torch.Tensor, input: torch.Tensor) -> torch.Tensor:
         noised_input = input + noise * sigmas_bc
         return noised_input
+
+    def decode_first_stage(self, z, first_stage_model):
+        if len(z.shape) == 5:
+            z = rearrange(z, "b c t h w -> (b t) c h w")
+
+        z = 1.0 / 0.18215 * z
+        n_samples = default(self.en_and_decode_n_samples_a_time, z.shape[0])
+
+        n_rounds = math.ceil(z.shape[0] / n_samples)
+        all_out = []
+        with torch.autocast("cuda", enabled=not self.disable_first_stage_autocast):
+            for n in range(n_rounds):
+                if isinstance(first_stage_model.decoder, VideoDecoder):
+                    kwargs = {"timesteps": len(z[n * n_samples : (n + 1) * n_samples])}
+                else:
+                    kwargs = {}
+                out = first_stage_model.decode(z[n * n_samples : (n + 1) * n_samples], **kwargs)
+                all_out.append(out)
+        out = torch.cat(all_out, dim=0)
+        # out = rearrange(out, "b c h w -> b h w c")
+        torch.cuda.empty_cache()
+        return out
 
     def forward(
         self,
@@ -132,10 +160,12 @@ class StandardDiffusionLoss(nn.Module):
             print(w.shape, mask.shape)
             w = w * mask
 
+        T = 1
         if target.ndim == 5:
             target = rearrange(target, "b c t h w -> (b t) c h w")
             B = w.shape[0]
-            w = repeat(w, "b () () () () -> (b t) () () ()", t=target.shape[0] // B)
+            T = target.shape[0] // B
+            w = repeat(w, "b () () () () -> (b t) () () ()", t=T)
             # model_output = rearrange(model_output, "b c t h w -> (b t) c h w")
             # w = rearrange(w, "b ... -> b t ...")
 
@@ -170,5 +200,16 @@ class StandardDiffusionLoss(nn.Module):
                 (target[:, :3] * 0.18215).clip(-1, 1),
             ).reshape(-1)
             loss_dict["loss"] += loss_dict["lpips"].mean()
+
+        # if self.weight_pixel > 0.0:
+        #     if T > self.n_frames_pixel:
+        #         # Randomly select n_frames_pixel frames
+        #         selected_frames = torch.randperm(T)[: self.n_frames_pixel]
+        #         model_output = rearrange(model_output, "(b t) ... -> b t ...", t=T)[:, selected_frames]
+        #         model_output = rearrange(model_output, "b t ... -> (b t) ...")
+        #         target = rearrange(target, "(b t) ... -> b t ...", t=T)[:, selected_frames]
+        #         target = rearrange(target, "b t ... -> (b t) ...")
+        #         w = rearrange(w, "(b t) ... -> b t ...", t=T)[:, selected_frames]
+        #         w = rearrange(w, "b t ... -> (b t) ...")
 
         return loss_dict

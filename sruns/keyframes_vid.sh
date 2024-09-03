@@ -19,7 +19,7 @@ export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
 cd /data/home/antoni/code/generative-models
 srun python main.py --base configs/example_training/svd_keyframes_vid.yaml --wandb True lightning.trainer.num_nodes 8 \
     lightning.strategy=deepspeed_stage_1 lightning.trainer.precision=32 model.base_learning_rate=3.e-5 \
-    data.params.train.datapipeline.filelist=/data/home/antoni/datasets/filelist_celebhq_text_aa_hdtf.txt \
+    data.params.train.datapipeline.filelist=/data/home/antoni/datasets/filelist_celebhq_text_hdtf.txt \
     data.params.train.datapipeline.video_folder=video_crop  \
     data.params.train.datapipeline.audio_folder=audio \
     data.params.train.datapipeline.audio_emb_folder=audio_emb \
@@ -32,4 +32,3 @@ srun python main.py --base configs/example_training/svd_keyframes_vid.yaml --wan
     data.params.train.loader.batch_size=2 \
     model.params.loss_fn_config.params.lambda_lower=2. data.params.train.datapipeline.virtual_increase=1 \
     data.params.train.datapipeline.select_randomly=False 'model.params.to_freeze=[]' 'model.params.to_unfreeze=[]' \
-    model.params.ckpt_path=logs/2024-08-23T10-55-09_example_training-svd_keyframes_vid/checkpoints/last.ckpt/checkpoint/mp_rank_00_model_states.pt 'model.params.remove_keys_from_weights=[]' model.params.scheduler_config=null

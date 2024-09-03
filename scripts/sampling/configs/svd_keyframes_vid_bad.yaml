@@ -22,7 +22,7 @@ model:
       # search_class: both
 
     denoiser_config:
-      target: sgm.modules.diffusionmodules.denoiser.Denoiser
+      target: sgm.modules.diffusionmodules.denoiser.KarrasGuidanceDenoiser
       params:
         scaling_config:
           target: sgm.modules.diffusionmodules.denoiser_scaling.VScalingWithEDMcNoise
@@ -198,7 +198,7 @@ model:
           #   sigma_max: 80.0
 
         guider_config:
-          target: sgm.modules.diffusionmodules.guiders.VanillaCFG
+          target: sgm.modules.diffusionmodules.guiders.KarrasGuider
           params:
             scale: 2.0
             # low_sigma: 0.
