@@ -20,11 +20,20 @@ class Guider(ABC):
 
 
 class VanillaCFG(Guider):
-    def __init__(self, scale: float):
+    def __init__(self, scale: float, low_sigma: float = 0.0, high_sigma: float = float("inf")):
         self.scale = scale
+        self.low_sigma = low_sigma
+        self.high_sigma = high_sigma
 
     def __call__(self, x: torch.Tensor, sigma: torch.Tensor) -> torch.Tensor:
         x_u, x_c = x.chunk(2)
+
+        # Apply guidance only in a specific range of noise levels for each sigma in the batch
+        # Create a mask for sigmas within the specified range
+        # mask = (sigma > self.low_sigma) & (sigma <= self.high_sigma)
+
+        # # Apply guidance where mask is True, otherwise use x_c
+        # x_pred = torch.where(rearrange(mask, "b -> b 1 1 1"), x_u + self.scale * (x_c - x_u), x_c)
         x_pred = x_u + self.scale * (x_c - x_u)
         return x_pred
 
@@ -45,10 +54,13 @@ class VanillaCFG(Guider):
 
 
 class KarrasGuider(VanillaCFG):
-    def __call__(self, x: torch.Tensor, sigma: torch.Tensor) -> torch.Tensor:
-        x_u, x_c = x.chunk(2)
-        x_pred = x_u + self.scale * (x_c - x_u)
-        return x_pred
+    # def __call__(self, x: torch.Tensor, sigma: torch.Tensor) -> torch.Tensor:
+    #     x_u, x_c = x.chunk(2)
+    #     if sigma > self.low_sigma and sigma < self.high_sigma:
+    #         x_pred = x_u + self.scale * (x_c - x_u)
+    #     else:
+    #         x_pred = x_c
+    #     return x_pred
 
     def prepare_inputs(self, x, s, c, uc):
         c_out = dict()

@@ -34,6 +34,7 @@ class EDMDiscretization(Discretization):
         min_inv_rho = self.sigma_min ** (1 / self.rho)
         max_inv_rho = self.sigma_max ** (1 / self.rho)
         sigmas = (max_inv_rho + ramp * (min_inv_rho - max_inv_rho)) ** self.rho
+        print(sigmas)
         return sigmas
 
 

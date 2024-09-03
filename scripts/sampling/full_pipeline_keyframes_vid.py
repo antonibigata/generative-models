@@ -255,6 +255,8 @@ def sample(
     is_dub: bool = False,
     keyframes_ckpt: Optional[str] = None,
     interpolation_ckpt: Optional[str] = None,
+    low_sigma: float = 0.0,
+    high_sigma: float = float("inf"),
 ):
     """
     Simple script to generate a single sample conditioned on an image `input_path` or multiple images, one for each
@@ -263,22 +265,22 @@ def sample(
 
     if version == "svd":
         num_frames = default(num_frames, 14)
-        num_steps = default(num_steps, 25)
+        # num_steps = default(num_steps, 25)
         output_folder = default(output_folder, "outputs/simple_video_sample/svd/")
         # model_config = "scripts/sampling/configs/svd.yaml"
     elif version == "svd_xt":
         num_frames = default(num_frames, 25)
-        num_steps = default(num_steps, 30)
+        # num_steps = default(num_steps, 30)
         output_folder = default(output_folder, "outputs/simple_video_sample/svd_xt/")
         # model_config = "scripts/sampling/configs/svd_xt.yaml"
     elif version == "svd_image_decoder":
         num_frames = default(num_frames, 14)
-        num_steps = default(num_steps, 25)
+        # num_steps = default(num_steps, 25)
         output_folder = default(output_folder, "outputs/simple_video_sample/svd_image_decoder/")
         # model_config = "scripts/sampling/configs/svd_image_decoder.yaml"
     elif version == "svd_xt_image_decoder":
         num_frames = default(num_frames, 25)
-        num_steps = default(num_steps, 30)
+        # num_steps = default(num_steps, 30)
         output_folder = default(output_folder, "outputs/simple_video_sample/svd_xt_image_decoder/")
         # model_config = "scripts/sampling/configs/svd_xt_image_decoder.yaml"
     else:
@@ -495,7 +497,9 @@ def sample(
                     print("video", video.shape)
 
                     additional_model_inputs = {}
-                    additional_model_inputs["image_only_indicator"] = torch.zeros(n_batch, num_frames).to(device)
+                    additional_model_inputs["image_only_indicator"] = torch.zeros(n_batch_keyframes, num_frames).to(
+                        device
+                    )
                     additional_model_inputs["num_video_frames"] = batch["num_video_frames"]
 
                     def denoiser(input, sigma, c):
@@ -619,7 +623,7 @@ def sample(
                 # n_batch *= embbedings.shape[0]
 
                 additional_model_inputs = {}
-                additional_model_inputs["image_only_indicator"] = torch.zeros(n_batch_keyframes, num_frames).to(device)
+                additional_model_inputs["image_only_indicator"] = torch.zeros(n_batch, num_frames).to(device)
                 additional_model_inputs["num_video_frames"] = batch["num_video_frames"]
 
                 print(condition.shape, embbedings.shape, audio_cond.shape, shape, additional_model_inputs)
@@ -635,7 +639,7 @@ def sample(
                         c,
                         num_overlap_frames=overlap,
                         num_frames=num_frames,
-                        n_skips=n_batch_keyframes,
+                        n_skips=n_batch,
                         chunk_size=chunk_size,
                         **additional_model_inputs,
                     )
@@ -765,6 +769,8 @@ def load_model(
     num_steps: int,
     input_key: str,
     ckpt: Optional[str] = None,
+    low_sigma: float = 0.0,
+    high_sigma: float = float("inf"),
 ):
     config = OmegaConf.load(config)
     # if device == "cuda":
@@ -777,9 +783,14 @@ def load_model(
     if ckpt is not None:
         config.model.params.ckpt_path = ckpt
 
-    config.model.params.sampler_config.params.num_steps = num_steps
+    if num_steps is not None:
+        config.model.params.sampler_config.params.num_steps = num_steps
     if "num_frames" in config.model.params.sampler_config.params.guider_config.params:
         config.model.params.sampler_config.params.guider_config.params.num_frames = num_frames
+
+    # Add low_sigma and high_sigma to the sampler config
+    # config.model.params.sampler_config.params.low_sigma = low_sigma
+    # config.model.params.sampler_config.params.high_sigma = high_sigma
 
     if "IdentityGuider" in config.model.params.sampler_config.params.guider_config.target:
         n_batch = 1
