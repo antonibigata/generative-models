@@ -1,0 +1,359 @@
+wandb: Currently logged in as: stelabou. Use `wandb login --relogin` to force relogin
+wandb: Currently logged in as: stelabou. Use `wandb login --relogin` to force relogin
+wandb: Currently logged in as: stelabou. Use `wandb login --relogin` to force relogin
+wandb: Currently logged in as: stelabou. Use `wandb login --relogin` to force relogin
+wandb: Currently logged in as: stelabou. Use `wandb login --relogin` to force relogin
+wandb: Currently logged in as: stelabou. Use `wandb login --relogin` to force relogin
+wandb: Currently logged in as: stelabou. Use `wandb login --relogin` to force relogin
+wandb: Currently logged in as: stelabou. Use `wandb login --relogin` to force relogin
+Initializing distributed: GLOBAL_RANK: 16, MEMBER: 17/32
+Initializing distributed: GLOBAL_RANK: 19, MEMBER: 20/32
+Initializing distributed: GLOBAL_RANK: 18, MEMBER: 19/32
+Initializing distributed: GLOBAL_RANK: 20, MEMBER: 21/32
+Initializing distributed: GLOBAL_RANK: 22, MEMBER: 23/32
+Initializing distributed: GLOBAL_RANK: 17, MEMBER: 18/32
+Initializing distributed: GLOBAL_RANK: 21, MEMBER: 22/32
+Initializing distributed: GLOBAL_RANK: 23, MEMBER: 24/32
+wandb: Currently logged in as: stelabou. Use `wandb login --relogin` to force relogin
+wandb: Currently logged in as: stelabou. Use `wandb login --relogin` to force relogin
+wandb: Currently logged in as: stelabou. Use `wandb login --relogin` to force relogin
+wandb: Currently logged in as: stelabou. Use `wandb login --relogin` to force relogin
+wandb: Currently logged in as: stelabou. Use `wandb login --relogin` to force relogin
+wandb: Currently logged in as: stelabou. Use `wandb login --relogin` to force relogin
+wandb: Currently logged in as: stelabou. Use `wandb login --relogin` to force relogin
+wandb: Currently logged in as: stelabou. Use `wandb login --relogin` to force relogin
+Initializing distributed: GLOBAL_RANK: 24, MEMBER: 25/32
+Initializing distributed: GLOBAL_RANK: 26, MEMBER: 27/32
+Initializing distributed: GLOBAL_RANK: 27, MEMBER: 28/32
+Initializing distributed: GLOBAL_RANK: 25, MEMBER: 26/32
+Initializing distributed: GLOBAL_RANK: 30, MEMBER: 31/32
+Initializing distributed: GLOBAL_RANK: 29, MEMBER: 30/32
+wandb: Currently logged in as: stelabou. Use `wandb login --relogin` to force relogin
+Initializing distributed: GLOBAL_RANK: 28, MEMBER: 29/32
+Initializing distributed: GLOBAL_RANK: 31, MEMBER: 32/32
+wandb: Currently logged in as: stelabou. Use `wandb login --relogin` to force relogin
+wandb: Currently logged in as: stelabou. Use `wandb login --relogin` to force relogin
+wandb: Currently logged in as: stelabou. Use `wandb login --relogin` to force relogin
+wandb: Currently logged in as: stelabou. Use `wandb login --relogin` to force relogin
+wandb: Currently logged in as: stelabou. Use `wandb login --relogin` to force relogin
+wandb: Currently logged in as: stelabou. Use `wandb login --relogin` to force relogin
+wandb: Currently logged in as: stelabou. Use `wandb login --relogin` to force relogin
+wandb: Currently logged in as: stelabou. Use `wandb login --relogin` to force relogin
+wandb: Currently logged in as: stelabou (dubbing-gans-team). Use `wandb login --relogin` to force relogin
+wandb: Currently logged in as: stelabou. Use `wandb login --relogin` to force relogin
+wandb: Currently logged in as: stelabou. Use `wandb login --relogin` to force relogin
+wandb: Currently logged in as: stelabou. Use `wandb login --relogin` to force relogin
+wandb: Currently logged in as: stelabou. Use `wandb login --relogin` to force relogin
+wandb: Currently logged in as: stelabou. Use `wandb login --relogin` to force relogin
+wandb: Currently logged in as: stelabou. Use `wandb login --relogin` to force relogin
+wandb: Currently logged in as: stelabou. Use `wandb login --relogin` to force relogin
+Initializing distributed: GLOBAL_RANK: 5, MEMBER: 6/32
+Initializing distributed: GLOBAL_RANK: 7, MEMBER: 8/32
+Initializing distributed: GLOBAL_RANK: 6, MEMBER: 7/32
+Initializing distributed: GLOBAL_RANK: 2, MEMBER: 3/32
+Initializing distributed: GLOBAL_RANK: 4, MEMBER: 5/32
+Initializing distributed: GLOBAL_RANK: 3, MEMBER: 4/32
+Initializing distributed: GLOBAL_RANK: 1, MEMBER: 2/32
+Initializing distributed: GLOBAL_RANK: 8, MEMBER: 9/32
+Initializing distributed: GLOBAL_RANK: 12, MEMBER: 13/32
+Initializing distributed: GLOBAL_RANK: 11, MEMBER: 12/32
+Initializing distributed: GLOBAL_RANK: 9, MEMBER: 10/32
+Initializing distributed: GLOBAL_RANK: 15, MEMBER: 16/32
+Initializing distributed: GLOBAL_RANK: 13, MEMBER: 14/32
+Initializing distributed: GLOBAL_RANK: 10, MEMBER: 11/32
+Initializing distributed: GLOBAL_RANK: 14, MEMBER: 15/32
+wandb: wandb version 0.17.2 is available!  To upgrade, please run:
+wandb:  $ pip install wandb --upgrade
+wandb: Tracking run with wandb version 0.16.2
+wandb: Run data is saved locally in ./wandb/run-20240621_101616-zpyi2ye2
+wandb: Run `wandb offline` to turn off syncing.
+wandb: Syncing run constant_blending_audio_norm
+wandb: ⭐️ View project at https://wandb.ai/dubbing-gans-team/dubbing-gans
+wandb: 🚀 View run at https://wandb.ai/dubbing-gans-team/dubbing-gans/runs/zpyi2ye2
+wandb: logging graph, to disable use `wandb.watch(log_graph=False)`
+wandb: logging graph, to disable use `wandb.watch(log_graph=False)`
+wandb: logging graph, to disable use `wandb.watch(log_graph=False)`
+GPU available: True (cuda), used: True
+TPU available: False, using: 0 TPU cores
+IPU available: False, using: 0 IPUs
+HPU available: False, using: 0 HPUs
+`Trainer(limit_train_batches=1.0)` was configured so 100% of the batches per epoch will be used..
+`Trainer(limit_val_batches=1.0)` was configured so 100% of the batches will be used..
+You are using a CUDA device ('NVIDIA A100-SXM4-40GB') that has Tensor Cores. To properly utilize them, you should set `torch.set_float32_matmul_precision('medium' | 'high')` which will trade-off precision for performance. For more details, read https://pytorch.org/docs/stable/generated/torch.set_float32_matmul_precision.html#torch.set_float32_matmul_precision
+Initializing distributed: GLOBAL_RANK: 0, MEMBER: 1/32
+----------------------------------------------------------------------------------------------------
+distributed_backend=nccl
+All distributed processes registered. Starting with 32 processes
+----------------------------------------------------------------------------------------------------
+
+LOCAL_RANK: 6 - CUDA_VISIBLE_DEVICES: [0,1,2,3,4,5,6,7]
+LOCAL_RANK: 0 - CUDA_VISIBLE_DEVICES: [0,1,2,3,4,5,6,7]
+LOCAL_RANK: 3 - CUDA_VISIBLE_DEVICES: [0,1,2,3,4,5,6,7]
+LOCAL_RANK: 2 - CUDA_VISIBLE_DEVICES: [0,1,2,3,4,5,6,7]
+LOCAL_RANK: 7 - CUDA_VISIBLE_DEVICES: [0,1,2,3,4,5,6,7]
+LOCAL_RANK: 3 - CUDA_VISIBLE_DEVICES: [0,1,2,3,4,5,6,7]
+LOCAL_RANK: 2 - CUDA_VISIBLE_DEVICES: [0,1,2,3,4,5,6,7]
+LOCAL_RANK: 1 - CUDA_VISIBLE_DEVICES: [0,1,2,3,4,5,6,7]
+LOCAL_RANK: 1 - CUDA_VISIBLE_DEVICES: [0,1,2,3,4,5,6,7]
+LOCAL_RANK: 1 - CUDA_VISIBLE_DEVICES: [0,1,2,3,4,5,6,7]
+LOCAL_RANK: 7 - CUDA_VISIBLE_DEVICES: [0,1,2,3,4,5,6,7]
+LOCAL_RANK: 1 - CUDA_VISIBLE_DEVICES: [0,1,2,3,4,5,6,7]
+LOCAL_RANK: 0 - CUDA_VISIBLE_DEVICES: [0,1,2,3,4,5,6,7]
+LOCAL_RANK: 0 - CUDA_VISIBLE_DEVICES: [0,1,2,3,4,5,6,7]
+LOCAL_RANK: 5 - CUDA_VISIBLE_DEVICES: [0,1,2,3,4,5,6,7]
+LOCAL_RANK: 5 - CUDA_VISIBLE_DEVICES: [0,1,2,3,4,5,6,7]
+LOCAL_RANK: 4 - CUDA_VISIBLE_DEVICES: [0,1,2,3,4,5,6,7]
+LOCAL_RANK: 2 - CUDA_VISIBLE_DEVICES: [0,1,2,3,4,5,6,7]
+LOCAL_RANK: 4 - CUDA_VISIBLE_DEVICES: [0,1,2,3,4,5,6,7]
+LOCAL_RANK: 4 - CUDA_VISIBLE_DEVICES: [0,1,2,3,4,5,6,7]
+LOCAL_RANK: 3 - CUDA_VISIBLE_DEVICES: [0,1,2,3,4,5,6,7]
+LOCAL_RANK: 0 - CUDA_VISIBLE_DEVICES: [0,1,2,3,4,5,6,7]
+LOCAL_RANK: 2 - CUDA_VISIBLE_DEVICES: [0,1,2,3,4,5,6,7]
+LOCAL_RANK: 6 - CUDA_VISIBLE_DEVICES: [0,1,2,3,4,5,6,7]
+LOCAL_RANK: 7 - CUDA_VISIBLE_DEVICES: [0,1,2,3,4,5,6,7]
+LOCAL_RANK: 7 - CUDA_VISIBLE_DEVICES: [0,1,2,3,4,5,6,7]
+LOCAL_RANK: 4 - CUDA_VISIBLE_DEVICES: [0,1,2,3,4,5,6,7]
+LOCAL_RANK: 6 - CUDA_VISIBLE_DEVICES: [0,1,2,3,4,5,6,7]
+LOCAL_RANK: 3 - CUDA_VISIBLE_DEVICES: [0,1,2,3,4,5,6,7]
+LOCAL_RANK: 5 - CUDA_VISIBLE_DEVICES: [0,1,2,3,4,5,6,7]
+LOCAL_RANK: 6 - CUDA_VISIBLE_DEVICES: [0,1,2,3,4,5,6,7]
+LOCAL_RANK: 5 - CUDA_VISIBLE_DEVICES: [0,1,2,3,4,5,6,7]
+
+   | Name                    | Type                   | Params
+--------------------------------------------------------------------
+0  | generator               | StyleLipSync           | 240 M 
+1  | frame_discriminator     | Discriminator          | 28.9 M
+2  | sequence_discriminator  | Discriminator          | 6.4 M 
+3  | spectrogram             | Spectrogram            | 0     
+4  | perceptor_lipreading    | Lipreading             | 11.2 M
+5  | lpips_loss              | LPIPS                  | 2.5 M 
+6  | l1_criterion            | L1Loss                 | 0     
+7  | mse_criterion           | MSELoss                | 0     
+8  | wasserstein_criterion   | KRWassersteinCriterion | 0     
+9  | gradient_penalty        | GradientPenalty        | 0     
+10 | bce_criterion           | BCEWithLogitsLoss      | 0     
+11 | cross_entropy_criterion | CrossEntropyLoss       | 0     
+12 | perc_criterion          | PerceptualLoss         | 0     
+13 | face_pool               | AdaptiveAvgPool2d      | 0     
+--------------------------------------------------------------------
+181 M     Trainable params
+108 M     Non-trainable params
+289 M     Total params
+1,157.189 Total estimated model params size (MB)
+SLURM auto-requeueing enabled. Setting signal handlers.
+SLURM auto-requeueing enabled. Setting signal handlers.
+SLURM auto-requeueing enabled. Setting signal handlers.
+SLURM auto-requeueing enabled. Setting signal handlers.
+SLURM auto-requeueing enabled. Setting signal handlers.
+SLURM auto-requeueing enabled. Setting signal handlers.
+SLURM auto-requeueing enabled. Setting signal handlers.
+SLURM auto-requeueing enabled. Setting signal handlers.
+SLURM auto-requeueing enabled. Setting signal handlers.
+SLURM auto-requeueing enabled. Setting signal handlers.
+SLURM auto-requeueing enabled. Setting signal handlers.
+SLURM auto-requeueing enabled. Setting signal handlers.
+SLURM auto-requeueing enabled. Setting signal handlers.
+SLURM auto-requeueing enabled. Setting signal handlers.
+SLURM auto-requeueing enabled. Setting signal handlers.
+SLURM auto-requeueing enabled. Setting signal handlers.
+SLURM auto-requeueing enabled. Setting signal handlers.
+SLURM auto-requeueing enabled. Setting signal handlers.
+SLURM auto-requeueing enabled. Setting signal handlers.
+SLURM auto-requeueing enabled. Setting signal handlers.
+SLURM auto-requeueing enabled. Setting signal handlers.
+SLURM auto-requeueing enabled. Setting signal handlers.
+SLURM auto-requeueing enabled. Setting signal handlers.
+SLURM auto-requeueing enabled. Setting signal handlers.
+SLURM auto-requeueing enabled. Setting signal handlers.
+SLURM auto-requeueing enabled. Setting signal handlers.
+SLURM auto-requeueing enabled. Setting signal handlers.
+SLURM auto-requeueing enabled. Setting signal handlers.
+SLURM auto-requeueing enabled. Setting signal handlers.
+SLURM auto-requeueing enabled. Setting signal handlers.
+SLURM auto-requeueing enabled. Setting signal handlers.
+SLURM auto-requeueing enabled. Setting signal handlers.
+[W reducer.cpp:1346] Warning: find_unused_parameters=True was specified in DDP constructor, but did not find any unused parameters in the forward pass. This flag results in an extra traversal of the autograd graph every iteration,  which can adversely affect performance. If your model indeed never has any unused parameters in the forward pass, consider turning this flag off. Note that this warning may be a false positive if your model has flow control causing later iterations to have unused parameters. (function operator())
+[W reducer.cpp:1346] Warning: find_unused_parameters=True was specified in DDP constructor, but did not find any unused parameters in the forward pass. This flag results in an extra traversal of the autograd graph every iteration,  which can adversely affect performance. If your model indeed never has any unused parameters in the forward pass, consider turning this flag off. Note that this warning may be a false positive if your model has flow control causing later iterations to have unused parameters. (function operator())
+[W reducer.cpp:1346] Warning: find_unused_parameters=True was specified in DDP constructor, but did not find any unused parameters in the forward pass. This flag results in an extra traversal of the autograd graph every iteration,  which can adversely affect performance. If your model indeed never has any unused parameters in the forward pass, consider turning this flag off. Note that this warning may be a false positive if your model has flow control causing later iterations to have unused parameters. (function operator())
+[W reducer.cpp:1346] Warning: find_unused_parameters=True was specified in DDP constructor, but did not find any unused parameters in the forward pass. This flag results in an extra traversal of the autograd graph every iteration,  which can adversely affect performance. If your model indeed never has any unused parameters in the forward pass, consider turning this flag off. Note that this warning may be a false positive if your model has flow control causing later iterations to have unused parameters. (function operator())
+[W reducer.cpp:1346] Warning: find_unused_parameters=True was specified in DDP constructor, but did not find any unused parameters in the forward pass. This flag results in an extra traversal of the autograd graph every iteration,  which can adversely affect performance. If your model indeed never has any unused parameters in the forward pass, consider turning this flag off. Note that this warning may be a false positive if your model has flow control causing later iterations to have unused parameters. (function operator())
+[W reducer.cpp:1346] Warning: find_unused_parameters=True was specified in DDP constructor, but did not find any unused parameters in the forward pass. This flag results in an extra traversal of the autograd graph every iteration,  which can adversely affect performance. If your model indeed never has any unused parameters in the forward pass, consider turning this flag off. Note that this warning may be a false positive if your model has flow control causing later iterations to have unused parameters. (function operator())
+[W reducer.cpp:1346] Warning: find_unused_parameters=True was specified in DDP constructor, but did not find any unused parameters in the forward pass. This flag results in an extra traversal of the autograd graph every iteration,  which can adversely affect performance. If your model indeed never has any unused parameters in the forward pass, consider turning this flag off. Note that this warning may be a false positive if your model has flow control causing later iterations to have unused parameters. (function operator())
+[W reducer.cpp:1346] Warning: find_unused_parameters=True was specified in DDP constructor, but did not find any unused parameters in the forward pass. This flag results in an extra traversal of the autograd graph every iteration,  which can adversely affect performance. If your model indeed never has any unused parameters in the forward pass, consider turning this flag off. Note that this warning may be a false positive if your model has flow control causing later iterations to have unused parameters. (function operator())
+[W reducer.cpp:1346] Warning: find_unused_parameters=True was specified in DDP constructor, but did not find any unused parameters in the forward pass. This flag results in an extra traversal of the autograd graph every iteration,  which can adversely affect performance. If your model indeed never has any unused parameters in the forward pass, consider turning this flag off. Note that this warning may be a false positive if your model has flow control causing later iterations to have unused parameters. (function operator())
+[W reducer.cpp:1346] Warning: find_unused_parameters=True was specified in DDP constructor, but did not find any unused parameters in the forward pass. This flag results in an extra traversal of the autograd graph every iteration,  which can adversely affect performance. If your model indeed never has any unused parameters in the forward pass, consider turning this flag off. Note that this warning may be a false positive if your model has flow control causing later iterations to have unused parameters. (function operator())
+[W reducer.cpp:1346] Warning: find_unused_parameters=True was specified in DDP constructor, but did not find any unused parameters in the forward pass. This flag results in an extra traversal of the autograd graph every iteration,  which can adversely affect performance. If your model indeed never has any unused parameters in the forward pass, consider turning this flag off. Note that this warning may be a false positive if your model has flow control causing later iterations to have unused parameters. (function operator())
+[W reducer.cpp:1346] Warning: find_unused_parameters=True was specified in DDP constructor, but did not find any unused parameters in the forward pass. This flag results in an extra traversal of the autograd graph every iteration,  which can adversely affect performance. If your model indeed never has any unused parameters in the forward pass, consider turning this flag off. Note that this warning may be a false positive if your model has flow control causing later iterations to have unused parameters. (function operator())
+[W reducer.cpp:1346] Warning: find_unused_parameters=True was specified in DDP constructor, but did not find any unused parameters in the forward pass. This flag results in an extra traversal of the autograd graph every iteration,  which can adversely affect performance. If your model indeed never has any unused parameters in the forward pass, consider turning this flag off. Note that this warning may be a false positive if your model has flow control causing later iterations to have unused parameters. (function operator())
+[W reducer.cpp:1346] Warning: find_unused_parameters=True was specified in DDP constructor, but did not find any unused parameters in the forward pass. This flag results in an extra traversal of the autograd graph every iteration,  which can adversely affect performance. If your model indeed never has any unused parameters in the forward pass, consider turning this flag off. Note that this warning may be a false positive if your model has flow control causing later iterations to have unused parameters. (function operator())
+[W reducer.cpp:1346] Warning: find_unused_parameters=True was specified in DDP constructor, but did not find any unused parameters in the forward pass. This flag results in an extra traversal of the autograd graph every iteration,  which can adversely affect performance. If your model indeed never has any unused parameters in the forward pass, consider turning this flag off. Note that this warning may be a false positive if your model has flow control causing later iterations to have unused parameters. (function operator())
+[W reducer.cpp:1346] Warning: find_unused_parameters=True was specified in DDP constructor, but did not find any unused parameters in the forward pass. This flag results in an extra traversal of the autograd graph every iteration,  which can adversely affect performance. If your model indeed never has any unused parameters in the forward pass, consider turning this flag off. Note that this warning may be a false positive if your model has flow control causing later iterations to have unused parameters. (function operator())
+[W reducer.cpp:1346] Warning: find_unused_parameters=True was specified in DDP constructor, but did not find any unused parameters in the forward pass. This flag results in an extra traversal of the autograd graph every iteration,  which can adversely affect performance. If your model indeed never has any unused parameters in the forward pass, consider turning this flag off. Note that this warning may be a false positive if your model has flow control causing later iterations to have unused parameters. (function operator())
+[W reducer.cpp:1346] Warning: find_unused_parameters=True was specified in DDP constructor, but did not find any unused parameters in the forward pass. This flag results in an extra traversal of the autograd graph every iteration,  which can adversely affect performance. If your model indeed never has any unused parameters in the forward pass, consider turning this flag off. Note that this warning may be a false positive if your model has flow control causing later iterations to have unused parameters. (function operator())
+[W reducer.cpp:1346] Warning: find_unused_parameters=True was specified in DDP constructor, but did not find any unused parameters in the forward pass. This flag results in an extra traversal of the autograd graph every iteration,  which can adversely affect performance. If your model indeed never has any unused parameters in the forward pass, consider turning this flag off. Note that this warning may be a false positive if your model has flow control causing later iterations to have unused parameters. (function operator())
+[W reducer.cpp:1346] Warning: find_unused_parameters=True was specified in DDP constructor, but did not find any unused parameters in the forward pass. This flag results in an extra traversal of the autograd graph every iteration,  which can adversely affect performance. If your model indeed never has any unused parameters in the forward pass, consider turning this flag off. Note that this warning may be a false positive if your model has flow control causing later iterations to have unused parameters. (function operator())
+[W reducer.cpp:1346] Warning: find_unused_parameters=True was specified in DDP constructor, but did not find any unused parameters in the forward pass. This flag results in an extra traversal of the autograd graph every iteration,  which can adversely affect performance. If your model indeed never has any unused parameters in the forward pass, consider turning this flag off. Note that this warning may be a false positive if your model has flow control causing later iterations to have unused parameters. (function operator())
+[W reducer.cpp:1346] Warning: find_unused_parameters=True was specified in DDP constructor, but did not find any unused parameters in the forward pass. This flag results in an extra traversal of the autograd graph every iteration,  which can adversely affect performance. If your model indeed never has any unused parameters in the forward pass, consider turning this flag off. Note that this warning may be a false positive if your model has flow control causing later iterations to have unused parameters. (function operator())
+[W reducer.cpp:1346] Warning: find_unused_parameters=True was specified in DDP constructor, but did not find any unused parameters in the forward pass. This flag results in an extra traversal of the autograd graph every iteration,  which can adversely affect performance. If your model indeed never has any unused parameters in the forward pass, consider turning this flag off. Note that this warning may be a false positive if your model has flow control causing later iterations to have unused parameters. (function operator())
+[W reducer.cpp:1346] Warning: find_unused_parameters=True was specified in DDP constructor, but did not find any unused parameters in the forward pass. This flag results in an extra traversal of the autograd graph every iteration,  which can adversely affect performance. If your model indeed never has any unused parameters in the forward pass, consider turning this flag off. Note that this warning may be a false positive if your model has flow control causing later iterations to have unused parameters. (function operator())
+[W reducer.cpp:1346] Warning: find_unused_parameters=True was specified in DDP constructor, but did not find any unused parameters in the forward pass. This flag results in an extra traversal of the autograd graph every iteration,  which can adversely affect performance. If your model indeed never has any unused parameters in the forward pass, consider turning this flag off. Note that this warning may be a false positive if your model has flow control causing later iterations to have unused parameters. (function operator())
+[W reducer.cpp:1346] Warning: find_unused_parameters=True was specified in DDP constructor, but did not find any unused parameters in the forward pass. This flag results in an extra traversal of the autograd graph every iteration,  which can adversely affect performance. If your model indeed never has any unused parameters in the forward pass, consider turning this flag off. Note that this warning may be a false positive if your model has flow control causing later iterations to have unused parameters. (function operator())
+[W reducer.cpp:1346] Warning: find_unused_parameters=True was specified in DDP constructor, but did not find any unused parameters in the forward pass. This flag results in an extra traversal of the autograd graph every iteration,  which can adversely affect performance. If your model indeed never has any unused parameters in the forward pass, consider turning this flag off. Note that this warning may be a false positive if your model has flow control causing later iterations to have unused parameters. (function operator())
+[W reducer.cpp:1346] Warning: find_unused_parameters=True was specified in DDP constructor, but did not find any unused parameters in the forward pass. This flag results in an extra traversal of the autograd graph every iteration,  which can adversely affect performance. If your model indeed never has any unused parameters in the forward pass, consider turning this flag off. Note that this warning may be a false positive if your model has flow control causing later iterations to have unused parameters. (function operator())
+[W reducer.cpp:1346] Warning: find_unused_parameters=True was specified in DDP constructor, but did not find any unused parameters in the forward pass. This flag results in an extra traversal of the autograd graph every iteration,  which can adversely affect performance. If your model indeed never has any unused parameters in the forward pass, consider turning this flag off. Note that this warning may be a false positive if your model has flow control causing later iterations to have unused parameters. (function operator())
+[W reducer.cpp:1346] Warning: find_unused_parameters=True was specified in DDP constructor, but did not find any unused parameters in the forward pass. This flag results in an extra traversal of the autograd graph every iteration,  which can adversely affect performance. If your model indeed never has any unused parameters in the forward pass, consider turning this flag off. Note that this warning may be a false positive if your model has flow control causing later iterations to have unused parameters. (function operator())
+[W reducer.cpp:1346] Warning: find_unused_parameters=True was specified in DDP constructor, but did not find any unused parameters in the forward pass. This flag results in an extra traversal of the autograd graph every iteration,  which can adversely affect performance. If your model indeed never has any unused parameters in the forward pass, consider turning this flag off. Note that this warning may be a false positive if your model has flow control causing later iterations to have unused parameters. (function operator())
+[W reducer.cpp:1346] Warning: find_unused_parameters=True was specified in DDP constructor, but did not find any unused parameters in the forward pass. This flag results in an extra traversal of the autograd graph every iteration,  which can adversely affect performance. If your model indeed never has any unused parameters in the forward pass, consider turning this flag off. Note that this warning may be a false positive if your model has flow control causing later iterations to have unused parameters. (function operator())
+Error executing job with overrides: ['trainer.num_nodes=4', 'dataset.batch_size=1', 'dataset.max_frames=6', 'dataset.resize=[512,512]', 'animator/generator/audio_encoder/backbone=wav2vec2', 'dataset.use_all_audio=True', 'animator.objective.perc_factor_lip=400', 'animator.generator.learn_constant=True', 'dataset.blending_box_masks=True', 'dataset.normalize_audio=True']
+Traceback (most recent call last):
+  File "/data/home/stellab/miniconda3/envs/python39/lib/python3.9/site-packages/pytorch_lightning/trainer/call.py", line 43, in _call_and_handle_interrupt
+    return trainer.strategy.launcher.launch(trainer_fn, *args, trainer=trainer, **kwargs)
+  File "/data/home/stellab/miniconda3/envs/python39/lib/python3.9/site-packages/pytorch_lightning/strategies/launchers/subprocess_script.py", line 105, in launch
+    return function(*args, **kwargs)
+  File "/data/home/stellab/miniconda3/envs/python39/lib/python3.9/site-packages/pytorch_lightning/trainer/trainer.py", line 579, in _fit_impl
+    self._run(model, ckpt_path=ckpt_path)
+  File "/data/home/stellab/miniconda3/envs/python39/lib/python3.9/site-packages/pytorch_lightning/trainer/trainer.py", line 986, in _run
+    results = self._run_stage()
+  File "/data/home/stellab/miniconda3/envs/python39/lib/python3.9/site-packages/pytorch_lightning/trainer/trainer.py", line 1032, in _run_stage
+    self.fit_loop.run()
+  File "/data/home/stellab/miniconda3/envs/python39/lib/python3.9/site-packages/pytorch_lightning/loops/fit_loop.py", line 205, in run
+    self.advance()
+  File "/data/home/stellab/miniconda3/envs/python39/lib/python3.9/site-packages/pytorch_lightning/loops/fit_loop.py", line 363, in advance
+    self.epoch_loop.run(self._data_fetcher)
+  File "/data/home/stellab/miniconda3/envs/python39/lib/python3.9/site-packages/pytorch_lightning/loops/training_epoch_loop.py", line 138, in run
+    self.advance(data_fetcher)
+  File "/data/home/stellab/miniconda3/envs/python39/lib/python3.9/site-packages/pytorch_lightning/loops/training_epoch_loop.py", line 244, in advance
+    batch_output = self.manual_optimization.run(kwargs)
+  File "/data/home/stellab/miniconda3/envs/python39/lib/python3.9/site-packages/pytorch_lightning/loops/optimization/manual.py", line 94, in run
+    self.advance(kwargs)
+  File "/data/home/stellab/miniconda3/envs/python39/lib/python3.9/site-packages/pytorch_lightning/loops/optimization/manual.py", line 114, in advance
+    training_step_output = call._call_strategy_hook(trainer, "training_step", *kwargs.values())
+  File "/data/home/stellab/miniconda3/envs/python39/lib/python3.9/site-packages/pytorch_lightning/trainer/call.py", line 309, in _call_strategy_hook
+    output = fn(*args, **kwargs)
+  File "/data/home/stellab/miniconda3/envs/python39/lib/python3.9/site-packages/pytorch_lightning/strategies/strategy.py", line 390, in training_step
+    return self._forward_redirection(self.model, self.lightning_module, "training_step", *args, **kwargs)
+  File "/data/home/stellab/miniconda3/envs/python39/lib/python3.9/site-packages/pytorch_lightning/strategies/strategy.py", line 642, in __call__
+    wrapper_output = wrapper_module(*args, **kwargs)
+  File "/data/home/stellab/miniconda3/envs/python39/lib/python3.9/site-packages/torch/nn/modules/module.py", line 1518, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "/data/home/stellab/miniconda3/envs/python39/lib/python3.9/site-packages/torch/nn/modules/module.py", line 1527, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/data/home/stellab/miniconda3/envs/python39/lib/python3.9/site-packages/torch/nn/parallel/distributed.py", line 1519, in forward
+    else self._run_ddp_forward(*inputs, **kwargs)
+  File "/data/home/stellab/miniconda3/envs/python39/lib/python3.9/site-packages/torch/nn/parallel/distributed.py", line 1355, in _run_ddp_forward
+    return self.module(*inputs, **kwargs)  # type: ignore[index]
+  File "/data/home/stellab/miniconda3/envs/python39/lib/python3.9/site-packages/torch/nn/modules/module.py", line 1518, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "/data/home/stellab/miniconda3/envs/python39/lib/python3.9/site-packages/torch/nn/modules/module.py", line 1527, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/data/home/stellab/miniconda3/envs/python39/lib/python3.9/site-packages/pytorch_lightning/strategies/strategy.py", line 635, in wrapped_forward
+    out = method(*_args, **_kwargs)
+  File "/opt/hpcaas/.mounts/fs-02b58f8e0d8aedf7b/home/stellab/projects/dubbing_gans/models/animator.py", line 1287, in training_step
+    self.manual_backward(gen_loss)
+  File "/data/home/stellab/miniconda3/envs/python39/lib/python3.9/site-packages/pytorch_lightning/core/module.py", line 1071, in manual_backward
+    self.trainer.strategy.backward(loss, None, *args, **kwargs)
+  File "/data/home/stellab/miniconda3/envs/python39/lib/python3.9/site-packages/pytorch_lightning/strategies/strategy.py", line 213, in backward
+    self.precision_plugin.backward(closure_loss, self.lightning_module, optimizer, *args, **kwargs)
+  File "/data/home/stellab/miniconda3/envs/python39/lib/python3.9/site-packages/pytorch_lightning/plugins/precision/precision.py", line 72, in backward
+    model.backward(tensor, *args, **kwargs)
+  File "/data/home/stellab/miniconda3/envs/python39/lib/python3.9/site-packages/pytorch_lightning/core/module.py", line 1090, in backward
+    loss.backward(*args, **kwargs)
+  File "/data/home/stellab/miniconda3/envs/python39/lib/python3.9/site-packages/torch/_tensor.py", line 492, in backward
+    torch.autograd.backward(
+  File "/data/home/stellab/miniconda3/envs/python39/lib/python3.9/site-packages/torch/autograd/__init__.py", line 251, in backward
+    Variable._execution_engine.run_backward(  # Calls into the C++ engine to run the backward pass
+RuntimeError: NCCL Error 1: unhandled cuda error (run with NCCL_DEBUG=INFO for details)
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/opt/hpcaas/.mounts/fs-02b58f8e0d8aedf7b/home/stellab/projects/dubbing_gans/run_trainer.py", line 149, in <module>
+    main()
+  File "/data/home/stellab/miniconda3/envs/python39/lib/python3.9/site-packages/hydra/main.py", line 94, in decorated_main
+    _run_hydra(
+  File "/data/home/stellab/miniconda3/envs/python39/lib/python3.9/site-packages/hydra/_internal/utils.py", line 394, in _run_hydra
+    _run_app(
+  File "/data/home/stellab/miniconda3/envs/python39/lib/python3.9/site-packages/hydra/_internal/utils.py", line 457, in _run_app
+    run_and_report(
+  File "/data/home/stellab/miniconda3/envs/python39/lib/python3.9/site-packages/hydra/_internal/utils.py", line 223, in run_and_report
+    raise ex
+  File "/data/home/stellab/miniconda3/envs/python39/lib/python3.9/site-packages/hydra/_internal/utils.py", line 220, in run_and_report
+    return func()
+  File "/data/home/stellab/miniconda3/envs/python39/lib/python3.9/site-packages/hydra/_internal/utils.py", line 458, in <lambda>
+    lambda: hydra.run(
+  File "/data/home/stellab/miniconda3/envs/python39/lib/python3.9/site-packages/hydra/_internal/hydra.py", line 132, in run
+    _ = ret.return_value
+  File "/data/home/stellab/miniconda3/envs/python39/lib/python3.9/site-packages/hydra/core/utils.py", line 260, in return_value
+    raise self._return_value
+  File "/data/home/stellab/miniconda3/envs/python39/lib/python3.9/site-packages/hydra/core/utils.py", line 186, in run_job
+    ret.return_value = task_function(task_cfg)
+  File "/opt/hpcaas/.mounts/fs-02b58f8e0d8aedf7b/home/stellab/projects/dubbing_gans/run_trainer.py", line 142, in main
+    trainer.fit(animator, data, ckpt_path = checkpoint) # Maybe resume stated here. I am not sure, check this again.
+  File "/data/home/stellab/miniconda3/envs/python39/lib/python3.9/site-packages/pytorch_lightning/trainer/trainer.py", line 543, in fit
+    call._call_and_handle_interrupt(
+  File "/data/home/stellab/miniconda3/envs/python39/lib/python3.9/site-packages/pytorch_lightning/trainer/call.py", line 68, in _call_and_handle_interrupt
+    trainer._teardown()
+  File "/data/home/stellab/miniconda3/envs/python39/lib/python3.9/site-packages/pytorch_lightning/trainer/trainer.py", line 1009, in _teardown
+    self.strategy.teardown()
+  File "/data/home/stellab/miniconda3/envs/python39/lib/python3.9/site-packages/pytorch_lightning/strategies/ddp.py", line 419, in teardown
+    super().teardown()
+  File "/data/home/stellab/miniconda3/envs/python39/lib/python3.9/site-packages/pytorch_lightning/strategies/parallel.py", line 133, in teardown
+    super().teardown()
+  File "/data/home/stellab/miniconda3/envs/python39/lib/python3.9/site-packages/pytorch_lightning/strategies/strategy.py", line 533, in teardown
+    _optimizers_to_device(self.optimizers, torch.device("cpu"))
+  File "/data/home/stellab/miniconda3/envs/python39/lib/python3.9/site-packages/lightning_fabric/utilities/optimizer.py", line 28, in _optimizers_to_device
+    _optimizer_to_device(opt, device)
+  File "/data/home/stellab/miniconda3/envs/python39/lib/python3.9/site-packages/lightning_fabric/utilities/optimizer.py", line 34, in _optimizer_to_device
+    optimizer.state[p] = apply_to_collection(v, Tensor, move_data_to_device, device, allow_frozen=True)
+  File "/data/home/stellab/miniconda3/envs/python39/lib/python3.9/site-packages/lightning_utilities/core/apply_func.py", line 52, in apply_to_collection
+    return _apply_to_collection_slow(
+  File "/data/home/stellab/miniconda3/envs/python39/lib/python3.9/site-packages/lightning_utilities/core/apply_func.py", line 104, in _apply_to_collection_slow
+    v = _apply_to_collection_slow(
+  File "/data/home/stellab/miniconda3/envs/python39/lib/python3.9/site-packages/lightning_utilities/core/apply_func.py", line 96, in _apply_to_collection_slow
+    return function(data, *args, **kwargs)
+  File "/data/home/stellab/miniconda3/envs/python39/lib/python3.9/site-packages/lightning_fabric/utilities/apply_func.py", line 102, in move_data_to_device
+    return apply_to_collection(batch, dtype=_TransferableDataType, function=batch_to)
+  File "/data/home/stellab/miniconda3/envs/python39/lib/python3.9/site-packages/lightning_utilities/core/apply_func.py", line 64, in apply_to_collection
+    return function(data, *args, **kwargs)
+  File "/data/home/stellab/miniconda3/envs/python39/lib/python3.9/site-packages/lightning_fabric/utilities/apply_func.py", line 96, in batch_to
+    data_output = data.to(device, **kwargs)
+RuntimeError: CUDA error: an illegal instruction was encountered
+Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+[E ProcessGroupNCCL.cpp:915] [Rank 15] NCCL watchdog thread terminated with exception: CUDA error: an illegal instruction was encountered
+Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+Exception raised from c10_cuda_check_implementation at /opt/conda/conda-bld/pytorch_1695392035629/work/c10/cuda/CUDAException.cpp:44 (most recent call first):
+frame #0: c10::Error::Error(c10::SourceLocation, std::string) + 0x57 (0x7fdb713fc617 in /data/home/stellab/miniconda3/envs/python39/lib/python3.9/site-packages/torch/lib/libc10.so)
+frame #1: c10::detail::torchCheckFail(char const*, char const*, unsigned int, std::string const&) + 0x64 (0x7fdb713b798d in /data/home/stellab/miniconda3/envs/python39/lib/python3.9/site-packages/torch/lib/libc10.so)
+frame #2: c10::cuda::c10_cuda_check_implementation(int, char const*, char const*, int, bool) + 0x118 (0x7fdb714b89f8 in /data/home/stellab/miniconda3/envs/python39/lib/python3.9/site-packages/torch/lib/libc10_cuda.so)
+frame #3: c10d::ProcessGroupNCCL::WorkNCCL::finishedGPUExecutionInternal() const + 0x80 (0x7fdb7242a790 in /data/home/stellab/miniconda3/envs/python39/lib/python3.9/site-packages/torch/lib/libtorch_cuda.so)
+frame #4: c10d::ProcessGroupNCCL::WorkNCCL::isCompleted() + 0x58 (0x7fdb7242e5b8 in /data/home/stellab/miniconda3/envs/python39/lib/python3.9/site-packages/torch/lib/libtorch_cuda.so)
+frame #5: c10d::ProcessGroupNCCL::workCleanupLoop() + 0x24b (0x7fdb72444dfb in /data/home/stellab/miniconda3/envs/python39/lib/python3.9/site-packages/torch/lib/libtorch_cuda.so)
+frame #6: c10d::ProcessGroupNCCL::ncclCommWatchdog() + 0x78 (0x7fdb72445108 in /data/home/stellab/miniconda3/envs/python39/lib/python3.9/site-packages/torch/lib/libtorch_cuda.so)
+frame #7: <unknown function> + 0xdbbf4 (0x7fdbbe77bbf4 in /data/home/stellab/miniconda3/envs/python39/lib/python3.9/site-packages/torch/lib/../../../.././libstdc++.so.6)
+frame #8: <unknown function> + 0x8609 (0x7fdc00208609 in /lib/x86_64-linux-gnu/libpthread.so.0)
+frame #9: clone + 0x43 (0x7fdbfffd1353 in /lib/x86_64-linux-gnu/libc.so.6)
+
+srun: error: a100-st-p4d24xlarge-30: task 15: Aborted (core dumped)
+srun: Terminating StepId=187502.0
+slurmstepd: error: *** STEP 187502.0 ON a100-st-p4d24xlarge-29 CANCELLED AT 2024-06-21T10:17:56 ***
+srun: error: a100-st-p4d24xlarge-32: task 29: Killed
+srun: error: a100-st-p4d24xlarge-30: task 14: Killed
+srun: error: a100-st-p4d24xlarge-29: task 1: Killed
+srun: error: a100-st-p4d24xlarge-31: tasks 18,23: Killed
+srun: error: a100-st-p4d24xlarge-30: task 12: Killed
+srun: error: a100-st-p4d24xlarge-29: tasks 2,7: Killed
+srun: error: a100-st-p4d24xlarge-32: tasks 25-27,30: Killed
+srun: error: a100-st-p4d24xlarge-32: tasks 24,28: Killed
+srun: error: a100-st-p4d24xlarge-29: tasks 0,5-6: Killed
+srun: error: a100-st-p4d24xlarge-31: tasks 16-17,19: Killed
+srun: error: a100-st-p4d24xlarge-30: tasks 8,10,13: Killed
+srun: error: a100-st-p4d24xlarge-29: task 3: Killed
+srun: error: a100-st-p4d24xlarge-30: task 11: Killed
+srun: error: a100-st-p4d24xlarge-31: tasks 21-22: Killed
+srun: error: a100-st-p4d24xlarge-30: task 9: Killed
+srun: error: a100-st-p4d24xlarge-29: task 4: Killed
+srun: error: a100-st-p4d24xlarge-31: task 20: Killed
+srun: error: a100-st-p4d24xlarge-32: task 31: Killed
+srun: Force Terminated StepId=187502.0
