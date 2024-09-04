@@ -20,13 +20,6 @@ from scripts.util.audio_wrapper import AudioWrapper
 from sgm.util import trim_pad_audio
 
 
-"""
-python scripts/util/get_audio_embeddings.py --audio_path /fsx/rs2517/data/HDTF/audio/RD_Radio18_000.wav --model_type wav2vec2
-
-
-python scripts/util/get_audio_embeddings.py --audio_path /data/home/stellab/projects/dubbing_gans/results_demo/evaluation_data/kimmel.wav  --model_type wav2vec2
-"""
-
 def make_into_multiple_of(x, multiple, dim=0):
     """
     Make the torch tensor into a multiple of the given number.
@@ -48,7 +41,7 @@ def make_into_multiple_of(x, multiple, dim=0):
 
 argparser = argparse.ArgumentParser()
 argparser.add_argument("--audio_path", type=str, default="data/audio_files.txt")
-argparser.add_argument("--model_type", type=str, default="whisper", help="Model type: whisper or wavlm or wav2vec2")
+argparser.add_argument("--model_type", type=str, default="whisper", help="Model type: whisper or wavlm")
 argparser.add_argument(
     "--output_path",
     type=str,
@@ -71,6 +64,7 @@ argparser.add_argument("--out_dir", type=str)
 argparser.add_argument(
     "--recompute", action="store_true", help="Recompute audio embeddings even if they already exist"
 )
+argparser.add_argument("--reverse", action="store_true", help="Reverse audio and video file")
 args = argparser.parse_args()
 
 
@@ -88,11 +82,6 @@ def get_audio_embeddings(audio_path, output_path, model_size, fps):
         audio_files = glob.glob(audio_path)
         # + glob.glob(os.path.join(audio_path, "**/*.wav"))
         # + glob.glob(os.path.join(audio_path, "**/**/*.wav"))
-   
-    audio_rate = args.audio_rate
-    a2v_ratio = fps / float(audio_rate)
-    samples_per_frame = math.ceil(1 / a2v_ratio)
-    
 
     # Load model
     # model = Whisper(model_size=model_size, fps=fps)
@@ -105,66 +94,74 @@ def get_audio_embeddings(audio_path, output_path, model_size, fps):
 
     # Get audio embeddings
     for audio_file in tqdm(audio_files, desc="Getting audio embeddings"):
-        # try:
-        audio_file_name = os.path.basename(audio_file)
-        audio_file_name = os.path.splitext(audio_file_name)[0]
-        audio_file_name = audio_file_name + f"_{args.model_type}_emb.pt"
-        audio_file_name = os.path.join(os.path.dirname(audio_file), audio_file_name)
-        
-        # if os.path.exists(audio_file_name.replace(args.in_dir, args.out_dir)) and not args.recompute:
-        #     continue
-        print(audio_file)
-        audio, sr = torchaudio.load(audio_file)
-        audio = (audio - audio.mean()) / torch.sqrt(audio.var() + 1e-7)
-        # print(audio.shape, max_len_sec * audio_rate)
-        print(audio.shape)
-        audio_embeddings = model.encode_audio(audio)
-        print('audio_embeddings', audio_embeddings.shape)
-        quit()
-        
+        try:
+            output_path = "/fsx/behavioural_computing_data/face_generation_data/AA_processed/"
+            audio_file = os.path.join(output_path, audio_file)
+            if not args.reverse:
+                video_path = audio_file.replace(args.audio_folder, args.video_folder).replace(".wav", ".mp4")
+            else:
+                video_path = audio_file
+                audio_file = video_path.replace(args.video_folder, args.audio_folder).replace(".mp4", ".wav")
+                audio_file = audio_file.replace("_output_output", "")
 
-        video_path = audio_file.replace(args.audio_folder, args.video_folder).replace(".wav", ".mp4")
-        if not os.path.exists(video_path):
-            print(f"Video file {video_path} does not exist. Skipping...")
-            continue
-        frames, audio, info = torchvision.io.read_video(video_path, pts_unit="sec")
-        sr = info.get("audio_fps", None)
-        max_len_sec = frames.shape[0] / fps
+            audio_file_name = os.path.basename(audio_file)
+            audio_file_name = os.path.splitext(audio_file_name)[0]
+            audio_file_name = audio_file_name + f"_{args.model_type}_emb.pt"
+            audio_file_name = os.path.join(os.path.dirname(audio_file), audio_file_name)
+            if os.path.exists(audio_file_name.replace(args.in_dir, args.out_dir)) and not args.recompute:
+                continue
 
-        # Load audio
-        if audio is None:
-            audio, sr = torchaudio.load(audio_file)
-        if sr != audio_rate:
-            audio = torchaudio.functional.resample(audio, orig_freq=sr, new_freq=audio_rate)[0]
-        audio = audio.mean(0, keepdim=True)
+            if not os.path.exists(video_path):
+                print(f"Video file {video_path} does not exist. Skipping...")
+                continue
+            frames, audio, info = torchvision.io.read_video(video_path, pts_unit="sec")
+            sr = info.get("audio_fps", None)
 
-        if args.model_type == "wav2vec2":
-            audio = (audio - audio.mean()) / torch.sqrt(audio.var() + 1e-7)
-            # print(audio.shape, max_len_sec * audio_rate)
-            print(audio.shape)
-            quit()
-            audio_embeddings = model.encode_audio(audio)
-            if audio_embeddings.shape[0] - frames.shape[0] == 1:
-                audio_embeddings = audio_embeddings[: frames.shape[0]]
-        else:
-            audio = trim_pad_audio(audio, audio_rate, max_len_sec=max_len_sec)[0]
-            audio = make_into_multiple_of(audio, samples_per_frame, dim=0)
-            audio_frames = rearrange(audio, "(f s) -> f s", s=samples_per_frame)
-            assert audio_frames.shape[0] == frames.shape[0], f"{audio_frames.shape} != {frames.shape}"
-            # if audio_frames.shape[0] % 2 != 0:
-            #     audio_frames = torch.cat([audio_frames, torch.zeros(1, samples_per_frame)], dim=0)
+            # print(audio.nelement() == 0, audio_file)
+            # Load audio
+            if audio is None or audio.nelement() == 0:
+                audio, sr = torchaudio.load(audio_file)
 
-            # Get audio embeddings
-            audio_embeddings = model.encode_audio(audio_frames.cuda())
+            audio_rate = args.audio_rate
+            fps = info["video_fps"]
+            a2v_ratio = fps / float(audio_rate)
+            samples_per_frame = math.ceil(1 / a2v_ratio)
+            max_len_sec = frames.shape[0] / fps
 
-        assert audio_embeddings.shape[0] == frames.shape[0], f"{audio_embeddings.shape} != {frames.shape}"
-        audio_file_name = audio_file_name.replace(args.in_dir, args.out_dir)
-        os.makedirs(os.path.dirname(audio_file_name), exist_ok=True)
-        torch.save(audio_embeddings.squeeze(0).cpu(), audio_file_name)
-        print('Save audio embedding in {}'.format(audio_file_name))
-        # except Exception as e:
-        #     print(e)
-        #     print(f"Failed for file {audio_file}")
+            if sr != audio_rate:
+                audio = torchaudio.functional.resample(audio, orig_freq=sr, new_freq=audio_rate)[0]
+            audio = audio.mean(0, keepdim=True)
+
+            if args.model_type == "wav2vec2":
+                audio = (audio - audio.mean()) / torch.sqrt(audio.var() + 1e-7)
+                audio = trim_pad_audio(audio, audio_rate, max_len_sec=max_len_sec)[0]
+                audio = make_into_multiple_of(audio, samples_per_frame, dim=0)
+                audio_frames = rearrange(audio, "(f s) -> f s", s=samples_per_frame)
+                assert audio_frames.shape[0] == frames.shape[0], f"{audio_frames.shape} != {frames.shape}"
+                audio = rearrange(audio_frames, "f s -> () (f s)")
+                # print(audio.shape, max_len_sec * audio_rate)
+                audio_embeddings = model.encode_audio(audio)
+                if audio_embeddings.shape[0] - frames.shape[0] == 1:
+                    audio_embeddings = audio_embeddings[: frames.shape[0]]
+            else:
+                audio = trim_pad_audio(audio, audio_rate, max_len_sec=max_len_sec)[0]
+                audio = make_into_multiple_of(audio, samples_per_frame, dim=0)
+                audio_frames = rearrange(audio, "(f s) -> f s", s=samples_per_frame)
+                assert audio_frames.shape[0] == frames.shape[0], f"{audio_frames.shape} != {frames.shape}"
+                # if audio_frames.shape[0] % 2 != 0:
+                #     audio_frames = torch.cat([audio_frames, torch.zeros(1, samples_per_frame)], dim=0)
+
+                # Get audio embeddings
+                audio_embeddings = model.encode_audio(audio_frames.cuda())
+
+            assert audio_embeddings.shape[0] == frames.shape[0], f"{audio_embeddings.shape} != {frames.shape}"
+            audio_file_name = audio_file_name.replace(args.in_dir, args.out_dir)
+            os.makedirs(os.path.dirname(audio_file_name), exist_ok=True)
+            torch.save(audio_embeddings.squeeze(0).cpu(), audio_file_name)
+        except Exception as e:
+            print(e)
+            print(f"Failed for file {audio_file}")
+            raise e
 
 
 if __name__ == "__main__":

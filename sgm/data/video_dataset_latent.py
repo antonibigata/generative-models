@@ -48,6 +48,7 @@ class VideoDataset(Dataset):
         resize_size=None,
         audio_folder="Audio",
         video_folder="CroppedVideos",
+        audio_emb_folder=None,
         video_extension=".avi",
         audio_extension=".wav",
         audio_rate=16000,
@@ -81,6 +82,7 @@ class VideoDataset(Dataset):
         self.cond_noise = cond_noise
         self.latent_condition = use_latent_condition
         precomputed_latent = latent_type
+        self.audio_emb_folder = audio_emb_folder if audio_emb_folder is not None else audio_folder
         # self.fps = fps
 
         assert not (exists(data_mean) ^ exists(data_std)), "Both data_mean and data_std should be provided"
@@ -261,7 +263,10 @@ class VideoDataset(Dataset):
             audio = raw_audio
             audio_frames = rearrange(audio, "(f s) -> f s", s=self.samples_per_frame)
         else:
-            audio = torch.load(audio_file.split(".")[0] + f"_{self.audio_emb_type}_emb.pt")
+            audio = torch.load(
+                audio_file.replace(self.audio_folder, self.audio_emb_folder).split(".")[0]
+                + f"_{self.audio_emb_type}_emb.pt"
+            )
             audio_frames = audio[indexes, :]
 
         audio_frames = audio_frames[1:] if self.need_cond else audio_frames  # Remove audio of first frame
