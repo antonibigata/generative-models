@@ -1,7 +1,7 @@
 import random
 import numpy as np
 from functools import partial
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, WeightedRandomSampler
 import torch.nn.functional as F
 import torch
 import math
@@ -83,6 +83,7 @@ class VideoDataset(Dataset):
         virtual_increase=1,
         filter_by_length=False,
         select_randomly=False,
+        balance_datasets=True,
     ):
         self.audio_folder = audio_folder
         self.from_audio_embedding = from_audio_embedding
@@ -167,7 +168,7 @@ class VideoDataset(Dataset):
         self.video_rate = math.ceil(vr.get_avg_fps())
         print(f"Video rate: {self.video_rate}")
         self.audio_rate = audio_rate
-        a2v_ratio = self.video_rate / float(self.audio_rate)
+        a2v_ratio = fps / float(self.audio_rate)
         self.samples_per_frame = math.ceil(1 / a2v_ratio)
 
         if get_separate_id:
@@ -184,6 +185,11 @@ class VideoDataset(Dataset):
                 self._indexes = self.filter_by_length(self.filelist, self.audio_filelist)
             else:
                 self._indexes = list(zip(self.filelist, self.audio_filelist))
+
+        self.balance_datasets = balance_datasets
+        if self.balance_datasets:
+            self.weights = self._calculate_weights()
+            self.sampler = WeightedRandomSampler(self.weights, num_samples=len(self._indexes), replacement=True)
 
     def __len__(self):
         return len(self._indexes) * self.virtual_increase
@@ -455,7 +461,28 @@ class VideoDataset(Dataset):
             video = video[:, :, h_start : h_start + self.resize_size, w_start : w_start + self.resize_size]
         return self.maybe_augment(video)
 
+    def _calculate_weights(self):
+        aa_processed_count = sum(
+            1 for item in self._indexes if "AA_processed" in (item[1] if len(item) == 3 else item[0])
+        )
+        other_count = len(self._indexes) - aa_processed_count
+
+        aa_processed_weight = 1 / aa_processed_count if aa_processed_count > 0 else 0
+        other_weight = 1 / other_count if other_count > 0 else 0
+
+        print(f"AA processed count: {aa_processed_count}, other count: {other_count}")
+        print(f"AA processed weight: {aa_processed_weight}, other weight: {other_weight}")
+
+        weights = [
+            aa_processed_weight if "AA_processed" in (item[1] if len(item) == 3 else item[0]) else other_weight
+            for item in self._indexes
+        ]
+        return weights
+
     def __getitem__(self, idx):
+        if self.balance_datasets:
+            idx = self.sampler.__iter__().__next__()
+
         try:
             clean_cond, noisy_cond, target, audio, raw_audio, cond_noise = self._get_frames_and_audio(
                 idx % len(self._indexes)

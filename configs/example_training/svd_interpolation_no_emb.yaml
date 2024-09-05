@@ -51,6 +51,7 @@ model:
         n_channels: 4
         starting_mask_method: zeros
         add_mask: True
+        fix_image_leak: False
 
     network_config:
       target: sgm.modules.diffusionmodules.video_model.VideoUNet
