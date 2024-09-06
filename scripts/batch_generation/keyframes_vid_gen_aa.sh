@@ -55,6 +55,7 @@ while IFS= read -r file_name; do
         --audio_emb_folder=audio_emb \
         --output_folder=/data/home/antoni/results/${output_folder} \
         --keyframes_ckpt=${keyframes_ckpt} \
+        --add_zero_flag=True
 
     echo "Processed $base_name"
 done < "$file_list"

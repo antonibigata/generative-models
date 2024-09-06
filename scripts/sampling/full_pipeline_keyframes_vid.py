@@ -93,7 +93,7 @@ def get_audio_indexes(main_index, n_audio_frames, max_len):
     return audio_ids
 
 
-def create_pipeline_inputs(video, audio, num_frames, video_emb, overlap=1):
+def create_pipeline_inputs(video, audio, num_frames, video_emb, overlap=1, add_zero_flag=False):
     # Interpolation is every num_frames, we need to create the inputs for the model
     # We need to create a list of inputs, each input is a tuple of ([first, last], audio)
     # The first and last are the first and last frames of the interpolation
@@ -131,6 +131,19 @@ def create_pipeline_inputs(video, audio, num_frames, video_emb, overlap=1):
         audio_interpolation_chunks.append(audio[i:segment_end])
         print(i, segment_end - 1)
 
+    # If the flag is on, add element 0 every 14 audio elements
+    if add_zero_flag:
+        first_element = audio[0]
+        for i in range(num_frames, len(audio_image_preds), num_frames):
+            audio_image_preds.insert(i, first_element)
+            audio_image_preds_idx.insert(i, audio_image_preds_idx[0])
+    print(audio_image_preds_idx)
+    if add_zero_flag:
+        # Remove the added elements from the list
+        audio_image_preds_idx = [
+            sample for i, sample in enumerate(audio_image_preds_idx) if (i + 1) % (num_frames + 1) != 0
+        ]
+
     interpolation_cond_list = []
     for i in range(0, len(audio_image_preds_idx) - 1, overlap if overlap > 0 else 2):
         interpolation_cond_list.append([audio_image_preds_idx[i], audio_image_preds_idx[i + 1]])
@@ -145,12 +158,6 @@ def create_pipeline_inputs(video, audio, num_frames, video_emb, overlap=1):
     audio_image_preds = audio_image_preds + audio_image_preds[:frames_needed]
 
     print(f"Added {frames_needed} frames from the start to make audio_image_preds a multiple of {num_frames}")
-
-    # max_num_keyframes = len(audio_image_preds) // num_frames
-    # audio_interpolation_chunks = audio_interpolation_chunks + audio_interpolation_chunks[:frames_needed]
-    # # audio_interpolation_chunks = audio_interpolation_chunks[: max_num_keyframes * num_frames - 1]
-    # gt_chunks = gt_chunks + gt_chunks[:frames_needed]
-    # gt_chunks = gt_chunks[: max_num_keyframes * num_frames - 1]
 
     # random_cond_idx = np.random.randint(0, len(video_emb))
     random_cond_idx = 0
@@ -255,8 +262,7 @@ def sample(
     is_dub: bool = False,
     keyframes_ckpt: Optional[str] = None,
     interpolation_ckpt: Optional[str] = None,
-    low_sigma: float = 0.0,
-    high_sigma: float = float("inf"),
+    add_zero_flag: bool = False,
 ):
     """
     Simple script to generate a single sample conditioned on an image `input_path` or multiple images, one for each
@@ -372,7 +378,7 @@ def sample(
                 )
 
         gt_chunks, audio_interpolation_list, audio_list, emb, cond, _, added_frames = create_pipeline_inputs(
-            model_input, audio, num_frames, video_emb, overlap=overlap
+            model_input, audio, num_frames, video_emb, overlap=overlap, add_zero_flag=add_zero_flag
         )
 
         model, filter, n_batch = load_model(
@@ -550,6 +556,12 @@ def sample(
         # The first and last are the first and last frames of the interpolation
         interpolation_cond_list = []
         interpolation_cond_list_emb = []
+
+        # Remove zero embeddings if the flag is activated
+        if add_zero_flag:
+            samples_x = [sample for i, sample in enumerate(samples_x) if (i + 1) % (num_frames + 1) != 0]
+            samples_z = [sample for i, sample in enumerate(samples_z) if (i + 1) % (num_frames + 1) != 0]
+
         for i in range(0, len(samples_z) - 1, overlap if overlap > 0 else 2):
             interpolation_cond_list.append(torch.stack([samples_x[i], samples_x[i + 1]], dim=1))
             interpolation_cond_list_emb.append(torch.stack([samples_z[i], samples_z[i + 1]], dim=1))

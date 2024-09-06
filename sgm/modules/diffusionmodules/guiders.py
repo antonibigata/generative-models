@@ -41,7 +41,18 @@ class VanillaCFG(Guider):
         c_out = dict()
 
         for k in c:
-            if k in ["vector", "crossattn", "concat", "audio_emb", "image_embeds", "landmarks", "masks", "gt"]:
+            if k in [
+                "vector",
+                "crossattn",
+                "concat",
+                "audio_emb",
+                "image_embeds",
+                "landmarks",
+                "masks",
+                "gt",
+                "valence",
+                "arousal",
+            ]:
                 c_out[k] = torch.cat((uc[k], c[k]), 0)
             elif k == "reference":
                 c_out["reference"] = []
@@ -66,7 +77,16 @@ class KarrasGuider(VanillaCFG):
         c_out = dict()
 
         for k in c:
-            if k in ["vector", "crossattn", "concat", "audio_emb", "image_embeds", "landmarks"]:
+            if k in [
+                "vector",
+                "crossattn",
+                "concat",
+                "audio_emb",
+                "image_embeds",
+                "landmarks",
+                "valence",
+                "arousal",
+            ]:
                 c_out[k] = torch.cat((c[k], c[k]), 0)
             elif k == "reference":
                 c_out["reference"] = []

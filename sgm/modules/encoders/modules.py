@@ -1206,12 +1206,15 @@ class LowScaleEncoder(nn.Module):
 class ConcatTimestepEmbedderND(AbstractEmbModel):
     """embeds each dimension independently and concatenates them"""
 
-    def __init__(self, outdim):
+    def __init__(self, outdim, is_temporal=False):
         super().__init__()
         self.timestep = Timestep(outdim)
         self.outdim = outdim
+        self.is_temporal = is_temporal
 
     def forward(self, x):
+        if self.is_temporal:
+            x = rearrange(x, "b t ... -> (b t) () ...")
         if x.ndim == 1:
             x = x[:, None]
         assert len(x.shape) == 2

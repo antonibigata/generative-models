@@ -597,9 +597,6 @@ class VideoUNet(nn.Module):
 
         if self.num_classes is not None:
             assert y is not None or "to_time_emb" in self.audio_cond_method
-            # print(self.audio_cond_method)
-            # print("audio_emb:", audio_emb.shape if audio_emb is not None else None)
-            # print("y:", y.shape if y is not None else None)
             if self.audio_cond_method == "to_time_emb":
                 assert audio_emb is not None
                 audio_emb = rearrange(audio_emb, "b t c -> (b t) c")

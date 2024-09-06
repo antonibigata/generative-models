@@ -51,6 +51,7 @@ class VideoDataset(Dataset):
         resize_size=None,
         audio_folder="Audio",
         video_folder="CroppedVideos",
+        emotions_folder="emotions",
         audio_emb_folder=None,
         video_extension=".avi",
         audio_extension=".wav",
@@ -84,6 +85,7 @@ class VideoDataset(Dataset):
         filter_by_length=False,
         select_randomly=False,
         balance_datasets=True,
+        use_emotions=False,
     ):
         self.audio_folder = audio_folder
         self.from_audio_embedding = from_audio_embedding
@@ -97,6 +99,8 @@ class VideoDataset(Dataset):
         self.fps = fps
         self.virtual_increase = virtual_increase
         self.select_randomly = select_randomly
+        self.use_emotions = use_emotions
+        self.emotions_folder = emotions_folder
         # self.fps = fps
 
         assert not (exists(data_mean) ^ exists(data_std)), "Both data_mean and data_std should be provided"
@@ -193,6 +197,11 @@ class VideoDataset(Dataset):
 
     def __len__(self):
         return len(self._indexes) * self.virtual_increase
+
+    def get_emotions(self, video_file, video_indexes):
+        emotions_path = video_file.replace(self.video_folder, self.emotions_folder).replace(self.video_ext, ".pt")
+        emotions = torch.load(emotions_path)
+        return emotions["valence"][video_indexes], emotions["arousal"][video_indexes]
 
     def get_frame_indices(self, total_video_frames, select_randomly=False):
         if select_randomly:
@@ -305,6 +314,10 @@ class VideoDataset(Dataset):
             audio_path_extra = f"_{self.audio_emb_type}_emb.safetensors"
             video_path_extra = f"_{self.latent_type}_512_latent.safetensors"
 
+        emotions = None
+        if self.use_emotions:
+            emotions = self.get_emotions(video_file, video_indexes)
+
         raw_audio = None
         if self.audio_in_video:
             raw_audio, frames_video = vr.get_batch(video_indexes)
@@ -398,7 +411,7 @@ class VideoDataset(Dataset):
         # else:
         #     cond_noise = None
 
-        return clean_cond, noisy_cond, target, audio_frames, raw_audio, cond_noise
+        return clean_cond, noisy_cond, target, audio_frames, raw_audio, cond_noise, emotions
 
     def filter_by_length(self, video_filelist, audio_filelist):
         def with_opencv(filename):
@@ -484,7 +497,7 @@ class VideoDataset(Dataset):
             idx = self.sampler.__iter__().__next__()
 
         try:
-            clean_cond, noisy_cond, target, audio, raw_audio, cond_noise = self._get_frames_and_audio(
+            clean_cond, noisy_cond, target, audio, raw_audio, cond_noise, emotions = self._get_frames_and_audio(
                 idx % len(self._indexes)
             )
         except Exception as e:
@@ -498,6 +511,10 @@ class VideoDataset(Dataset):
         if audio is not None:
             out_data["audio_emb"] = audio
             out_data["raw_audio"] = raw_audio
+
+        if self.use_emotions:
+            out_data["valence"] = emotions[0]
+            out_data["arousal"] = emotions[1]
 
         if self.use_latent:
             input_key = "latents"

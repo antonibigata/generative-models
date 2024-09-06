@@ -27,18 +27,40 @@ class IdentityWrapper(nn.Module):
 
 
 class OpenAIWrapper(IdentityWrapper):
-    def __init__(self, diffusion_model, compile_model: bool = False, ada_aug_percent=0.0):
+    def __init__(self, diffusion_model, compile_model: bool = False, ada_aug_percent=0.0, fix_image_leak=False):
         super().__init__(diffusion_model, compile_model)
+        self.fix_image_leak = fix_image_leak
+        if fix_image_leak:
+            self.beta_m = 15
+            self.a = 5
+            self.noise_encoder = ConcatTimestepEmbedderND(256)
 
         self.augment_pipe = None
         if ada_aug_percent > 0.0:
             augment_kwargs = dict(xflip=1e8, yflip=1, scale=1, rotate_frac=1, aniso=1, translate_frac=1)
             self.augment_pipe = AugmentPipe(ada_aug_percent, **augment_kwargs)
 
+    def get_noised_input(self, sigmas_bc: torch.Tensor, noise: torch.Tensor, input: torch.Tensor) -> torch.Tensor:
+        noised_input = input + noise * sigmas_bc
+        return noised_input
+
     def forward(self, x: torch.Tensor, t: torch.Tensor, c: dict, **kwargs) -> torch.Tensor:
         cond_cat = c.get("concat", torch.Tensor([]).type_as(x))
+
+        T = x.shape[0] // cond_cat.shape[0]
+        if self.fix_image_leak:
+            noise_aug_strength = get_sigma_s(
+                rearrange(t, "(b t) ... -> b t ...", b=T)[: cond_cat.shape[0], 0] / 700, self.a, self.beta_m
+            )
+            noise_aug = append_dims(noise_aug_strength, 4).to(x.device)
+            noise = torch.randn_like(noise_aug)
+            cond_cat = self.get_noised_input(noise_aug, noise, cond_cat)
+            noise_emb = self.noise_encoder(noise_aug_strength).to(x.device)
+            c["vector"] = noise_emb if "vector" not in c else torch.cat([c["vector"], noise_emb], dim=1)
+            # c["vector"] = noise_emb
+
         if len(cond_cat.shape) and cond_cat.shape[0] and x.shape[0] != cond_cat.shape[0]:
-            cond_cat = repeat(cond_cat, "b c h w -> b c t h w", t=x.shape[0] // cond_cat.shape[0])
+            cond_cat = repeat(cond_cat, "b c h w -> b c t h w", t=T)
             cond_cat = rearrange(cond_cat, "b c t h w -> (b t) c h w")
         x = torch.cat((x, cond_cat), dim=1)
 
