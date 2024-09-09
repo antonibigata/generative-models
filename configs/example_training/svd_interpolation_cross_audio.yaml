@@ -3,7 +3,7 @@ model:
   target: sgm.models.diffusion.DiffusionEngine
   params:
     input_key: latents
-    no_log_keys: [audio_emb, fps_id, motion_bucket_id, cond_aug]
+    no_log_keys: [audio_emb, fps_id, motion_bucket_id, cond_aug  valence, arousal]
     scale_factor: 0.18215
     disable_first_stage_autocast: True
     ckpt_path: checkpoints/svd_no_emb.safetensors
@@ -56,7 +56,7 @@ model:
     network_config:
       target: sgm.modules.diffusionmodules.video_model.VideoUNet
       params:
-        adm_in_channels: 0
+        adm_in_channels: 512
         num_classes: sequential
         use_checkpoint: True
         in_channels: 9
@@ -159,6 +159,20 @@ model:
         #   target: sgm.modules.encoders.modules.ConcatTimestepEmbedderND
         #   params:
         #     outdim: 256
+
+        - input_key: valence
+          is_trainable: False
+          target: sgm.modules.encoders.modules.ConcatTimestepEmbedderND
+          params:
+            is_temporal: True
+            outdim: 256
+
+        - input_key: arousal
+          is_trainable: False
+          target: sgm.modules.encoders.modules.ConcatTimestepEmbedderND
+          params:
+            is_temporal: True
+            outdim: 256
 
         - input_key: audio_emb
           is_trainable: True
@@ -295,6 +309,7 @@ data:
         data_mean: null
         data_std: null
         use_latent_condition: True
+        use_emotions: True
 
       loader:
         batch_size: 1

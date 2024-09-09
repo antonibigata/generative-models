@@ -93,7 +93,7 @@ def get_audio_indexes(main_index, n_audio_frames, max_len):
     return audio_ids
 
 
-def create_pipeline_inputs(video, audio, num_frames, video_emb, overlap=1, add_zero_flag=False):
+def create_pipeline_inputs(video, audio, num_frames, video_emb, emotions=None, overlap=1, add_zero_flag=False):
     # Interpolation is every num_frames, we need to create the inputs for the model
     # We need to create a list of inputs, each input is a tuple of ([first, last], audio)
     # The first and last are the first and last frames of the interpolation
@@ -103,7 +103,7 @@ def create_pipeline_inputs(video, audio, num_frames, video_emb, overlap=1, add_z
     audio_interpolation_chunks = []
     audio_image_preds = []
     gt_chunks = []
-
+    emotions_chunks = []
     # Adjustment for overlap to ensure segments are created properly
     step = num_frames - overlap
 
@@ -124,19 +124,26 @@ def create_pipeline_inputs(video, audio, num_frames, video_emb, overlap=1, add_z
         if i not in audio_image_preds_idx:
             audio_image_preds.append(audio[i])
             audio_image_preds_idx.append(i)
+            emotions_chunks.append((emotions[0][i], emotions[1][i]))
+            # emotions_chunks.append((torch.ones_like(emotions[0][i]), torch.ones_like(emotions[1][i])))
         if segment_end - 1 not in audio_image_preds_idx:
             audio_image_preds_idx.append(segment_end - 1)
             audio_image_preds.append(audio[segment_end - 1])
-
+            emotions_chunks.append((emotions[0][segment_end - 1], emotions[1][segment_end - 1]))
+            # emotions_chunks.append(
+            #     (torch.ones_like(emotions[0][segment_end - 1]), torch.ones_like(emotions[1][segment_end - 1]))
+            # )
         audio_interpolation_chunks.append(audio[i:segment_end])
         print(i, segment_end - 1)
 
     # If the flag is on, add element 0 every 14 audio elements
     if add_zero_flag:
         first_element = audio[0]
+        first_element_emotions = (emotions[0][0], emotions[1][0])
         for i in range(num_frames, len(audio_image_preds), num_frames):
             audio_image_preds.insert(i, first_element)
             audio_image_preds_idx.insert(i, audio_image_preds_idx[0])
+            emotions_chunks.insert(i, first_element_emotions)
     print(audio_image_preds_idx)
     if add_zero_flag:
         # Remove the added elements from the list
@@ -156,6 +163,7 @@ def create_pipeline_inputs(video, audio, num_frames, video_emb, overlap=1, add_z
 
     # Extend from the start of audio_image_preds
     audio_image_preds = audio_image_preds + audio_image_preds[:frames_needed]
+    emotions_chunks = emotions_chunks + emotions_chunks[:frames_needed]
 
     print(f"Added {frames_needed} frames from the start to make audio_image_preds a multiple of {num_frames}")
 
@@ -168,6 +176,7 @@ def create_pipeline_inputs(video, audio, num_frames, video_emb, overlap=1, add_z
         audio_image_preds,
         video_emb[random_cond_idx],
         video[random_cond_idx],
+        emotions_chunks,
         random_cond_idx,
         frames_needed,
     )
@@ -233,6 +242,7 @@ def sample(
     video_folder: Optional[str] = None,
     latent_folder: Optional[str] = None,
     landmark_folder: Optional[str] = None,
+    emotion_folder: Optional[str] = None,
     audio_folder: Optional[str] = None,
     audio_emb_folder: Optional[str] = None,
     version: str = "svd",
@@ -346,6 +356,12 @@ def sample(
                 raw_audio = raw_audio[:max_frames] if raw_audio is not None else None
         audio = audio.cuda()
 
+        emotions = None
+        if emotion_folder is not None:
+            emotions_path = video_path.replace(video_folder, emotion_folder).replace(".mp4", ".pt")
+            emotions = torch.load(emotions_path)
+            emotions = emotions["valence"][:max_frames], emotions["arousal"][:max_frames]
+
         landmarks = None
         if get_landmarks:
             if landmark_folder is not None:
@@ -377,8 +393,10 @@ def sample(
                     f"WARNING: Your image is of size {h}x{w} which is not divisible by 64. We are resizing to {height}x{width}!"
                 )
 
-        gt_chunks, audio_interpolation_list, audio_list, emb, cond, _, added_frames = create_pipeline_inputs(
-            model_input, audio, num_frames, video_emb, overlap=overlap, add_zero_flag=add_zero_flag
+        gt_chunks, audio_interpolation_list, audio_list, emb, cond, emotions_chunks, _, added_frames = (
+            create_pipeline_inputs(
+                model_input, audio, num_frames, video_emb, emotions, overlap=overlap, add_zero_flag=add_zero_flag
+            )
         )
 
         model, filter, n_batch = load_model(
@@ -414,6 +432,14 @@ def sample(
 
         audio_list = torch.stack(audio_list).to(device)
         audio_list = rearrange(audio_list, "(b t) c d  -> b t c d", t=num_frames)
+
+        valence_list = None
+        arousal_list = None
+        if emotions is not None:
+            valence_list = torch.stack([x[0] for x in emotions_chunks]).to(device)
+            arousal_list = torch.stack([x[1] for x in emotions_chunks]).to(device)
+            valence_list = rearrange(valence_list, "(b t) -> b t", t=num_frames)
+            arousal_list = rearrange(arousal_list, "(b t) -> b t", t=num_frames)
 
         # if h % 64 != 0 or w % 64 != 0:
         #     width, height = map(lambda x: x - x % 64, (w, h))
@@ -471,6 +497,9 @@ def sample(
                 value_dict["cond_frames"] = condition + cond_aug * torch.randn_like(condition)
             value_dict["cond_aug"] = cond_aug
             value_dict["audio_emb"] = audio_cond
+            if emotions is not None:
+                value_dict["valence"] = valence_list[i].unsqueeze(0)
+                value_dict["arousal"] = arousal_list[i].unsqueeze(0)
 
             with torch.no_grad():
                 with torch.autocast(device):

@@ -386,7 +386,7 @@ def chunk_network(network, input, c_in, c_noise, cond, additional_model_inputs, 
                 or_size = v.shape[0]
                 additional_model_inputs_chunk[k] = repeat(
                     v, "b c -> (b t) c", t=(input_chunk.shape[0] // num_frames // or_size) + 1
-                )[: cond_chunk["audio_emb"].shape[0]]
+                )[: cond_chunk["concat"].shape[0]]
             else:
                 additional_model_inputs_chunk[k] = v
 

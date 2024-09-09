@@ -536,7 +536,6 @@ class VideoUNet(nn.Module):
         if self.audio_is_context:
             assert audio_emb is None
             audio_emb = context.clone()
-
         # print("x.shape:", x.shape)
         # print("timesteps.shape:", timesteps.shape)
         # print("context.shape:", context.shape if context is not None else None)
@@ -597,6 +596,7 @@ class VideoUNet(nn.Module):
 
         if self.num_classes is not None:
             assert y is not None or "to_time_emb" in self.audio_cond_method
+
             if self.audio_cond_method == "to_time_emb":
                 assert audio_emb is not None
                 audio_emb = rearrange(audio_emb, "b t c -> (b t) c")

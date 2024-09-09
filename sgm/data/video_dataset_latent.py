@@ -317,6 +317,8 @@ class VideoDataset(Dataset):
         emotions = None
         if self.use_emotions:
             emotions = self.get_emotions(video_file, video_indexes)
+            if self.get_separate_id:
+                emotions = (emotions[0][1:], emotions[1][1:])
 
         raw_audio = None
         if self.audio_in_video:

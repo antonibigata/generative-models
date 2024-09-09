@@ -18,7 +18,7 @@ def process_videos(video_list: List[str], model_path: str, output_base: str, vid
         # Ensure output directory exists
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
-        if os.path.exists(output_path):
+        if os.path.exists(str(output_path).replace(".mp4", ".pt")):
             print(f"Skipping {video_path} -> {output_path} because it already exists")
             continue
 

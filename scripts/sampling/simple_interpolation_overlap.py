@@ -187,6 +187,8 @@ def sample(
         "cond_frames_without_noise",
     ],  # Useful for the classifier free guidance. What should be zeroed out in the unconditional embeddings
     chunk_size: int = None,  # Useful if the model gets OOM
+    image_leak: float = 0.0,
+    ckpt_path: Optional[str] = None,
 ):
     """
     Simple script to generate a single sample conditioned on an image `input_path` or multiple images, one for each
@@ -227,6 +229,8 @@ def sample(
         num_frames,
         num_steps,
         input_key,
+        ckpt_path,
+        image_leak,
     )
 
     model.en_and_decode_n_samples_a_time = decoding_t
@@ -363,10 +367,11 @@ def sample(
                 )
 
                 for k in ["crossattn"]:
-                    uc[k] = repeat(uc[k], "b ... -> b t ...", t=num_frames)
-                    uc[k] = rearrange(uc[k], "b t ... -> (b t) ...", t=num_frames)
-                    c[k] = repeat(c[k], "b ... -> b t ...", t=num_frames)
-                    c[k] = rearrange(c[k], "b t ... -> (b t) ...", t=num_frames)
+                    if c[k].shape[1] != num_frames:
+                        uc[k] = repeat(uc[k], "b ... -> b t ...", t=num_frames)
+                        uc[k] = rearrange(uc[k], "b t ... -> (b t) ...", t=num_frames)
+                        c[k] = repeat(c[k], "b ... -> b t ...", t=num_frames)
+                        c[k] = rearrange(c[k], "b t ... -> (b t) ...", t=num_frames)
 
                 video = torch.randn(shape, device=device)
 
@@ -486,6 +491,8 @@ def load_model(
     num_frames: int,
     num_steps: int,
     input_key: str,
+    ckpt_path: Optional[str] = None,
+    image_leak: bool = False,
 ):
     config = OmegaConf.load(config)
     # if device == "cuda":
@@ -494,6 +501,9 @@ def load_model(
     #     ].params.open_clip_embedding_config.params.init_device = device
 
     config["model"]["params"]["input_key"] = input_key
+    config["model"]["params"]["network_wrapper"]["params"]["fix_image_leak"] = image_leak
+    if ckpt_path is not None:
+        config["model"]["params"]["ckpt_path"] = ckpt_path
 
     config.model.params.sampler_config.params.num_steps = num_steps
     if "num_frames" in config.model.params.sampler_config.params.guider_config.params:

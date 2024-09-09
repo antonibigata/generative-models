@@ -4,7 +4,9 @@ import sys
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
 from scripts.util.audio.Whisper import Whisper
+
 # from scripts.util.audio.WavLM import WavLM_wrapper
+from scripts.util.audio.BEATs import BEATWrapper
 
 import torch
 import torch.nn as nn
@@ -66,6 +68,13 @@ class AudioWrapper(nn.Module):
             )
             # self.model = self.model.to(torch.float16)
             self.encode_audio = self.wav2vec2_encoding
+        elif model_type == "beats":
+            self.model = BEATWrapper(
+                fine_tuned=True,
+                feed_as_frames=False,
+                model_path="/data/home/antoni/code/generative-models/checkpoints/BEATs_iter3_plus_AS2M_finetuned_on_AS2M_cpt2.pt",
+            )
+            self.encode_audio = self.beats_encoding
         else:
             raise ValueError(f"Model type {model_type} not supported")
 
@@ -87,6 +96,12 @@ class AudioWrapper(nn.Module):
         ), f"{audio_embeddings.shape[1]} != {audio_frames.shape[0]}"
 
         return audio_embeddings
+
+    @torch.no_grad()
+    def beats_encoding(self, audio_frames):
+        assert audio_frames.dim() == 2, f"Audio frames must be 2D, got {audio_frames.dim()}D"
+        audio_embeddings = self.model(audio_frames.unsqueeze(0).cuda())
+        return audio_embeddings.squeeze(0)
 
     @torch.no_grad()
     def wavlm_encoding(self, audio_frames):

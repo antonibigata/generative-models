@@ -24,7 +24,7 @@ from sgm.util import default, instantiate_from_config, trim_pad_audio, get_raw_a
 # from sgm.models.components.audio.Whisper import Whisper
 
 
-def create_prediction_inputs(video, audio, num_frames, video_emb=None, overlap=1, skip_frames=0):
+def create_prediction_inputs(video, audio, num_frames, video_emb=None, emotions=None, overlap=1, skip_frames=0):
     """
     Create inputs for the model using video and audio data.
 
@@ -44,7 +44,7 @@ def create_prediction_inputs(video, audio, num_frames, video_emb=None, overlap=1
     audio_chunks = []
     cond_emb = None
     gt_chunks = []
-
+    emotions_chunks = []
     # Adjust the step size for the loop to account for overlap and skipping frames
     step_size = (num_frames - overlap) * (skip_frames + 1)
 
@@ -57,17 +57,22 @@ def create_prediction_inputs(video, audio, num_frames, video_emb=None, overlap=1
             break  # Last chunk is smaller than num_frames
 
         cond = first
-
         # Collect frames and audio samples with skipping
         video_index = [i + j * (skip_frames + 1) for j in range(num_frames)]
         indexes_generated.extend(video_index)
         gt_chunks.append(video[video_index, :])
         audio_chunks.append(audio[video_index, :])
+        if emotions is not None:
+            print((emotions[0][video_index], emotions[1][video_index]))
+            emotions_chunks.append((emotions[0][video_index], emotions[1][video_index]))
+            # emotions_chunks.append(
+            #     (-torch.ones_like(emotions[0][video_index]), torch.ones_like(emotions[1][video_index]))
+            # )
 
         if video_emb is not None:
             cond_emb = video_emb[i]
 
-    return gt_chunks, cond, audio_chunks, cond_emb, indexes_generated
+    return gt_chunks, cond, audio_chunks, cond_emb, emotions_chunks, indexes_generated
 
 
 def get_audio_embeddings(audio_path: str, audio_rate: int = 16000, fps: int = 25):
@@ -120,6 +125,7 @@ def sample(
     video_folder: Optional[str] = None,
     latent_folder: Optional[str] = None,
     landmark_folder: Optional[str] = None,
+    emotion_folder: Optional[str] = None,
     version: str = "svd",
     fps_id: int = 24,
     motion_bucket_id: int = 127,
@@ -140,6 +146,8 @@ def sample(
         "cond_frames_without_noise",
     ],
     skip_frames: int = 12,
+    image_leak: bool = False,
+    ckpt_path: Optional[str] = None,
 ):
     """
     Simple script to generate a single sample conditioned on an image `input_path` or multiple images, one for each
@@ -180,6 +188,8 @@ def sample(
         num_frames,
         num_steps,
         input_key,
+        image_leak,
+        ckpt_path,
     )
 
     model.en_and_decode_n_samples_a_time = decoding_t
@@ -231,6 +241,12 @@ def sample(
                 raw_audio = raw_audio[:max_frames] if raw_audio is not None else None
         audio = audio.cuda()
 
+        emotions = None
+        if emotion_folder is not None:
+            emotions_path = video_path.replace(video_folder, emotion_folder).replace(".mp4", ".pt")
+            emotions = torch.load(emotions_path)
+            emotions = emotions["valence"][:max_frames], emotions["arousal"][:max_frames]
+
         h, w = video.shape[2:]
         # if degradation > 1:
         #     video = torch.nn.functional.interpolate(video, (h // degradation, w // degradation), mode="bilinear")
@@ -253,8 +269,8 @@ def sample(
                     f"WARNING: Your image is of size {h}x{w} which is not divisible by 64. We are resizing to {height}x{width}!"
                 )
 
-        gt_chunks, conditions, audio_list, embs, indexes_generated = create_prediction_inputs(
-            model_input, audio, num_frames, video_emb, skip_frames=skip_frames
+        gt_chunks, conditions, audio_list, embs, emotions_chunks, indexes_generated = create_prediction_inputs(
+            model_input, audio, num_frames, video_emb, emotions, skip_frames=skip_frames
         )
         # if h % 64 != 0 or w % 64 != 0:
         #     width, height = map(lambda x: x - x % 64, (w, h))
@@ -300,6 +316,10 @@ def sample(
                 value_dict["cond_frames"] = condition + cond_aug * torch.randn_like(condition)
             value_dict["cond_aug"] = cond_aug
             value_dict["audio_emb"] = audio_cond
+
+            if emotions is not None:
+                value_dict["valence"] = emotions_chunks[i][0].unsqueeze(0).to(device)
+                value_dict["arousal"] = emotions_chunks[i][1].unsqueeze(0).to(device)
 
             with torch.no_grad():
                 with torch.autocast(device):
@@ -360,7 +380,7 @@ def sample(
 
         os.makedirs(output_folder, exist_ok=True)
         base_count = len(glob(os.path.join(output_folder, "*.mp4")))
-        video_path = os.path.join(output_folder, f"{base_count:06d}.mp4")
+        video_path = os.path.join(output_folder, f"{base_count:06d}_keyframes.mp4")
         video_path_gt = os.path.join(output_folder, f"{base_count:06d}_gt.mp4")
         # writer = cv2.VideoWriter(
         #     video_path,
@@ -439,14 +459,21 @@ def load_model(
     num_frames: int,
     num_steps: int,
     input_key: str,
+    image_leak: bool = False,
+    ckpt_path: Optional[str] = None,
 ):
     config = OmegaConf.load(config)
+    if ckpt_path is not None:
+        config.model.params.ckpt_path = ckpt_path
     # if device == "cuda":
     #     config.model.params.conditioner_config.params.emb_models[
     #         0
     #     ].params.open_clip_embedding_config.params.init_device = device
 
     config["model"]["params"]["input_key"] = input_key
+
+    if "network_wrapper" in config.model.params:
+        config["model"]["params"]["network_wrapper"]["params"]["fix_image_leak"] = image_leak
 
     config.model.params.sampler_config.params.num_steps = num_steps
     if "num_frames" in config.model.params.sampler_config.params.guider_config.params:

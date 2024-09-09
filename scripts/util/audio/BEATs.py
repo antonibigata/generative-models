@@ -14,7 +14,7 @@ from torch.nn import LayerNorm
 import torchaudio.compliance.kaldi as ta_kaldi
 import torchaudio
 
-from src.models.components.audio.BEAT_module import TransformerEncoder
+from scripts.util.audio.BEAT_module import TransformerEncoder
 
 import logging
 from typing import Optional
@@ -211,10 +211,12 @@ class BEATWrapper(nn.Module):
     def __init__(
         self,
         fine_tuned: bool = True,
-        feed_as_frames: bool = True,
+        feed_as_frames: bool = False,
+        model_path: str = None,
     ) -> None:
         super().__init__()
-        model_path = os.path.join(os.path.dirname(__file__), f"BEATs_iter3_plus_AS2M_finetuned_{fine_tuned}.pt")
+        if model_path is None:
+            model_path = os.path.join(os.path.dirname(__file__), f"BEATs_iter3_plus_AS2M_finetuned_{fine_tuned}.pt")
         if not os.path.exists(model_path):
             self.download_model(model_path, fine_tuned)
         checkpoint = torch.load(model_path)
@@ -267,7 +269,7 @@ class BEATWrapper(nn.Module):
             fbank_std,
             preprocess,
             return_embedding,
-        )[0]
+        )[0]  # B x T' x D
 
         if self.feed_as_frames:
             x = rearrange(x, "(b f) d c -> b f d c", f=T)
