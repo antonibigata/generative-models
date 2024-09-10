@@ -189,16 +189,16 @@ model:
             video_kernel_size: [3, 1, 1]
 
     sampler_config:
-      target: sgm.modules.diffusionmodules.sampling.EulerEDMSampler
+      target: sgm.modules.diffusionmodules.sampling.EulerEDMSamplerPlusPlus
       params:
         num_steps: 10
         discretization_config:
-          target: sgm.modules.diffusionmodules.discretizer.AYSDiscretization
-          # params:
-          #   sigma_max: 80.0
+          target: sgm.modules.diffusionmodules.discretizer.EDMDiscretization
+          params:
+            sigma_max: 700.0
 
         guider_config:
-          target: sgm.modules.diffusionmodules.guiders.VanillaCFG
+          target: sgm.modules.diffusionmodules.guiders.VanillaCFGplusplus
           params:
             scale: 2.0
             # low_sigma: 0.

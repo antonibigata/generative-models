@@ -124,12 +124,14 @@ def create_pipeline_inputs(video, audio, num_frames, video_emb, emotions=None, o
         if i not in audio_image_preds_idx:
             audio_image_preds.append(audio[i])
             audio_image_preds_idx.append(i)
-            emotions_chunks.append((emotions[0][i], emotions[1][i]))
+            if emotions is not None:
+                emotions_chunks.append((emotions[0][i], emotions[1][i]))
             # emotions_chunks.append((torch.ones_like(emotions[0][i]), torch.ones_like(emotions[1][i])))
         if segment_end - 1 not in audio_image_preds_idx:
             audio_image_preds_idx.append(segment_end - 1)
             audio_image_preds.append(audio[segment_end - 1])
-            emotions_chunks.append((emotions[0][segment_end - 1], emotions[1][segment_end - 1]))
+            if emotions is not None:
+                emotions_chunks.append((emotions[0][segment_end - 1], emotions[1][segment_end - 1]))
             # emotions_chunks.append(
             #     (torch.ones_like(emotions[0][segment_end - 1]), torch.ones_like(emotions[1][segment_end - 1]))
             # )
@@ -139,11 +141,13 @@ def create_pipeline_inputs(video, audio, num_frames, video_emb, emotions=None, o
     # If the flag is on, add element 0 every 14 audio elements
     if add_zero_flag:
         first_element = audio[0]
-        first_element_emotions = (emotions[0][0], emotions[1][0])
+        if emotions is not None:
+            first_element_emotions = (emotions[0][0], emotions[1][0])
         for i in range(num_frames, len(audio_image_preds), num_frames):
             audio_image_preds.insert(i, first_element)
             audio_image_preds_idx.insert(i, audio_image_preds_idx[0])
-            emotions_chunks.insert(i, first_element_emotions)
+            if emotions is not None:
+                emotions_chunks.insert(i, first_element_emotions)
     print(audio_image_preds_idx)
     if add_zero_flag:
         # Remove the added elements from the list
@@ -163,7 +167,8 @@ def create_pipeline_inputs(video, audio, num_frames, video_emb, emotions=None, o
 
     # Extend from the start of audio_image_preds
     audio_image_preds = audio_image_preds + audio_image_preds[:frames_needed]
-    emotions_chunks = emotions_chunks + emotions_chunks[:frames_needed]
+    if emotions is not None:
+        emotions_chunks = emotions_chunks + emotions_chunks[:frames_needed]
 
     print(f"Added {frames_needed} frames from the start to make audio_image_preds a multiple of {num_frames}")
 
@@ -232,6 +237,324 @@ def get_audio_embeddings(
     return audio, raw_audio
 
 
+def sample_keyframes(
+    model_keyframes,
+    audio_list,
+    condition,
+    num_frames,
+    motion_bucket_id,
+    fps_id,
+    cond_aug,
+    device,
+    embbedings,
+    valence_list,
+    arousal_list,
+    force_uc_zero_embeddings,
+    n_batch_keyframes,
+    added_frames,
+    strength,
+    keyframe_path,
+    scale,
+    num_steps,
+):
+    if scale is not None:
+        model_keyframes.sampler.guider.set_scale(scale)
+    if num_steps is not None:
+        model_keyframes.sampler.set_num_steps(num_steps)
+    samples_list = []
+    samples_z_list = []
+    samples_x_list = []
+
+    for i in range(audio_list.shape[0]):
+        H, W = condition.shape[-2:]
+        assert condition.shape[1] == 3
+        F = 8
+        C = 4
+        shape = (num_frames, C, H // F, W // F)
+        if (H, W) != (576, 1024):
+            print(
+                "WARNING: The conditioning frame you provided is not 576x1024. This leads to suboptimal performance as model was only trained on 576x1024. Consider increasing `cond_aug`."
+            )
+        if motion_bucket_id > 255:
+            print("WARNING: High motion bucket! This may lead to suboptimal performance.")
+
+        if fps_id < 5:
+            print("WARNING: Small fps value! This may lead to suboptimal performance.")
+
+        if fps_id > 30:
+            print("WARNING: Large fps value! This may lead to suboptimal performance.")
+
+        audio_cond = audio_list[i].unsqueeze(0)
+
+        value_dict = {}
+        value_dict["motion_bucket_id"] = motion_bucket_id
+        value_dict["fps_id"] = fps_id
+        value_dict["cond_aug"] = cond_aug
+        value_dict["cond_frames_without_noise"] = condition
+        if embbedings is not None:
+            value_dict["cond_frames"] = embbedings + cond_aug * torch.randn_like(embbedings)
+        else:
+            value_dict["cond_frames"] = condition + cond_aug * torch.randn_like(condition)
+        value_dict["cond_aug"] = cond_aug
+        value_dict["audio_emb"] = audio_cond
+        if valence_list is not None:
+            value_dict["valence"] = valence_list[i].unsqueeze(0)
+            value_dict["arousal"] = arousal_list[i].unsqueeze(0)
+
+        with torch.no_grad():
+            with torch.autocast(device):
+                batch, batch_uc = get_batch(
+                    get_unique_embedder_keys_from_conditioner(model_keyframes.conditioner),
+                    value_dict,
+                    [1, 1],
+                    T=num_frames,
+                    device=device,
+                )
+
+                c, uc = model_keyframes.conditioner.get_unconditional_conditioning(
+                    batch,
+                    batch_uc=batch_uc,
+                    force_uc_zero_embeddings=force_uc_zero_embeddings,
+                )
+
+                for k in ["crossattn"]:
+                    if c[k].shape[1] != num_frames:
+                        uc[k] = repeat(uc[k], "b ... -> b t ...", t=num_frames)
+                        uc[k] = rearrange(uc[k], "b t ... -> (b t) ...", t=num_frames)
+                        c[k] = repeat(c[k], "b ... -> b t ...", t=num_frames)
+                        c[k] = rearrange(c[k], "b t ... -> (b t) ...", t=num_frames)
+
+                video = torch.randn(shape, device=device)
+
+                for k in c:
+                    if isinstance(c[k], torch.Tensor):
+                        print(k, c[k].shape)
+                print("video", video.shape)
+
+                additional_model_inputs = {}
+                additional_model_inputs["image_only_indicator"] = torch.zeros(n_batch_keyframes, num_frames).to(device)
+                additional_model_inputs["num_video_frames"] = batch["num_video_frames"]
+
+                def denoiser(input, sigma, c):
+                    return model_keyframes.denoiser(model_keyframes.model, input, sigma, c, **additional_model_inputs)
+
+                samples_z = model_keyframes.sampler(denoiser, video, cond=c, uc=uc, strength=strength)
+                samples_z_list.append(samples_z)
+                # interpolation_cond_list_emb.append(
+                #     torch.stack([start_cond_emb.to(device), samples_z.squeeze(0).clone()], dim=1)
+                # )
+                # start_cond_emb = samples_z.squeeze(0).clone()
+
+                samples_x = model_keyframes.decode_first_stage(samples_z)
+                samples_x_list.append(samples_x)
+                samples = torch.clamp((samples_x + 1.0) / 2.0, min=0.0, max=1.0)
+                samples_list.append(samples)
+
+                # interpolation_cond_list.append(torch.stack([start_cond.to(device), samples.squeeze(0).clone()], dim=1))
+                # start_cond = samples.squeeze(0).clone()
+
+                # image = samples[-1] * 2.0 - 1.0
+                video = None
+
+    samples = torch.concat(samples_list)[:-added_frames]
+    samples_z = torch.concat(samples_z_list)[:-added_frames]
+    samples_x = torch.concat(samples_x_list)[:-added_frames]
+
+    keyframes_gen = (rearrange(samples, "t c h w -> t c h w") * 255).cpu().numpy().astype(np.uint8)
+
+    save_audio_video(
+        keyframes_gen,
+        audio=None,
+        frame_rate=fps_id + 1,
+        sample_rate=16000,
+        save_path=keyframe_path,
+        keep_intermediate=False,
+    )
+
+    return samples_z, samples_x
+
+
+def sample_interpolation(
+    model,
+    samples_z,
+    samples_x,
+    audio_interpolation_list,
+    condition,
+    num_frames,
+    device,
+    overlap,
+    add_zero_flag,
+    raw_audio,
+    fps_id,
+    motion_bucket_id,
+    cond_aug,
+    force_uc_zero_embeddings,
+    n_batch,
+    chunk_size,
+    strength,
+    gt_chunks,
+    video_path,
+    video_path_gt,
+    scale,
+    num_steps,
+):
+    if scale is not None:
+        model.sampler.guider.set_scale(scale)
+    if num_steps is not None:
+        model.sampler.set_num_steps(num_steps)
+    # Creating condition for interpolation model. We need to create a list of inputs, each input is  [first, last]
+    # The first and last are the first and last frames of the interpolation
+    interpolation_cond_list = []
+    interpolation_cond_list_emb = []
+
+    # Remove zero embeddings if the flag is activated
+    if add_zero_flag:
+        samples_x = [sample for i, sample in enumerate(samples_x) if (i + 1) % (num_frames + 1) != 0]
+        samples_z = [sample for i, sample in enumerate(samples_z) if (i + 1) % (num_frames + 1) != 0]
+
+    for i in range(0, len(samples_z) - 1, overlap if overlap > 0 else 2):
+        interpolation_cond_list.append(torch.stack([samples_x[i], samples_x[i + 1]], dim=1))
+        interpolation_cond_list_emb.append(torch.stack([samples_z[i], samples_z[i + 1]], dim=1))
+
+    condition = torch.stack(interpolation_cond_list).to(device)
+    audio_cond = torch.stack(audio_interpolation_list).to(device)
+    # condition = condition.unsqueeze(0).to(device)
+    embbedings = torch.stack(interpolation_cond_list_emb).to(device)
+
+    # condition = repeat(condition, "b c h w -> (b d) c h w", d=audio_cond.shape[0])
+    # condition_emb = repeat(condition_emb, "b c h w -> (b d) c h w", d=audio_cond.shape[0])
+
+    H, W = condition.shape[-2:]
+    # assert condition.shape[1] == 3
+    F = 8
+    C = 4
+    shape = (num_frames * audio_cond.shape[0], C, H // F, W // F)
+    if (H, W) != (576, 1024):
+        print(
+            "WARNING: The conditioning frame you provided is not 576x1024. This leads to suboptimal performance as model was only trained on 576x1024. Consider increasing `cond_aug`."
+        )
+    if motion_bucket_id > 255:
+        print("WARNING: High motion bucket! This may lead to suboptimal performance.")
+
+    if fps_id < 5:
+        print("WARNING: Small fps value! This may lead to suboptimal performance.")
+
+    if fps_id > 30:
+        print("WARNING: Large fps value! This may lead to suboptimal performance.")
+
+    value_dict = {}
+    value_dict["motion_bucket_id"] = motion_bucket_id
+    value_dict["fps_id"] = fps_id
+    value_dict["cond_aug"] = cond_aug
+    value_dict["cond_frames_without_noise"] = condition
+
+    value_dict["cond_frames"] = embbedings
+    value_dict["cond_aug"] = cond_aug
+    value_dict["audio_emb"] = audio_cond
+    # value_dict["gt"] = rearrange(embbedings, "b t c h w -> b c t h w").to(device)
+    # masked_gt = value_dict["gt"] * (1 - value_dict["masks"])
+
+    with torch.no_grad():
+        with torch.autocast(device):
+            batch, batch_uc = get_batch_overlap(
+                get_unique_embedder_keys_from_conditioner(model.conditioner),
+                value_dict,
+                [1, num_frames],
+                T=num_frames,
+                device=device,
+            )
+
+            c, uc = model.conditioner.get_unconditional_conditioning(
+                batch,
+                batch_uc=batch_uc,
+                force_uc_zero_embeddings=force_uc_zero_embeddings,
+            )
+
+            for k in ["crossattn"]:
+                uc[k] = repeat(uc[k], "b ... -> b t ...", t=num_frames)
+                uc[k] = rearrange(uc[k], "b t ... -> (b t) ...", t=num_frames)
+                c[k] = repeat(c[k], "b ... -> b t ...", t=num_frames)
+                c[k] = rearrange(c[k], "b t ... -> (b t) ...", t=num_frames)
+
+            video = torch.randn(shape, device=device)
+
+            # n_batch *= embbedings.shape[0]
+
+            additional_model_inputs = {}
+            additional_model_inputs["image_only_indicator"] = torch.zeros(n_batch, num_frames).to(device)
+            additional_model_inputs["num_video_frames"] = batch["num_video_frames"]
+
+            print(condition.shape, embbedings.shape, audio_cond.shape, shape, additional_model_inputs)
+
+            if chunk_size is not None:
+                chunk_size = chunk_size * num_frames
+
+            def denoiser(input, sigma, c):
+                return model.denoiser(
+                    model.model,
+                    input,
+                    sigma,
+                    c,
+                    num_overlap_frames=overlap,
+                    num_frames=num_frames,
+                    n_skips=n_batch,
+                    chunk_size=chunk_size,
+                    **additional_model_inputs,
+                )
+
+            samples_z = model.sampler(denoiser, video, cond=c, uc=uc, strength=strength)
+
+            samples_x = model.decode_first_stage(samples_z)
+
+            samples = torch.clamp((samples_x + 1.0) / 2.0, min=0.0, max=1.0)
+
+            video = None
+
+    samples = rearrange(samples, "(b t) c h w -> b t c h w", t=num_frames)
+    samples = merge_overlapping_segments(samples, overlap)
+
+    gt_chunks = torch.stack(gt_chunks)
+    gt_chunks = merge_overlapping_segments(gt_chunks, overlap)
+    gt_chunks = torch.clamp((gt_chunks + 1.0) / 2.0, min=0.0, max=1.0)
+    gt_vid = (gt_chunks * 255).cpu().numpy().astype(np.uint8)
+
+    # writer = cv2.VideoWriter(
+    #     video_path,
+    #     cv2.VideoWriter_fourcc(*"MP4V"),
+    #     fps_id + 1,
+    #     (samples.shape[-1], samples.shape[-2]),
+    # )
+    vid = (rearrange(samples, "t c h w -> t c h w") * 255).cpu().numpy().astype(np.uint8)
+
+    # gt_vid = (rearrange(gt, "t c h w -> t c h w") * 255).cpu().numpy().astype(np.uint8)
+    # for frame in vid:
+    #     frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+    #     writer.write(frame)
+    # writer.release()
+    if raw_audio is not None:
+        raw_audio = rearrange(raw_audio[: len(vid)], "f s -> () (f s)")
+
+    save_audio_video(
+        vid,
+        audio=raw_audio,
+        frame_rate=fps_id + 1,
+        sample_rate=16000,
+        save_path=video_path,
+        keep_intermediate=False,
+    )
+
+    save_audio_video(
+        gt_vid,
+        audio=raw_audio,
+        frame_rate=fps_id + 1,
+        sample_rate=16000,
+        save_path=video_path_gt,
+        keep_intermediate=False,
+    )
+
+    print(f"Saved video to {video_path}")
+
+
 def sample(
     input_path: str = "",  # Can either be image file or folder with image files
     video_path: Optional[str] = None,
@@ -273,6 +596,7 @@ def sample(
     keyframes_ckpt: Optional[str] = None,
     interpolation_ckpt: Optional[str] = None,
     add_zero_flag: bool = False,
+    recurse: bool = False,
 ):
     """
     Simple script to generate a single sample conditioned on an image `input_path` or multiple images, one for each
@@ -282,22 +606,22 @@ def sample(
     if version == "svd":
         num_frames = default(num_frames, 14)
         # num_steps = default(num_steps, 25)
-        output_folder = default(output_folder, "outputs/simple_video_sample/svd/")
+        output_folder = default(output_folder, "outputs/full_pipeline/svd/")
         # model_config = "scripts/sampling/configs/svd.yaml"
     elif version == "svd_xt":
         num_frames = default(num_frames, 25)
         # num_steps = default(num_steps, 30)
-        output_folder = default(output_folder, "outputs/simple_video_sample/svd_xt/")
+        output_folder = default(output_folder, "outputs/full_pipeline/svd_xt/")
         # model_config = "scripts/sampling/configs/svd_xt.yaml"
     elif version == "svd_image_decoder":
         num_frames = default(num_frames, 14)
         # num_steps = default(num_steps, 25)
-        output_folder = default(output_folder, "outputs/simple_video_sample/svd_image_decoder/")
+        output_folder = default(output_folder, "outputs/full_pipeline/svd_image_decoder/")
         # model_config = "scripts/sampling/configs/svd_image_decoder.yaml"
     elif version == "svd_xt_image_decoder":
         num_frames = default(num_frames, 25)
         # num_steps = default(num_steps, 30)
-        output_folder = default(output_folder, "outputs/simple_video_sample/svd_xt_image_decoder/")
+        output_folder = default(output_folder, "outputs/full_pipeline/svd_xt_image_decoder/")
         # model_config = "scripts/sampling/configs/svd_xt_image_decoder.yaml"
     else:
         raise ValueError(f"Version {version} does not exist.")
@@ -441,300 +765,170 @@ def sample(
             valence_list = rearrange(valence_list, "(b t) -> b t", t=num_frames)
             arousal_list = rearrange(arousal_list, "(b t) -> b t", t=num_frames)
 
-        # if h % 64 != 0 or w % 64 != 0:
-        #     width, height = map(lambda x: x - x % 64, (w, h))
-        #     width = min(width, 1024)
-        #     height = min(height, 576)
-        #     video = torch.nn.functional.interpolate(video, (height, width), mode="bilinear")
-        # video = model.encode_first_stage(video.cuda())
-        # interpolation_cond_list = []
-        # interpolation_cond_list_emb = []
-        # start_cond_emb = emb
-        # start_cond = cond
-        # for i in tqdm(range(len(audio_list)), desc="Autoregressive Keyframes", total=len(audio_list)):
         condition = cond
-        # Image.fromarray(
-        #     (rearrange((condition + 1) / 2, "c h w -> h w c") * 255).cpu().numpy().astype(np.uint8)
-        # ).save(f"test_{i}.png")
+
         audio_cond = audio_list.cuda()
-        # audio_cond = audio_list[i].unsqueeze(0).to(device)
         condition = condition.unsqueeze(0).to(device)
         embbedings = emb.unsqueeze(0).to(device) if emb is not None else None
 
-        samples_list = []
-        samples_z_list = []
-        samples_x_list = []
-
-        for i in range(audio_list.shape[0]):
-            H, W = condition.shape[-2:]
-            assert condition.shape[1] == 3
-            F = 8
-            C = 4
-            shape = (num_frames, C, H // F, W // F)
-            if (H, W) != (576, 1024):
-                print(
-                    "WARNING: The conditioning frame you provided is not 576x1024. This leads to suboptimal performance as model was only trained on 576x1024. Consider increasing `cond_aug`."
-                )
-            if motion_bucket_id > 255:
-                print("WARNING: High motion bucket! This may lead to suboptimal performance.")
-
-            if fps_id < 5:
-                print("WARNING: Small fps value! This may lead to suboptimal performance.")
-
-            if fps_id > 30:
-                print("WARNING: Large fps value! This may lead to suboptimal performance.")
-
-            audio_cond = audio_list[i].unsqueeze(0)
-
-            value_dict = {}
-            value_dict["motion_bucket_id"] = motion_bucket_id
-            value_dict["fps_id"] = fps_id
-            value_dict["cond_aug"] = cond_aug
-            value_dict["cond_frames_without_noise"] = condition
-            if embbedings is not None:
-                value_dict["cond_frames"] = embbedings + cond_aug * torch.randn_like(embbedings)
-            else:
-                value_dict["cond_frames"] = condition + cond_aug * torch.randn_like(condition)
-            value_dict["cond_aug"] = cond_aug
-            value_dict["audio_emb"] = audio_cond
-            if emotions is not None:
-                value_dict["valence"] = valence_list[i].unsqueeze(0)
-                value_dict["arousal"] = arousal_list[i].unsqueeze(0)
-
-            with torch.no_grad():
-                with torch.autocast(device):
-                    batch, batch_uc = get_batch(
-                        get_unique_embedder_keys_from_conditioner(model_keyframes.conditioner),
-                        value_dict,
-                        [1, 1],
-                        T=num_frames,
-                        device=device,
-                    )
-
-                    c, uc = model_keyframes.conditioner.get_unconditional_conditioning(
-                        batch,
-                        batch_uc=batch_uc,
-                        force_uc_zero_embeddings=force_uc_zero_embeddings,
-                    )
-
-                    for k in ["crossattn"]:
-                        if c[k].shape[1] != num_frames:
-                            uc[k] = repeat(uc[k], "b ... -> b t ...", t=num_frames)
-                            uc[k] = rearrange(uc[k], "b t ... -> (b t) ...", t=num_frames)
-                            c[k] = repeat(c[k], "b ... -> b t ...", t=num_frames)
-                            c[k] = rearrange(c[k], "b t ... -> (b t) ...", t=num_frames)
-
-                    video = torch.randn(shape, device=device)
-
-                    for k in c:
-                        if isinstance(c[k], torch.Tensor):
-                            print(k, c[k].shape)
-                    print("video", video.shape)
-
-                    additional_model_inputs = {}
-                    additional_model_inputs["image_only_indicator"] = torch.zeros(n_batch_keyframes, num_frames).to(
-                        device
-                    )
-                    additional_model_inputs["num_video_frames"] = batch["num_video_frames"]
-
-                    def denoiser(input, sigma, c):
-                        return model_keyframes.denoiser(
-                            model_keyframes.model, input, sigma, c, **additional_model_inputs
-                        )
-
-                    samples_z = model_keyframes.sampler(denoiser, video, cond=c, uc=uc, strength=strength)
-                    samples_z_list.append(samples_z)
-                    # interpolation_cond_list_emb.append(
-                    #     torch.stack([start_cond_emb.to(device), samples_z.squeeze(0).clone()], dim=1)
-                    # )
-                    # start_cond_emb = samples_z.squeeze(0).clone()
-
-                    samples_x = model.decode_first_stage(samples_z)
-                    samples_x_list.append(samples_x)
-                    samples = torch.clamp((samples_x + 1.0) / 2.0, min=0.0, max=1.0)
-                    samples_list.append(samples)
-
-                    # interpolation_cond_list.append(torch.stack([start_cond.to(device), samples.squeeze(0).clone()], dim=1))
-                    # start_cond = samples.squeeze(0).clone()
-
-                    # image = samples[-1] * 2.0 - 1.0
-                    video = None
-
-        samples = torch.concat(samples_list)[:-added_frames]
-        samples_z = torch.concat(samples_z_list)[:-added_frames]
-        samples_x = torch.concat(samples_x_list)[:-added_frames]
-
-        keyframes_gen = (rearrange(samples, "t c h w -> t c h w") * 255).cpu().numpy().astype(np.uint8)
-
         os.makedirs(output_folder, exist_ok=True)
-        base_count = len(glob(os.path.join(output_folder, "*.mp4")))
-        video_path = os.path.join(output_folder, f"{base_count:06d}.mp4")
-        video_path_gt = os.path.join(output_folder, f"{base_count:06d}_gt.mp4")
 
-        keyframe_path = os.path.join(output_folder, f"{base_count:06d}_keyframes.mp4")
-        save_audio_video(
-            keyframes_gen,
-            audio=None,
-            frame_rate=fps_id + 1,
-            sample_rate=16000,
-            save_path=keyframe_path,
-            keep_intermediate=False,
-        )
+        if recurse:
+            while True:
+                scale = input("Enter the scale value (or 'stop' to end): ")
+                if scale.lower() == "stop":
+                    break
+                try:
+                    scale = float(scale)
+                except ValueError:
+                    print("Invalid input. Please enter a number or 'stop'.")
+                    continue
 
-        # Creating condition for interpolation model. We need to create a list of inputs, each input is  [first, last]
-        # The first and last are the first and last frames of the interpolation
-        interpolation_cond_list = []
-        interpolation_cond_list_emb = []
+                scale_interpolation = input(
+                    "Enter the scale value for interpolation (or press Enter to use default): "
+                )
+                if scale_interpolation:
+                    try:
+                        scale_interpolation = float(scale_interpolation)
+                    except ValueError:
+                        print("Invalid input for scale_interpolation. Using default.")
 
-        # Remove zero embeddings if the flag is activated
-        if add_zero_flag:
-            samples_x = [sample for i, sample in enumerate(samples_x) if (i + 1) % (num_frames + 1) != 0]
-            samples_z = [sample for i, sample in enumerate(samples_z) if (i + 1) % (num_frames + 1) != 0]
+                steps = input("Enter the number of steps (or press Enter to use default): ")
+                if steps:
+                    try:
+                        steps = int(steps)
+                    except ValueError:
+                        print("Invalid input for steps. Using default.")
+                        steps = None
+                else:
+                    steps = None
 
-        for i in range(0, len(samples_z) - 1, overlap if overlap > 0 else 2):
-            interpolation_cond_list.append(torch.stack([samples_x[i], samples_x[i + 1]], dim=1))
-            interpolation_cond_list_emb.append(torch.stack([samples_z[i], samples_z[i + 1]], dim=1))
+                steps_interpolation = input(
+                    "Enter the number of steps for interpolation (or press Enter to use default): "
+                )
+                if steps_interpolation:
+                    try:
+                        steps_interpolation = int(steps_interpolation)
+                    except ValueError:
+                        print("Invalid input for steps_interpolation. Using default.")
+                        steps_interpolation = None
+                else:
+                    steps_interpolation = None
 
-        condition = torch.stack(interpolation_cond_list).to(device)
-        audio_cond = torch.stack(audio_interpolation_list).to(device)
-        # condition = condition.unsqueeze(0).to(device)
-        embbedings = torch.stack(interpolation_cond_list_emb).to(device)
+                base_count = len(glob(os.path.join(output_folder, "*.mp4")))
 
-        # Free up some memory from the keyframes
-        del model_keyframes
-        torch.cuda.empty_cache()
+                keyframe_path = os.path.join(
+                    output_folder,
+                    f"{base_count:06d}_keyframes_scale_{scale}_steps_{steps}.mp4",
+                )
+                video_path = os.path.join(
+                    output_folder, f"{base_count:06d}_scale_{scale_interpolation}_steps_{steps_interpolation}.mp4"
+                )
+                video_path_gt = os.path.join(output_folder, f"{base_count:06d}_gt.mp4")
 
-        # condition = repeat(condition, "b c h w -> (b d) c h w", d=audio_cond.shape[0])
-        # condition_emb = repeat(condition_emb, "b c h w -> (b d) c h w", d=audio_cond.shape[0])
+                samples_z, samples_x = sample_keyframes(
+                    model_keyframes,
+                    audio_cond,
+                    condition,
+                    num_frames,
+                    motion_bucket_id,
+                    fps_id,
+                    cond_aug,
+                    device,
+                    embbedings,
+                    valence_list,
+                    arousal_list,
+                    force_uc_zero_embeddings,
+                    n_batch_keyframes,
+                    added_frames,
+                    strength,
+                    keyframe_path,
+                    scale=scale,
+                    num_steps=steps,
+                )
 
-        H, W = condition.shape[-2:]
-        # assert condition.shape[1] == 3
-        F = 8
-        C = 4
-        shape = (num_frames * audio_cond.shape[0], C, H // F, W // F)
-        if (H, W) != (576, 1024):
-            print(
-                "WARNING: The conditioning frame you provided is not 576x1024. This leads to suboptimal performance as model was only trained on 576x1024. Consider increasing `cond_aug`."
+                # Free up some memory from the keyframes
+                # del model_keyframes
+                # torch.cuda.empty_cache()
+
+                sample_interpolation(
+                    model,
+                    samples_z,
+                    samples_x,
+                    audio_interpolation_list,
+                    condition,
+                    num_frames,
+                    device,
+                    overlap,
+                    add_zero_flag,
+                    raw_audio,
+                    fps_id,
+                    motion_bucket_id,
+                    cond_aug,
+                    force_uc_zero_embeddings,
+                    n_batch,
+                    chunk_size,
+                    strength,
+                    gt_chunks,
+                    video_path,
+                    video_path_gt,
+                    scale_interpolation,
+                    steps_interpolation,
+                )
+        else:
+            base_count = len(glob(os.path.join(output_folder, "*.mp4")))
+
+            keyframe_path = os.path.join(output_folder, f"{base_count:06d}_keyframes.mp4")
+            video_path = os.path.join(output_folder, f"{base_count:06d}.mp4")
+            video_path_gt = os.path.join(output_folder, f"{base_count:06d}_gt.mp4")
+            samples_z, samples_x = sample_keyframes(
+                model_keyframes,
+                audio_cond,
+                condition,
+                num_frames,
+                motion_bucket_id,
+                fps_id,
+                cond_aug,
+                device,
+                embbedings,
+                valence_list,
+                arousal_list,
+                force_uc_zero_embeddings,
+                n_batch_keyframes,
+                added_frames,
+                strength,
+                keyframe_path,
+                None,
+                None,
             )
-        if motion_bucket_id > 255:
-            print("WARNING: High motion bucket! This may lead to suboptimal performance.")
+            # Free up some memory from the keyframes
+            del model_keyframes
+            torch.cuda.empty_cache()
 
-        if fps_id < 5:
-            print("WARNING: Small fps value! This may lead to suboptimal performance.")
-
-        if fps_id > 30:
-            print("WARNING: Large fps value! This may lead to suboptimal performance.")
-
-        value_dict = {}
-        value_dict["motion_bucket_id"] = motion_bucket_id
-        value_dict["fps_id"] = fps_id
-        value_dict["cond_aug"] = cond_aug
-        value_dict["cond_frames_without_noise"] = condition
-
-        value_dict["cond_frames"] = embbedings
-        value_dict["cond_aug"] = cond_aug
-        value_dict["audio_emb"] = audio_cond
-        # value_dict["gt"] = rearrange(embbedings, "b t c h w -> b c t h w").to(device)
-        # masked_gt = value_dict["gt"] * (1 - value_dict["masks"])
-
-        with torch.no_grad():
-            with torch.autocast(device):
-                batch, batch_uc = get_batch_overlap(
-                    get_unique_embedder_keys_from_conditioner(model.conditioner),
-                    value_dict,
-                    [1, num_frames],
-                    T=num_frames,
-                    device=device,
-                )
-
-                c, uc = model.conditioner.get_unconditional_conditioning(
-                    batch,
-                    batch_uc=batch_uc,
-                    force_uc_zero_embeddings=force_uc_zero_embeddings,
-                )
-
-                for k in ["crossattn"]:
-                    uc[k] = repeat(uc[k], "b ... -> b t ...", t=num_frames)
-                    uc[k] = rearrange(uc[k], "b t ... -> (b t) ...", t=num_frames)
-                    c[k] = repeat(c[k], "b ... -> b t ...", t=num_frames)
-                    c[k] = rearrange(c[k], "b t ... -> (b t) ...", t=num_frames)
-
-                video = torch.randn(shape, device=device)
-
-                # n_batch *= embbedings.shape[0]
-
-                additional_model_inputs = {}
-                additional_model_inputs["image_only_indicator"] = torch.zeros(n_batch, num_frames).to(device)
-                additional_model_inputs["num_video_frames"] = batch["num_video_frames"]
-
-                print(condition.shape, embbedings.shape, audio_cond.shape, shape, additional_model_inputs)
-
-                if chunk_size is not None:
-                    chunk_size = chunk_size * num_frames
-
-                def denoiser(input, sigma, c):
-                    return model.denoiser(
-                        model.model,
-                        input,
-                        sigma,
-                        c,
-                        num_overlap_frames=overlap,
-                        num_frames=num_frames,
-                        n_skips=n_batch,
-                        chunk_size=chunk_size,
-                        **additional_model_inputs,
-                    )
-
-                samples_z = model.sampler(denoiser, video, cond=c, uc=uc, strength=strength)
-
-                samples_x = model.decode_first_stage(samples_z)
-
-                samples = torch.clamp((samples_x + 1.0) / 2.0, min=0.0, max=1.0)
-
-                video = None
-
-        samples = rearrange(samples, "(b t) c h w -> b t c h w", t=num_frames)
-        samples = merge_overlapping_segments(samples, overlap)
-
-        gt_chunks = torch.stack(gt_chunks)
-        gt_chunks = merge_overlapping_segments(gt_chunks, overlap)
-        gt_chunks = torch.clamp((gt_chunks + 1.0) / 2.0, min=0.0, max=1.0)
-        gt_vid = (gt_chunks * 255).cpu().numpy().astype(np.uint8)
-
-        # writer = cv2.VideoWriter(
-        #     video_path,
-        #     cv2.VideoWriter_fourcc(*"MP4V"),
-        #     fps_id + 1,
-        #     (samples.shape[-1], samples.shape[-2]),
-        # )
-        vid = (rearrange(samples, "t c h w -> t c h w") * 255).cpu().numpy().astype(np.uint8)
-        # gt_vid = (rearrange(gt, "t c h w -> t c h w") * 255).cpu().numpy().astype(np.uint8)
-        # for frame in vid:
-        #     frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
-        #     writer.write(frame)
-        # writer.release()
-        if raw_audio is not None:
-            raw_audio = rearrange(raw_audio[: len(vid)], "f s -> () (f s)")
-
-        save_audio_video(
-            vid,
-            audio=raw_audio,
-            frame_rate=fps_id + 1,
-            sample_rate=16000,
-            save_path=video_path,
-            keep_intermediate=False,
-        )
-
-        save_audio_video(
-            gt_vid,
-            audio=raw_audio,
-            frame_rate=fps_id + 1,
-            sample_rate=16000,
-            save_path=video_path_gt,
-            keep_intermediate=False,
-        )
-
-        print(f"Saved video to {video_path}")
+            sample_interpolation(
+                model,
+                samples_z,
+                samples_x,
+                audio_interpolation_list,
+                condition,
+                num_frames,
+                device,
+                overlap,
+                add_zero_flag,
+                raw_audio,
+                fps_id,
+                motion_bucket_id,
+                cond_aug,
+                force_uc_zero_embeddings,
+                n_batch,
+                chunk_size,
+                strength,
+                gt_chunks,
+                video_path,
+                video_path_gt,
+                None,
+                None,
+            )
 
 
 def get_unique_embedder_keys_from_conditioner(conditioner):

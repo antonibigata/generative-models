@@ -78,7 +78,7 @@ def add_text_to_keyframes(
     return video
 
 
-def create_interpolation_inputs(video, audio, num_frames, video_emb=None, overlap=1):
+def create_interpolation_inputs(video, audio, num_frames, video_emb=None, emotions=None, overlap=1):
     diff_length = abs(video.shape[0] - audio.shape[0])
     if diff_length < 10:
         min_length = min(video.shape[0], audio.shape[0])
@@ -90,7 +90,7 @@ def create_interpolation_inputs(video, audio, num_frames, video_emb=None, overla
     audio_chunks = []
     video_emb_chunks = []
     gt_chunks = []
-
+    emotions_chunks = []
     # Adjustment for overlap to ensure segments are created properly
     step = num_frames - overlap
 
@@ -113,10 +113,20 @@ def create_interpolation_inputs(video, audio, num_frames, video_emb=None, overla
         if video_emb is not None:
             cond_emb = torch.stack([video_emb[i], video_emb[segment_end - 1]], dim=1)
             video_emb_chunks.append(cond_emb)
+        if emotions is not None:
+            valence_chunk = emotions[0][i:segment_end]
+            arousal_chunk = emotions[1][i:segment_end]
+            # valence_chunk = torch.ones_like(emotions[0][i:segment_end])
+            # arousal_chunk = torch.ones_like(emotions[1][i:segment_end])
+            # valence_chunk[0] = emotions[0][i]
+            # valence_chunk[-1] = emotions[0][segment_end - 1]
+            # arousal_chunk[0] = emotions[1][i]
+            # arousal_chunk[-1] = emotions[1][segment_end - 1]
+            emotions_chunks.append((valence_chunk, arousal_chunk))
         if audio is not None:
             audio_chunks.append(audio[i:segment_end])
 
-    return gt_chunks, video_chunks, audio_chunks, video_emb_chunks
+    return gt_chunks, video_chunks, audio_chunks, video_emb_chunks, emotions_chunks
 
 
 def get_audio_embeddings(
@@ -161,6 +171,7 @@ def sample(
     audio_path: Optional[str] = None,  # Path to precomputed embeddings
     video_folder: Optional[str] = None,
     audio_folder: Optional[str] = None,
+    emotion_folder: Optional[str] = None,
     audio_emb_folder: Optional[str] = None,
     latent_folder: Optional[str] = None,
     num_frames: Optional[int] = None,  # No need to touch
@@ -284,6 +295,12 @@ def sample(
                 raw_audio = raw_audio[:max_frames] if raw_audio is not None else None
         audio = audio.cuda()
 
+        emotions = None
+        if emotion_folder is not None:
+            emotions_path = video_path.replace(video_folder, emotion_folder).replace(".mp4", ".pt")
+            emotions = torch.load(emotions_path)
+            emotions = emotions["valence"][:max_frames], emotions["arousal"][:max_frames]
+
         if input_img_path is None or input_img_path == "":
             model_input = video.cuda()
             if h % 64 != 0 or w % 64 != 0:
@@ -298,8 +315,8 @@ def sample(
                     f"WARNING: Your image is of size {h}x{w} which is not divisible by 64. We are resizing to {height}x{width}!"
                 )
 
-        gt_chunks, conditions_list, audio_list, emb_list = create_interpolation_inputs(
-            model_input, audio, num_frames, video_emb, overlap=overlap
+        gt_chunks, conditions_list, audio_list, emb_list, emotions_chunks = create_interpolation_inputs(
+            model_input, audio, num_frames, video_emb, emotions, overlap=overlap
         )
 
         gt_chunks = torch.stack(gt_chunks)
@@ -316,6 +333,12 @@ def sample(
         audio_cond = torch.stack(audio_list).to(device)
         # condition = condition.unsqueeze(0).to(device)
         embbedings = torch.stack(emb_list).to(device) if emb_list is not None else None
+
+        valence_list = None
+        arousal_list = None
+        if emotions is not None:
+            valence_list = torch.stack([x[0] for x in emotions_chunks]).to(device)
+            arousal_list = torch.stack([x[1] for x in emotions_chunks]).to(device)
 
         # condition = repeat(condition, "b c h w -> (b d) c h w", d=audio_cond.shape[0])
         # condition_emb = repeat(condition_emb, "b c h w -> (b d) c h w", d=audio_cond.shape[0])
@@ -347,6 +370,10 @@ def sample(
         value_dict["cond_frames"] = embbedings
         value_dict["cond_aug"] = cond_aug
         value_dict["audio_emb"] = audio_cond
+
+        if valence_list is not None:
+            value_dict["valence"] = valence_list
+            value_dict["arousal"] = arousal_list
         # value_dict["gt"] = rearrange(embbedings, "b t c h w -> b c t h w").to(device)
         # masked_gt = value_dict["gt"] * (1 - value_dict["masks"])
 

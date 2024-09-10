@@ -27,7 +27,16 @@ class IdentityWrapper(nn.Module):
 
 
 class OpenAIWrapper(IdentityWrapper):
-    def __init__(self, diffusion_model, compile_model: bool = False, ada_aug_percent=0.0, fix_image_leak=False):
+    def __init__(
+        self,
+        diffusion_model,
+        compile_model: bool = False,
+        ada_aug_percent=0.0,
+        fix_image_leak=False,
+        add_embeddings=False,
+        im_size=[64, 64],
+        n_channels=4,
+    ):
         super().__init__(diffusion_model, compile_model)
         self.fix_image_leak = fix_image_leak
         if fix_image_leak:
@@ -39,6 +48,10 @@ class OpenAIWrapper(IdentityWrapper):
         if ada_aug_percent > 0.0:
             augment_kwargs = dict(xflip=1e8, yflip=1, scale=1, rotate_frac=1, aniso=1, translate_frac=1)
             self.augment_pipe = AugmentPipe(ada_aug_percent, **augment_kwargs)
+
+        self.add_embeddings = add_embeddings
+        if add_embeddings:
+            self.learned_mask = nn.Parameter(torch.zeros(n_channels, im_size[0], im_size[1]))
 
     def get_noised_input(self, sigmas_bc: torch.Tensor, noise: torch.Tensor, input: torch.Tensor) -> torch.Tensor:
         noised_input = input + noise * sigmas_bc
@@ -63,6 +76,10 @@ class OpenAIWrapper(IdentityWrapper):
             cond_cat = repeat(cond_cat, "b c h w -> b c t h w", t=T)
             cond_cat = rearrange(cond_cat, "b c t h w -> (b t) c h w")
         x = torch.cat((x, cond_cat), dim=1)
+
+        if self.add_embeddings:
+            learned_mask = repeat(self.learned_mask.to(x.device), "c h w -> b c h w", b=cond_cat.shape[0])
+            x = torch.cat((x, learned_mask), dim=1)
 
         if self.augment_pipe is not None:
             x, labels = self.augment_pipe(x)

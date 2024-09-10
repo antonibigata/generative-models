@@ -612,6 +612,7 @@ class VideoUNet(nn.Module):
                 else:
                     y = audio_emb
             assert y.shape[0] == x.shape[0], f"{y.shape} != {x.shape}"
+
             emb = emb + self.label_emb(y)
 
         if self.use_ada_aug:

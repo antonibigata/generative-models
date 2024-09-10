@@ -128,6 +128,20 @@ model:
         #   params:
         #     outdim: 256
 
+        # - input_key: valence
+        #   is_trainable: False
+        #   target: sgm.modules.encoders.modules.ConcatTimestepEmbedderND
+        #   params:
+        #     outdim: 256
+        #     is_temporal: True
+
+        # - input_key: arousal
+        #   is_trainable: False
+        #   target: sgm.modules.encoders.modules.ConcatTimestepEmbedderND
+        #   params:
+        #     outdim: 256
+        #     is_temporal: True
+
         - input_key: audio_emb
           is_trainable: True
           target: sgm.modules.encoders.modules.WhisperAudioEmbedder

@@ -5,8 +5,8 @@ model:
     input_key: latents
     scale_factor: 0.18215
     disable_first_stage_autocast: True
-    ckpt_path: logs/2024-08-23T10-55-09_example_training-svd_keyframes_vid/checkpoints/last.ckpt/checkpoint/mp_rank_00_model_states.pt
-    bad_model_path: logs/2024-09-03T11-32-04_example_training-svd_keyframes_vid/checkpoints/last.ckpt/checkpoint/mp_rank_00_model_states.pt
+    ckpt_path: logs/2024-09-05T13-03-14_example_training-svd_keyframes_vid/checkpoints/last.ckpt/checkpoint/mp_rank_00_model_states.pt
+    bad_model_path: logs/2024-09-09T10-23-22_example_training-svd_keyframes_vid/checkpoints/last.ckpt/checkpoint/mp_rank_00_model_states.pt
 
     # LoRA
     use_lora: False
@@ -200,7 +200,7 @@ model:
         guider_config:
           target: sgm.modules.diffusionmodules.guiders.KarrasGuider
           params:
-            scale: 2.0
+            scale: 3.
             # low_sigma: 0.
             # high_sigma: 1.61
 
