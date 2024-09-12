@@ -168,7 +168,13 @@ def create_interpolation_inputs(video, audio, landmarks, num_frames, video_emb=N
     return gt_chunks, masks_chunks, audio_chunks, video_emb_chunks
 
 
-def get_audio_embeddings(audio_path: str, audio_rate: int = 16000, fps: int = 25):
+def get_audio_embeddings(
+    audio_path: str,
+    audio_rate: int = 16000,
+    fps: int = 25,
+    audio_folder: Optional[str] = None,
+    audio_emb_folder: Optional[str] = None,
+):
     # Process audio
     audio = None
     raw_audio = None
@@ -199,6 +205,8 @@ def get_audio_embeddings(audio_path: str, audio_rate: int = 16000, fps: int = 25
     elif audio_path is not None and audio_path.endswith(".pt"):
         audio = torch.load(audio_path)
         raw_audio_path = audio_path.replace(".pt", ".wav").replace("_whisper_emb", "").replace("_wav2vec2_emb", "")
+        if audio_folder is not None:
+            raw_audio_path = raw_audio_path.replace(audio_emb_folder, audio_folder)
 
         if os.path.exists(raw_audio_path):
             raw_audio = get_raw_audio(raw_audio_path, audio_rate)
@@ -212,6 +220,10 @@ def sample(
     input_path: str = "",  # Actually not use
     video_path: Optional[str] = None,
     audio_path: Optional[str] = None,  # Path to precomputed embeddings
+    latent_folder: Optional[str] = None,
+    video_folder: Optional[str] = None,
+    audio_folder: Optional[str] = None,
+    audio_emb_folder: Optional[str] = None,
     num_frames: Optional[int] = None,  # No need to touch
     num_steps: Optional[int] = None,  # Num steps diffusion process
     resize_size: Optional[int] = None,  # Resize image to this size
@@ -312,11 +324,13 @@ def sample(
         video = torch.nn.functional.interpolate(video, (512, 512), mode="bilinear")
 
         video_embedding_path = video_path.replace(".mp4", "_video_512_latent.safetensors")
+        if video_folder is not None and latent_folder is not None:
+            video_embedding_path = video_embedding_path.replace(video_folder, latent_folder)
         video_emb = None
         if use_latent:
             video_emb = load_safetensors(video_embedding_path)["latents"]
 
-        audio, raw_audio = get_audio_embeddings(audio_path, 16000, fps_id + 1)
+        audio, raw_audio = get_audio_embeddings(audio_path, 16000, fps_id + 1, audio_folder, audio_emb_folder)
         if max_seconds is not None:
             max_frames = max_seconds * fps_id
             if video.shape[0] > max_frames:
@@ -371,8 +385,8 @@ def sample(
         # condition = condition.unsqueeze(0).to(device)
         embbedings = torch.stack(emb_list).to(device) if emb_list is not None else None
 
-        condition = repeat(condition, "b c h w -> (b d) c h w", d=audio_cond.shape[0])
-        condition_emb = repeat(condition_emb, "b c h w -> (b d) c h w", d=audio_cond.shape[0])
+        condition = repeat(condition, "b c h w -> (b t) c h w", t=audio_cond.shape[0])
+        condition_emb = repeat(condition_emb, "b c h w -> (b t) c h w", t=audio_cond.shape[0])
 
         H, W = condition.shape[-2:]
         # assert condition.shape[1] == 3

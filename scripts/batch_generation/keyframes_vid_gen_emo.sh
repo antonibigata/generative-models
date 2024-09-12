@@ -42,9 +42,9 @@ python scripts/sampling/full_pipeline_batch.py \
     --force_uc_zero_embeddings='[cond_frames, audio_emb]' \
     --latent_folder=video_crop_emb \
     --video_folder=video_crop \
-    --model_config=scripts/sampling/configs/svd_interpolation_no_bad.yaml \
-    --model_keyframes_config=scripts/sampling/configs/svd_keyframes_vid.yaml \
-    --get_landmarks=True \
+    --model_config=scripts/sampling/configs/svd_interpolation.yaml \
+    --model_keyframes_config=scripts/sampling/configs/svd_keyframes_emo.yaml \
+    --get_landmarks=False \
     --landmark_folder=landmarks_crop \
     --overlap=${overlapping} \
     --chunk_size=5 \
@@ -53,5 +53,6 @@ python scripts/sampling/full_pipeline_batch.py \
     --output_folder=/data/home/antoni/results/${output_folder} \
     --keyframes_ckpt=${keyframes_ckpt} \
     --double_first=True \
+    --emotion_folder=emotions \
 
 

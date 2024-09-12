@@ -60,6 +60,9 @@ def create_prediction_inputs(
     # Adjust the step size for the loop to account for overlap and skipping frames
     step_size = (num_frames - overlap) * (skip_frames + 1)
 
+    if double_first:
+        num_frames -= 1
+
     indexes_generated = []
     for i in range(0, video.shape[0] - (num_frames - 1) * (skip_frames + 1), step_size):
         first = video[i]
@@ -68,11 +71,11 @@ def create_prediction_inputs(
         except IndexError:
             break  # Last chunk is smaller than num_frames
 
-        cond = first
         # Collect frames and audio samples with skipping
         video_index = [i + j * (skip_frames + 1) for j in range(num_frames)]
         if double_first:
-            video_index = [i] + video_index[:-1]
+            video_index = [i] + video_index
+        print(video_index)
         indexes_generated.extend(video_index)
         gt_chunks.append(video[video_index, :])
         audio_chunks.append(audio[video_index, :])
@@ -83,8 +86,9 @@ def create_prediction_inputs(
             #     (-torch.ones_like(emotions[0][video_index]), torch.ones_like(emotions[1][video_index]))
             # )
 
-        if video_emb is not None:
-            cond_emb = video_emb[i]
+    cond = video[0]
+    if video_emb is not None:
+        cond_emb = video_emb[0]
 
     return gt_chunks, cond, audio_chunks, cond_emb, emotions_chunks, indexes_generated
 
@@ -246,21 +250,22 @@ def sample_with_scale(
 
                 # samples = embed_watermark(samples)
                 # samples = filter(samples)
-                if i != len(audio_list) - 1:
-                    gt_list.append(torch.clamp((gt_chunks[i][:-1] + 1.0) / 2.0, min=0.0, max=1.0))
-                    samples_list.append(samples[:-1])  # Remove last frame to avoid overlap
-                else:
-                    samples_list.append(samples)  # Keep last frame of last chunk
-                    gt_list.append(torch.clamp((gt_chunks[i] + 1.0) / 2.0, min=0.0, max=1.0))
-                # samples_list.append(samples)
+                # if i != len(audio_list) - 1:
+                #     gt_list.append(torch.clamp((gt_chunks[i][:-1] + 1.0) / 2.0, min=0.0, max=1.0))
+                #     samples_list.append(samples[:-1])  # Remove last frame to avoid overlap
+                # else:
+                #     samples_list.append(samples)  # Keep last frame of last chunk
+                #     gt_list.append(torch.clamp((gt_chunks[i] + 1.0) / 2.0, min=0.0, max=1.0))
+                samples_list.append(samples)
+                # gt_list.append(torch.clamp((gt_chunks[i][:-1] + 1.0) / 2.0, min=0.0, max=1.0))
 
     samples = torch.concatenate(samples_list)
-    gt = torch.concatenate(gt_list)
+    # gt = torch.concatenate(gt_list)
 
     os.makedirs(output_folder, exist_ok=True)
     base_count = len(glob(os.path.join(output_folder, "*.mp4")))
     video_path = os.path.join(output_folder, f"{base_count:06d}_keyframes_scale_{scale}_num_steps_{num_steps}.mp4")
-    video_path_gt = os.path.join(output_folder, f"{base_count:06d}_gt.mp4")
+    # video_path_gt = os.path.join(output_folder, f"{base_count:06d}_gt.mp4")
     # writer = cv2.VideoWriter(
     #     video_path,
     #     cv2.VideoWriter_fourcc(*"MP4V"),
@@ -268,7 +273,7 @@ def sample_with_scale(
     #     (samples.shape[-1], samples.shape[-2]),
     # )
     vid = (rearrange(samples, "t c h w -> t c h w") * 255).cpu().numpy().astype(np.uint8)
-    gt_vid = (rearrange(gt, "t c h w -> t c h w") * 255).cpu().numpy().astype(np.uint8)
+    # gt_vid = (rearrange(gt, "t c h w -> t c h w") * 255).cpu().numpy().astype(np.uint8)
     # for frame in vid:
     #     frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
     #     writer.write(frame)

@@ -145,7 +145,7 @@ def create_pipeline_inputs(
         first_element = audio[0]
         if emotions is not None:
             first_element_emotions = (emotions[0][0], emotions[1][0])
-        for i in range(num_frames, len(audio_image_preds), num_frames):
+        for i in range(0, len(audio_image_preds), num_frames):
             audio_image_preds.insert(i, first_element)
             audio_image_preds_idx.insert(i, audio_image_preds_idx[0])
             if emotions is not None:
@@ -174,6 +174,7 @@ def create_pipeline_inputs(
     interpolation_cond_list = []
     for i in range(0, len(audio_image_preds_idx) - 1, overlap if overlap > 0 else 2):
         interpolation_cond_list.append([audio_image_preds_idx[i], audio_image_preds_idx[i + 1]])
+    print(interpolation_cond_list)
 
     # Since we generate num_frames at a time, we need to ensure that the last chunk is of size num_frames
     # Calculate the number of frames needed to make audio_image_preds a multiple of num_frames
@@ -370,9 +371,9 @@ def sample_keyframes(
                 # image = samples[-1] * 2.0 - 1.0
                 video = None
 
-    samples = torch.concat(samples_list)[:-added_frames]
-    samples_z = torch.concat(samples_z_list)[:-added_frames]
-    samples_x = torch.concat(samples_x_list)[:-added_frames]
+    samples = torch.concat(samples_list)[:-added_frames] if added_frames > 0 else torch.concat(samples_list)
+    samples_z = torch.concat(samples_z_list)[:-added_frames] if added_frames > 0 else torch.concat(samples_z_list)
+    samples_x = torch.concat(samples_x_list)[:-added_frames] if added_frames > 0 else torch.concat(samples_x_list)
 
     keyframes_gen = (rearrange(samples, "t c h w -> t c h w") * 255).cpu().numpy().astype(np.uint8)
 
@@ -575,6 +576,8 @@ def sample_interpolation(
 
 
 def sample(
+    model,
+    model_keyframes,
     input_path: str = "",  # Can either be image file or folder with image files
     video_path: Optional[str] = None,
     audio_path: Optional[str] = None,
@@ -617,6 +620,8 @@ def sample(
     add_zero_flag: bool = False,
     recurse: bool = False,
     double_first: bool = False,
+    n_batch: int = 1,
+    n_batch_keyframes: int = 1,
 ):
     """
     Simple script to generate a single sample conditioned on an image `input_path` or multiple images, one for each
@@ -647,11 +652,6 @@ def sample(
         # model_config = "scripts/sampling/configs/svd_xt_image_decoder.yaml"
     else:
         raise ValueError(f"Version {version} does not exist.")
-
-    if use_latent:
-        input_key = "latents"
-    else:
-        input_key = "frames"
 
     torch.manual_seed(seed)
 
@@ -750,27 +750,6 @@ def sample(
                 add_zero_flag=add_zero_flag,
                 double_first=double_first,
             )
-        )
-
-        model, filter, n_batch = load_model(
-            model_config,
-            device,
-            num_frames,
-            num_steps,
-            input_key,
-            interpolation_ckpt,
-        )
-
-        if lora_path_interp is not None:
-            model.init_from_ckpt(lora_path_interp, remove_keys_from_weights=None)
-
-        model_keyframes, filter, n_batch_keyframes = load_model(
-            model_keyframes_config,
-            device,
-            num_frames,
-            num_steps,
-            input_key,
-            keyframes_ckpt,
         )
 
         print(n_batch, n_batch_keyframes)
@@ -1079,5 +1058,126 @@ def load_model(
     return model, filter, n_batch
 
 
+def main(
+    input_path: str = "",  # Can either be image file or folder with image files
+    filelist: str = "",
+    num_frames: Optional[int] = None,
+    num_steps: Optional[int] = None,
+    resize_size: Optional[int] = None,
+    video_folder: Optional[str] = None,
+    latent_folder: Optional[str] = None,
+    landmark_folder: Optional[str] = None,
+    emotion_folder: Optional[str] = None,
+    audio_folder: Optional[str] = None,
+    audio_emb_folder: Optional[str] = None,
+    version: str = "svd",
+    fps_id: int = 24,
+    motion_bucket_id: int = 127,
+    cond_aug: float = 0.02,
+    seed: int = 23,
+    decoding_t: int = 14,  # Number of frames decoded at a time! This eats most VRAM. Reduce if necessary.
+    device: str = "cuda",
+    output_folder: Optional[str] = None,
+    autoregressive: int = 1,
+    strength: float = 1.0,
+    use_latent: bool = False,
+    # degradation: int = 1,
+    model_config: Optional[str] = None,
+    model_keyframes_config: Optional[str] = None,
+    max_seconds: Optional[int] = None,
+    lora_path_interp: Optional[str] = None,
+    lora_path_keyframes: Optional[str] = None,
+    force_uc_zero_embeddings=[
+        "cond_frames",
+        "cond_frames_without_noise",
+    ],
+    get_landmarks: bool = False,
+    chunk_size: int = None,  # Useful if the model gets OOM
+    overlap: int = 1,  # Overlap between frames (i.e Multi-diffusion)
+    is_dub: bool = False,
+    keyframes_ckpt: Optional[str] = None,
+    interpolation_ckpt: Optional[str] = None,
+    add_zero_flag: bool = False,
+    recurse: bool = False,
+    double_first: bool = False,
+):
+    model, filter, n_batch = load_model(
+        model_config,
+        device,
+        num_frames,
+        num_steps,
+        "latents",
+        interpolation_ckpt,
+    )
+
+    if lora_path_interp is not None:
+        model.init_from_ckpt(lora_path_interp, remove_keys_from_weights=None)
+
+    model_keyframes, filter, n_batch_keyframes = load_model(
+        model_keyframes_config,
+        device,
+        num_frames,
+        num_steps,
+        "latents",
+        keyframes_ckpt,
+    )
+
+    # Open the filelist and read the video paths
+    with open(filelist, "r") as f:
+        video_paths = f.readlines()
+
+    # Remove the newline character from each path
+    video_paths = [path.strip() for path in video_paths]
+
+    audio_paths = [
+        video_path.replace("video_crop", "audio_emb").replace(".mp4", "_wav2vec2_emb.pt") for video_path in video_paths
+    ]
+
+    for video_path, audio_path in zip(video_paths, audio_paths):
+        sample(
+            model,
+            model_keyframes,
+            video_path=video_path,
+            audio_path=audio_path,
+            num_frames=num_frames,
+            num_steps=num_steps,
+            resize_size=resize_size,
+            video_folder=video_folder,
+            latent_folder=latent_folder,
+            landmark_folder=landmark_folder,
+            emotion_folder=emotion_folder,
+            audio_folder=audio_folder,
+            audio_emb_folder=audio_emb_folder,
+            version=version,
+            fps_id=fps_id,
+            motion_bucket_id=motion_bucket_id,
+            cond_aug=cond_aug,
+            seed=seed,
+            decoding_t=decoding_t,
+            device=device,
+            output_folder=output_folder,
+            autoregressive=autoregressive,
+            strength=strength,
+            use_latent=use_latent,
+            model_config=model_config,
+            model_keyframes_config=model_keyframes_config,
+            max_seconds=max_seconds,
+            lora_path_interp=lora_path_interp,
+            lora_path_keyframes=lora_path_keyframes,
+            force_uc_zero_embeddings=force_uc_zero_embeddings,
+            get_landmarks=get_landmarks,
+            chunk_size=chunk_size,
+            overlap=overlap,
+            is_dub=is_dub,
+            keyframes_ckpt=keyframes_ckpt,
+            interpolation_ckpt=interpolation_ckpt,
+            add_zero_flag=add_zero_flag,
+            recurse=recurse,
+            double_first=double_first,
+            n_batch=n_batch,
+            n_batch_keyframes=n_batch_keyframes,
+        )
+
+
 if __name__ == "__main__":
-    Fire(sample)
+    Fire(main)
