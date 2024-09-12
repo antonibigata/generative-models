@@ -83,8 +83,38 @@ python scripts/sampling/simple_dubbing_multi_stella.py --fps_id 24 --motion_buck
 	--video_path=/fsx/rs2517/data/HDTF/cropped_videos_original/RD_Radio18_000.mp4 \
 	--audio_path=/fsx/rs2517/data/HDTF/audio/RD_Radio18_000.wav \
 	--model_config=scripts/sampling/configs/svd_dub.yaml --max_seconds=10 \
-	--resize_size=512 --use_latent=True --num_steps=10 '--force_uc_zero_embeddings=[audio_emb]' --what_mask=jawline --overlap=5 --chunk_size=10
-"""
+	--resize_size=512 --use_latent=True --num_steps=10 '--force_uc_zero_embeddings=[audio_emb]' --what_mask=jawline --overlap=5 --chunk_size=10 \
+	--output_folder ./outputs/new_runs_sept/
+
+python scripts/sampling/simple_dubbing_multi_stella.py --fps_id 24 --motion_bucket_id 60 --cond_aug 0. --decoding_t 14 \
+	--video_path=/fsx/behavioural_computing_data/face_generation_data/AA_processed/part_27/video_aligned_512/A043_C047_0721BS_001_output_output.mp4 \
+	--audio_path=/fsx/behavioural_computing_data/face_generation_data/HDTF/audio/WRA_DeanHeller_000.wav \
+	--model_config=scripts/sampling/configs/svd_dub.yaml --max_seconds=20 \
+	--resize_size=512 --use_latent=True --num_steps=10 '--force_uc_zero_embeddings=[audio_emb]' --what_mask=jawline --overlap=5 --chunk_size=10 \
+	--output_folder ./outputs/new_runs_sept/
+
+python scripts/sampling/simple_dubbing_multi_stella.py --fps_id 24 --motion_bucket_id 60 --cond_aug 0. --decoding_t 14 \
+	--video_path=/fsx/rs2517/data/HDTF/video_crop/WRA_MikeEnzi_000.mp4 \
+	--audio_path=/fsx/rs2517/data/HDTF/audio/WDA_DebbieStabenow0_000.wav \
+	--model_config=scripts/sampling/configs/svd_dub.yaml --max_seconds=20 \
+	--resize_size=512 --use_latent=True --num_steps=10 '--force_uc_zero_embeddings=[audio_emb]' --what_mask=jawline --overlap=5 --chunk_size=10 \
+	--output_folder ./outputs/new_runs_sept/
+
+	HDTF:
+	/fsx/rs2517/data/HDTF/video_crop/WDA_StenyHoyer_000.mp4
+/fsx/rs2517/data/HDTF/video_crop/WDA_DebbieStabenow0_000.mp4
+/fsx/rs2517/data/HDTF/video_crop/WRA_MikeEnzi_000.mp4
+/fsx/rs2517/data/HDTF/video_crop/WRA_MittRomney_000.mp4
+/fsx/rs2517/data/HDTF/video_crop/WDA_RobinKelly_000.mp4
+/fsx/rs2517/data/HDTF/video_crop/WDA_BarackObama_000.mp4
+/fsx/rs2517/data/HDTF/video_crop/WDA_BarackObama_001.mp4
+/fsx/rs2517/data/HDTF/video_crop/WDA_DonnaShalala1_000.mp4
+/fsx/rs2517/data/HDTF/video_crop/WDA_JohnYarmuth1_000.mp4
+/fsx/rs2517/data/HDTF/video_crop/WDA_JamesClyburn1_000.mp4
+/fsx/rs2517/data/HDTF/video_crop/WDA_ChrisCoons1_000.mp4
+/fsx/rs2517/data/HDTF/video_crop/WDA_LucilleRoybal-Allard_000.mp4
+
+""" 
 
 
 def sample(

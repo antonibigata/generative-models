@@ -9,8 +9,8 @@ model:
     # ckpt_path: /fsx/stellab/checkpoints_diffusion_dubbing/voxceleb_half_big_pretrained_2/checkpoints/last.ckpt/checkpoint/mp_rank_00_model_states.pt  # -> mine voxceleb pretrained weights big mask
     # ckpt_path: /data/home/antoni/code/generative-models/logs/2024-05-23T15-11-47_example_training-svd_dubbing_half/checkpoints/last.ckpt/checkpoint/mp_rank_00_model_states.pt  # -> Good checkpoint hdtf with pretrained weights from Antoni
     # ckpt_path: /data/home/antoni/code/generative-models-dub/logs/2024-05-29T16-15-51_example_training-svd_dubbing_half/checkpoints/last.ckpt/checkpoint/mp_rank_00_model_states.pt # w/o pretrained weights
-    ckpt_path: /fsx/stellab/checkpoints_diffusion_dubbing/vox_pretrained_box/checkpoints/last.ckpt/checkpoint/mp_rank_00_model_states.pt
-    
+    # ckpt_path: /fsx/stellab/checkpoints_diffusion_dubbing/vox_pretrained_box/checkpoints/last.ckpt/checkpoint/mp_rank_00_model_states.pt
+    ckpt_path: /data/home/antoni/code/generative-models/logs/2024-08-28T16-39-19_example_training-svd_dubbing_half/checkpoints/last.ckpt/checkpoint/mp_rank_00_model_states.pt
     denoiser_config:
       target: sgm.modules.diffusionmodules.denoiser.DenoiserTemporalMultiDiffusion
       params:
