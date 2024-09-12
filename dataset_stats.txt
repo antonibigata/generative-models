@@ -1,0 +1,90 @@
+
+Stats for CelebV-Text:
+count: 75307
+total_duration_seconds: 480550.959999999
+total_duration_minutes: 8009.182666666649
+total_duration_hours: 133.4863777777775
+mean_duration_seconds: 6.381225649674001
+mean_duration_minutes: 0.10635376082790002
+mean_duration_hours: 0.0017725626804650004
+median_duration_seconds: 3.84
+median_duration_minutes: 0.064
+median_duration_hours: 0.0010666666666666667
+min_duration_seconds: 0.64
+min_duration_minutes: 0.010666666666666666
+min_duration_hours: 0.00017777777777777779
+max_duration_seconds: 453.92
+max_duration_minutes: 7.565333333333333
+max_duration_hours: 0.1260888888888889
+
+Stats for AA_processed:
+count: 25225
+total_duration_seconds: 2557775.6666666525
+total_duration_minutes: 42629.59444444421
+total_duration_hours: 710.4932407407368
+mean_duration_seconds: 101.3984407003634
+mean_duration_minutes: 1.6899740116727233
+mean_duration_hours: 0.028166233527878722
+median_duration_seconds: 94.01666666666667
+median_duration_minutes: 1.5669444444444445
+median_duration_hours: 0.02611574074074074
+min_duration_seconds: 0.25
+min_duration_minutes: 0.004166666666666667
+min_duration_hours: 6.944444444444444e-05
+max_duration_seconds: 453.8666666666667
+max_duration_minutes: 7.564444444444445
+max_duration_hours: 0.1260740740740741
+
+Stats for CelebV_HQ:
+count: 12158
+total_duration_seconds: 48563.36000000016
+total_duration_minutes: 809.389333333336
+total_duration_hours: 13.489822222222267
+mean_duration_seconds: 3.994354334594506
+mean_duration_minutes: 0.06657257224324177
+mean_duration_hours: 0.001109542870720696
+median_duration_seconds: 2.92
+median_duration_minutes: 0.048666666666666664
+median_duration_hours: 0.0008111111111111111
+min_duration_seconds: 0.64
+min_duration_minutes: 0.010666666666666666
+min_duration_hours: 0.00017777777777777779
+max_duration_seconds: 19.96
+max_duration_minutes: 0.33266666666666667
+max_duration_hours: 0.005544444444444445
+
+Stats for HDTF:
+count: 318
+total_duration_seconds: 44228.0
+total_duration_minutes: 737.1333333333333
+total_duration_hours: 12.285555555555556
+mean_duration_seconds: 139.0817610062893
+mean_duration_minutes: 2.3180293501048217
+mean_duration_hours: 0.038633822501747024
+median_duration_seconds: 94.5
+median_duration_minutes: 1.575
+median_duration_hours: 0.02625
+min_duration_seconds: 10.0
+min_duration_minutes: 0.16666666666666666
+min_duration_hours: 0.002777777777777778
+max_duration_seconds: 438.0
+max_duration_minutes: 7.3
+max_duration_hours: 0.12166666666666667
+
+Total stats across all datasets:
+count: 113008
+total_duration_seconds: 3131117.986666682
+total_duration_minutes: 52185.29977777803
+total_duration_hours: 869.7549962963006
+mean_duration_seconds: 27.707047170701777
+mean_duration_minutes: 0.4617841195116963
+mean_duration_hours: 0.007696401991861604
+median_duration_seconds: 5.48
+median_duration_minutes: 0.09133333333333334
+median_duration_hours: 0.0015222222222222223
+min_duration_seconds: 0.25
+min_duration_minutes: 0.004166666666666667
+min_duration_hours: 6.944444444444444e-05
+max_duration_seconds: 453.92
+max_duration_minutes: 7.565333333333333
+max_duration_hours: 0.1260888888888889

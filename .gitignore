@@ -20,4 +20,8 @@ main.log
 
 /sruns_rodrigo
 *.mp4
+<<<<<<< HEAD
 *.png
+=======
+*.pt
+>>>>>>> a08481a0391dfbc0bd34e100bdd8aeddb0a9d760

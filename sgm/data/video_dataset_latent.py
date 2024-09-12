@@ -1,7 +1,7 @@
-import os
+import random
 import numpy as np
 from functools import partial
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, WeightedRandomSampler
 import torch.nn.functional as F
 import torch
 import math
@@ -14,6 +14,9 @@ import soundfile as sf
 from torchvision.transforms import RandomHorizontalFlip
 from audiomentations import Compose, AddGaussianNoise, PitchShift
 from safetensors.torch import load_file
+from tqdm import tqdm
+import cv2
+
 
 torchaudio.set_audio_backend("sox_io")
 decord.bridge.set_bridge("torch")
@@ -48,13 +51,14 @@ class VideoDataset(Dataset):
         resize_size=None,
         audio_folder="Audio",
         video_folder="CroppedVideos",
+        emotions_folder="emotions",
         audio_emb_folder=None,
         video_extension=".avi",
         audio_extension=".wav",
         audio_rate=16000,
         latent_folder=None,
         audio_in_video=False,
-        # fps=25,
+        fps=25,
         num_frames=5,
         need_cond=True,
         step=1,
@@ -75,6 +79,13 @@ class VideoDataset(Dataset):
         data_mean=None,
         data_std=None,
         use_latent_condition=False,
+        skip_frames=0,
+        get_separate_id=False,
+        virtual_increase=1,
+        filter_by_length=False,
+        select_randomly=False,
+        balance_datasets=True,
+        use_emotions=False,
     ):
         self.audio_folder = audio_folder
         self.from_audio_embedding = from_audio_embedding
@@ -83,6 +94,13 @@ class VideoDataset(Dataset):
         self.latent_condition = use_latent_condition
         precomputed_latent = latent_type
         self.audio_emb_folder = audio_emb_folder if audio_emb_folder is not None else audio_folder
+        self.skip_frames = skip_frames
+        self.get_separate_id = get_separate_id
+        self.fps = fps
+        self.virtual_increase = virtual_increase
+        self.select_randomly = select_randomly
+        self.use_emotions = use_emotions
+        self.emotions_folder = emotions_folder
         # self.fps = fps
 
         assert not (exists(data_mean) ^ exists(data_std)), "Both data_mean and data_std should be provided"
@@ -98,17 +116,17 @@ class VideoDataset(Dataset):
 
         self.filelist = []
         self.audio_filelist = []
-        missing_audio = 0
+        # missing_audio = 0
         with open(filelist, "r") as files:
             for f in files.readlines():
                 f = f.rstrip()
                 audio_path = f.replace(video_folder, audio_folder).replace(video_extension, audio_extension)
-                if not self.audio_in_video and not os.path.exists(audio_path):
-                    missing_audio += 1
-                    print("Missing audio file: ", audio_path)
-                    if missing_audio > max_missing_audio_files:
-                        raise FileNotFoundError(f"Missing more than {max_missing_audio_files} audio files")
-                    continue
+                # if not self.audio_in_video and not os.path.exists(audio_path):
+                #     missing_audio += 1
+                #     print("Missing audio file: ", audio_path)
+                #     if missing_audio > max_missing_audio_files:
+                #         raise FileNotFoundError(f"Missing more than {max_missing_audio_files} audio files")
+                #     continue
                 self.filelist += [f]
                 self.audio_filelist += [audio_path]
 
@@ -154,19 +172,59 @@ class VideoDataset(Dataset):
         self.video_rate = math.ceil(vr.get_avg_fps())
         print(f"Video rate: {self.video_rate}")
         self.audio_rate = audio_rate
-        a2v_ratio = self.video_rate / float(self.audio_rate)
+        a2v_ratio = fps / float(self.audio_rate)
         self.samples_per_frame = math.ceil(1 / a2v_ratio)
 
+        if get_separate_id:
+            assert mode == "prediction", "Separate identity frame is only supported for prediction mode"
+            # No need for extra frame if we are getting a separate identity frame
+            self.need_cond = True
+            num_frames -= 1
         self.num_frames = num_frames
         self.load_all_possible_indexes = load_all_possible_indexes
         if load_all_possible_indexes:
             self._indexes = self._get_indexes(self.filelist, self.audio_filelist)
         else:
-            self._indexes = list(zip(self.filelist, self.audio_filelist))
-        self.total_len = len(self._indexes)
+            if filter_by_length:
+                self._indexes = self.filter_by_length(self.filelist, self.audio_filelist)
+            else:
+                self._indexes = list(zip(self.filelist, self.audio_filelist))
+
+        self.balance_datasets = balance_datasets
+        if self.balance_datasets:
+            self.weights = self._calculate_weights()
+            self.sampler = WeightedRandomSampler(self.weights, num_samples=len(self._indexes), replacement=True)
 
     def __len__(self):
-        return self.total_len
+        return len(self._indexes) * self.virtual_increase
+
+    def get_emotions(self, video_file, video_indexes):
+        emotions_path = video_file.replace(self.video_folder, self.emotions_folder).replace(self.video_ext, ".pt")
+        emotions = torch.load(emotions_path)
+        return emotions["valence"][video_indexes], emotions["arousal"][video_indexes]
+
+    def get_frame_indices(self, total_video_frames, select_randomly=False):
+        if select_randomly:
+            # Randomly select self.num_frames indices from the available range
+            available_indices = list(range(total_video_frames))
+            if len(available_indices) < self.num_frames:
+                raise ValueError("Not enough frames in the video to sample with given parameters.")
+            indexes = random.sample(available_indices, self.num_frames)
+            return sorted(indexes)  # Sort to maintain temporal order
+        else:
+            # Calculate the maximum possible start index
+            max_start_idx = total_video_frames - ((self.num_frames - 1) * (self.skip_frames + 1) + 1)
+
+            # Generate a random start index
+            if max_start_idx > 0:
+                start_idx = np.random.randint(0, max_start_idx)
+            else:
+                raise ValueError("Not enough frames in the video to sample with given parameters.")
+
+            # Generate the indices
+            indexes = [start_idx + i * (self.skip_frames + 1) for i in range(self.num_frames)]
+
+        return indexes
 
     def _load_audio(self, filename, max_len_sec, start=None, indexes=None):
         audio, sr = sf.read(
@@ -212,6 +270,11 @@ class VideoDataset(Dataset):
             latents = ((latents - self.data_mean) / self.data_std) * 0.5
         return latents
 
+    def convert_indexes(self, indexes_25fps, fps_from=25, fps_to=60):
+        ratio = fps_to / fps_from
+        indexes_60fps = [int(index * ratio) for index in indexes_25fps]
+        return indexes_60fps
+
     def _get_frames_and_audio(self, idx):
         if self.load_all_possible_indexes:
             indexes, video_file, audio_file = self._indexes[idx]
@@ -220,6 +283,9 @@ class VideoDataset(Dataset):
             else:
                 vr = decord.VideoReader(video_file)
             len_video = len(vr)
+            if "AA_processed" in video_file:
+                len_video *= 25 / 60
+                len_video = int(len_video)
         else:
             video_file, audio_file = self._indexes[idx]
             if self.audio_in_video:
@@ -227,18 +293,43 @@ class VideoDataset(Dataset):
             else:
                 vr = decord.VideoReader(video_file)
             len_video = len(vr)
-            start_idx = np.random.randint(0, len_video - self.num_frames)
-            indexes = list(range(start_idx, start_idx + self.num_frames))
+            if "AA_processed" in video_file:
+                len_video *= 25 / 60
+                len_video = int(len_video)
+            # start_idx = np.random.randint(0, len_video - self.num_frames)
+            # indexes = list(range(start_idx, start_idx + self.num_frames))
+            indexes = self.get_frame_indices(len_video, select_randomly=self.select_randomly)
+
+        if self.get_separate_id:
+            id_idx = np.random.randint(0, len_video)
+            indexes.insert(0, id_idx)
+
+        if "AA_processed" in video_file:
+            video_indexes = self.convert_indexes(indexes, fps_from=25, fps_to=60)
+            audio_file = audio_file.replace("_output_output", "")
+            audio_path_extra = ".safetensors"
+            video_path_extra = f"_{self.latent_type}_512_latent.safetensors"
+        else:
+            video_indexes = indexes
+            audio_path_extra = f"_{self.audio_emb_type}_emb.safetensors"
+            video_path_extra = f"_{self.latent_type}_512_latent.safetensors"
+
+        emotions = None
+        if self.use_emotions:
+            emotions = self.get_emotions(video_file, video_indexes)
+            if self.get_separate_id:
+                emotions = (emotions[0][1:], emotions[1][1:])
 
         raw_audio = None
         if self.audio_in_video:
-            raw_audio, frames_video = vr.get_batch(indexes)
+            raw_audio, frames_video = vr.get_batch(video_indexes)
             raw_audio = rearrange(self.ensure_shape(raw_audio), "f s -> (f s)")
+
         if self.use_latent and self.precomputed_latent:
-            latent_file = video_file.replace(self.video_ext, f"_{self.latent_type}_512_latent.safetensors").replace(
+            latent_file = video_file.replace(self.video_ext, video_path_extra).replace(
                 self.video_folder, self.latent_folder
             )
-            frames = load_file(latent_file)["latents"][indexes, :, :, :]
+            frames = load_file(latent_file)["latents"][video_indexes, :, :, :]
 
             if frames.shape[-1] != 64:
                 print(f"Frames shape: {frames.shape}, video file: {video_file}")
@@ -249,24 +340,27 @@ class VideoDataset(Dataset):
             if self.audio_in_video:
                 frames = frames_video.permute(3, 0, 1, 2).float()
             else:
-                frames = vr.get_batch(indexes).permute(3, 0, 1, 2).float()
+                frames = vr.get_batch(video_indexes).permute(3, 0, 1, 2).float()
 
         if raw_audio is None:
             # Audio is not in video
             raw_audio = self._load_audio(
                 audio_file,
-                max_len_sec=frames.shape[1] / self.video_rate,
-                start=indexes[0] / self.video_rate,
-                indexes=indexes,
+                max_len_sec=frames.shape[1] / self.fps,
+                start=indexes[0] / self.fps,
+                # indexes=indexes,
             )
         if not self.from_audio_embedding:
             audio = raw_audio
             audio_frames = rearrange(audio, "(f s) -> f s", s=self.samples_per_frame)
         else:
-            audio = torch.load(
-                audio_file.replace(self.audio_folder, self.audio_emb_folder).split(".")[0]
-                + f"_{self.audio_emb_type}_emb.pt"
-            )
+            # audio = torch.load(
+            #     audio_file.replace(self.audio_folder, self.audio_emb_folder).split(".")[0]
+            #     + audio_path_extra
+            # )
+            audio = load_file(
+                audio_file.replace(self.audio_folder, self.audio_emb_folder).split(".")[0] + audio_path_extra
+            )["audio"]
             audio_frames = audio[indexes, :]
 
         audio_frames = audio_frames[1:] if self.need_cond else audio_frames  # Remove audio of first frame
@@ -283,14 +377,14 @@ class VideoDataset(Dataset):
                 if self.audio_in_video:
                     clean_cond = frames_video[0].unsqueeze(0).permute(3, 0, 1, 2).float()
                 else:
-                    clean_cond = vr[indexes[0]].unsqueeze(0).permute(3, 0, 1, 2).float()
+                    clean_cond = vr[video_indexes[0]].unsqueeze(0).permute(3, 0, 1, 2).float()
                 clean_cond = self.scale_and_crop((clean_cond / 255.0) * 2 - 1).squeeze(0)
                 if self.latent_condition:
-                    noisy_cond = target[:, 0]
+                    noisy_cond = frames[:, 0]
                 else:
                     noisy_cond = clean_cond
             else:
-                clean_cond = target[:, 0]
+                clean_cond = frames[:, 0]
                 noisy_cond = clean_cond
         elif self.mode == "interpolation":
             if self.use_latent:
@@ -298,14 +392,14 @@ class VideoDataset(Dataset):
                 if self.audio_in_video:
                     clean_cond = frames_video[[0, -1]].permute(3, 0, 1, 2).float()
                 else:
-                    clean_cond = vr.get_batch([indexes[0], indexes[-1]]).permute(3, 0, 1, 2).float()
+                    clean_cond = vr.get_batch([video_indexes[0], video_indexes[-1]]).permute(3, 0, 1, 2).float()
                 clean_cond = self.scale_and_crop((clean_cond / 255.0) * 2 - 1)
                 if self.latent_condition:
-                    noisy_cond = torch.stack([frames[:, 0], frames[:, -1]], dim=1)
+                    noisy_cond = torch.stack([target[:, 0], target[:, -1]], dim=1)
                 else:
                     noisy_cond = clean_cond
             else:
-                clean_cond = torch.stack([frames[:, 0], frames[:, -1]], dim=1)
+                clean_cond = torch.stack([target[:, 0], target[:, -1]], dim=1)
                 noisy_cond = clean_cond
 
         # Add noise to conditional frame
@@ -319,7 +413,31 @@ class VideoDataset(Dataset):
         # else:
         #     cond_noise = None
 
-        return clean_cond, noisy_cond, target, audio_frames, raw_audio, cond_noise
+        return clean_cond, noisy_cond, target, audio_frames, raw_audio, cond_noise, emotions
+
+    def filter_by_length(self, video_filelist, audio_filelist):
+        def with_opencv(filename):
+            video = cv2.VideoCapture(filename)
+            frame_count = video.get(cv2.CAP_PROP_FRAME_COUNT)
+
+            return int(frame_count)
+
+        filtered_video = []
+        filtered_audio = []
+        min_length = (self.num_frames - 1) * (self.skip_frames + 1) + 1
+        for vid_file, audio_file in tqdm(
+            zip(video_filelist, audio_filelist), total=len(video_filelist), desc="Filtering"
+        ):
+            # vr = decord.VideoReader(vid_file)
+
+            len_video = with_opencv(vid_file)
+            # Short videos
+            if len_video < min_length:
+                continue
+            filtered_video.append(vid_file)
+            filtered_audio.append(audio_file)
+        print(f"New number of files: {len(filtered_video)}")
+        return filtered_video, filtered_audio
 
     def _get_indexes(self, video_filelist, audio_filelist):
         indexes = []
@@ -358,11 +476,36 @@ class VideoDataset(Dataset):
             video = video[:, :, h_start : h_start + self.resize_size, w_start : w_start + self.resize_size]
         return self.maybe_augment(video)
 
+    def _calculate_weights(self):
+        aa_processed_count = sum(
+            1 for item in self._indexes if "AA_processed" in (item[1] if len(item) == 3 else item[0])
+        )
+        other_count = len(self._indexes) - aa_processed_count
+
+        aa_processed_weight = 1 / aa_processed_count if aa_processed_count > 0 else 0
+        other_weight = 1 / other_count if other_count > 0 else 0
+
+        print(f"AA processed count: {aa_processed_count}, other count: {other_count}")
+        print(f"AA processed weight: {aa_processed_weight}, other weight: {other_weight}")
+
+        weights = [
+            aa_processed_weight if "AA_processed" in (item[1] if len(item) == 3 else item[0]) else other_weight
+            for item in self._indexes
+        ]
+        return weights
+
     def __getitem__(self, idx):
+        if self.balance_datasets:
+            idx = self.sampler.__iter__().__next__()
+
         try:
-            clean_cond, noisy_cond, target, audio, raw_audio, cond_noise = self._get_frames_and_audio(idx)
+            clean_cond, noisy_cond, target, audio, raw_audio, cond_noise, emotions = self._get_frames_and_audio(
+                idx % len(self._indexes)
+            )
         except Exception as e:
             print(f"Error with index {idx}: {e}")
+            # Removing the file from the list
+            self._indexes.pop(idx % len(self._indexes))
             return self.__getitem__(np.random.randint(0, len(self)))
         out_data = {}
         # out_data = {"cond": cond, "video": target, "audio": audio, "video_file": video_file}
@@ -370,6 +513,10 @@ class VideoDataset(Dataset):
         if audio is not None:
             out_data["audio_emb"] = audio
             out_data["raw_audio"] = raw_audio
+
+        if self.use_emotions:
+            out_data["valence"] = emotions[0]
+            out_data["arousal"] = emotions[1]
 
         if self.use_latent:
             input_key = "latents"
@@ -382,7 +529,7 @@ class VideoDataset(Dataset):
         if cond_noise is not None:
             out_data["cond_aug"] = cond_noise
         out_data["motion_bucket_id"] = torch.tensor([self.motion_id])
-        out_data["fps_id"] = torch.tensor([self.video_rate - 1])
+        out_data["fps_id"] = torch.tensor([self.fps - 1])
         out_data["num_video_frames"] = self.num_frames
         out_data["image_only_indicator"] = torch.zeros(self.num_frames)
         return out_data

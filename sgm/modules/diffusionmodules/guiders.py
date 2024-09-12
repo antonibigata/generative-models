@@ -20,11 +20,23 @@ class Guider(ABC):
 
 
 class VanillaCFG(Guider):
-    def __init__(self, scale: float):
+    def __init__(self, scale: float, low_sigma: float = 0.0, high_sigma: float = float("inf")):
+        self.scale = scale
+        self.low_sigma = low_sigma
+        self.high_sigma = high_sigma
+
+    def set_scale(self, scale: float):
         self.scale = scale
 
     def __call__(self, x: torch.Tensor, sigma: torch.Tensor) -> torch.Tensor:
         x_u, x_c = x.chunk(2)
+
+        # Apply guidance only in a specific range of noise levels for each sigma in the batch
+        # Create a mask for sigmas within the specified range
+        # mask = (sigma > self.low_sigma) & (sigma <= self.high_sigma)
+
+        # # Apply guidance where mask is True, otherwise use x_c
+        # x_pred = torch.where(rearrange(mask, "b -> b 1 1 1"), x_u + self.scale * (x_c - x_u), x_c)
         x_pred = x_u + self.scale * (x_c - x_u)
         return x_pred
 
@@ -32,8 +44,71 @@ class VanillaCFG(Guider):
         c_out = dict()
 
         for k in c:
-            if k in ["vector", "crossattn", "concat", "audio_emb", "image_embeds", "landmarks", "masks", "gt"]:
+            if k in [
+                "vector",
+                "crossattn",
+                "concat",
+                "audio_emb",
+                "image_embeds",
+                "landmarks",
+                "masks",
+                "gt",
+                "valence",
+                "arousal",
+            ]:
                 c_out[k] = torch.cat((uc[k], c[k]), 0)
+            elif k == "reference":
+                c_out["reference"] = []
+                for i in range(len(c[k])):
+                    c_out["reference"].append(torch.cat((uc[k][i], c[k][i]), 0))
+            else:
+                assert c[k] == uc[k]
+                c_out[k] = c[k]
+        return torch.cat([x] * 2), torch.cat([s] * 2), c_out
+
+
+class VanillaCFGplusplus(VanillaCFG):
+    def __call__(self, x: torch.Tensor, sigma: torch.Tensor) -> torch.Tensor:
+        x_u, x_c = x.chunk(2)
+
+        # Apply guidance only in a specific range of noise levels for each sigma in the batch
+        # Create a mask for sigmas within the specified range
+        # mask = (sigma > self.low_sigma) & (sigma <= self.high_sigma)
+
+        # # Apply guidance where mask is True, otherwise use x_c
+        # x_pred = torch.where(rearrange(mask, "b -> b 1 1 1"), x_u + self.scale * (x_c - x_u), x_c)
+        x_pred = x_u + self.scale * (x_c - x_u)
+        return x_pred, x_u
+
+
+class KarrasGuider(VanillaCFG):
+    # def __call__(self, x: torch.Tensor, sigma: torch.Tensor) -> torch.Tensor:
+    #     x_u, x_c = x.chunk(2)
+    #     if sigma > self.low_sigma and sigma < self.high_sigma:
+    #         x_pred = x_u + self.scale * (x_c - x_u)
+    #     else:
+    #         x_pred = x_c
+    #     return x_pred
+
+    def prepare_inputs(self, x, s, c, uc):
+        c_out = dict()
+
+        for k in c:
+            if k in [
+                "vector",
+                "crossattn",
+                "concat",
+                "audio_emb",
+                "image_embeds",
+                "landmarks",
+                "valence",
+                "arousal",
+            ]:
+                c_out[k] = torch.cat((c[k], c[k]), 0)
+            elif k == "reference":
+                c_out["reference"] = []
+                for i in range(len(c[k])):
+                    c_out["reference"].append(torch.cat((c[k][i], c[k][i]), 0))
             else:
                 assert c[k] == uc[k]
                 c_out[k] = c[k]
@@ -44,8 +119,15 @@ class MultipleCondVanilla(Guider):
     def __init__(self, scales, condition_names) -> None:
         assert len(scales) == len(condition_names)
         self.scales = scales
-        self.condition_names = condition_names
+        # self.condition_names = condition_names
         self.n_conditions = len(scales)
+        self.map_cond_name = {
+            "audio_emb": "audio_emb",
+            "cond_frames_without_noise": "crossattn",
+            "cond_frames": "concat",
+        }
+        self.condition_names = [self.map_cond_name.get(cond_name, cond_name) for cond_name in condition_names]
+        print("Condition names: ", self.condition_names)
 
     def __call__(self, x: torch.Tensor, sigma: torch.Tensor) -> torch.Tensor:
         outs = x.chunk(self.n_conditions + 1)
@@ -101,16 +183,32 @@ class LinearPredictionGuider(Guider):
         num_frames: int,
         min_scale: float = 1.0,
         additional_cond_keys: Optional[Union[List[str], str]] = None,
+        only_first=False,
     ):
         self.min_scale = min_scale
         self.max_scale = max_scale
         self.num_frames = num_frames
         self.scale = torch.linspace(min_scale, max_scale, num_frames).unsqueeze(0)
 
+        self.only_first = only_first
+        if only_first:
+            self.scale = torch.ones_like(self.scale) * max_scale
+            self.scale[:, 0] = min_scale
+
         additional_cond_keys = default(additional_cond_keys, [])
         if isinstance(additional_cond_keys, str):
             additional_cond_keys = [additional_cond_keys]
         self.additional_cond_keys = additional_cond_keys
+
+    def set_scale(self, scale: torch.Tensor):
+        self.min_scale = scale
+        self.scale = torch.linspace(self.min_scale, self.max_scale, self.num_frames).unsqueeze(0)
+
+        if self.only_first:
+            self.scale = torch.ones_like(self.scale) * self.max_scale
+            self.scale[:, 0] = self.min_scale
+
+        print(self.scale)
 
     def __call__(self, x: torch.Tensor, sigma: torch.Tensor) -> torch.Tensor:
         x_u, x_c = x.chunk(2)
@@ -134,6 +232,26 @@ class LinearPredictionGuider(Guider):
                 c_out[k] = c[k]
 
         return torch.cat([x] * 2), torch.cat([s] * 2), c_out
+
+
+class LinearPredictionGuiderPlus(LinearPredictionGuider):
+    def __init__(
+        self,
+        max_scale: float,
+        num_frames: int,
+        min_scale: float = 1.0,
+        additional_cond_keys: Optional[Union[List[str], str]] = None,
+    ):
+        super().__init__(max_scale, num_frames, min_scale, additional_cond_keys)
+
+    def __call__(self, x: torch.Tensor, sigma: torch.Tensor) -> torch.Tensor:
+        x_u, x_c = x.chunk(2)
+
+        x_u = rearrange(x_u, "(b t) ... -> b t ...", t=self.num_frames)
+        x_c = rearrange(x_c, "(b t) ... -> b t ...", t=self.num_frames)
+        scale = repeat(self.scale, "1 t -> b t", b=x_u.shape[0])
+        scale = append_dims(scale, x_u.ndim).to(x_u.device)
+        return rearrange(x_u + scale * (x_c - x_u), "b t ... -> (b t) ..."), x_u
 
 
 class TrianglePredictionGuider(LinearPredictionGuider):

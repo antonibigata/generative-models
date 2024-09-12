@@ -9,7 +9,7 @@ import pyrootutils
 
 root = pyrootutils.setup_root(__file__, pythonpath=True)
 sys.path.append(root)
-from sgm.data.video_image_dataset import VideoDataset
+from sgm.data.video_image_dataset import VideoDataset, collate_fn
 
 
 class VideoDataModule(LightningDataModule):
@@ -58,6 +58,7 @@ class VideoDataModule(LightningDataModule):
         self.val_config = validation
         if not skip_val_loader:
             if self.val_config is not None:
+                print(self.val_config)
                 assert (
                     "datapipeline" in self.val_config and "loader" in self.val_config
                 ), "validation config requires the fields `datapipeline` and `loader`"

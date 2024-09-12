@@ -1,3 +1,74 @@
+# Training and testing instructions.
+
+## Training
+
+To train a model, you need to run the `main.py` script with the appropriate configuration file. For example, to train a model to generate keyframes you can run the following command:
+
+```bash
+python main.py --base configs/example_training/svd_image_reference.yaml --wandb True lightning.trainer.num_nodes \ lightning.strategy=deepspeed_stage_1 lightning.trainer.precision=32 model.base_learning_rate=1.e-5 \
+    data.params.train.datapipeline.filelist=/data/home/antoni/datasets/filelist_celebhq_hdtf.txt \
+    data.params.train.datapipeline.video_folder=video_crop  \
+    data.params.train.datapipeline.audio_folder=audio_emb \
+    data.params.train.datapipeline.latent_folder=video_crop_emb \
+    data.params.train.loader.num_workers=6 \
+    data.params.train.datapipeline.audio_in_video=False \
+    data.params.train.datapipeline.load_all_possible_indexes=False \
+    lightning.trainer.devices=1 lightning.trainer.accumulate_grad_batches=1 data.params.train.datapipeline.virtual_increase=1000 \
+    model.params.network_config.params.audio_cond_method=bite data.params.train.loader.batch_size=28 model.params.loss_fn_config.params.lambda_lower=2. \
+    model.params.network_config.params.skip_time=True  \
+    data.params.train.datapipeline.change_file_proba=1.
+```
+
+Ensure that the data configuration is correctly set in the configuration file or via command line.
+
+If need to resume the training you can use the `--resume` flag with the path to the checkpoint you want to resume from.
+E.g.:
+
+```bash
+python main.py --resume logs/2024-07-23T14-34-12_example_training-svd_image --base configs/example_training/svd_image.yaml --wandb True lightning.trainer.num_nodes 8 \
+    ........
+```
+
+## Testing
+
+To run inference on a trained model, you can use the `scripts/sampling/simple_image_sample.py` script. For example, to generate a sequence of frames from a single image, you can run the following command:
+
+```bash
+python scripts/sampling/simple_image_sample.py  --video_path=/fsx/rs2517/data/HDTF/video_crop/WDA_BarackObama_001.mp4  --cond_aug 0. --audio_path=/fsx/rs2517/data/HDTF/ \ audio_emb/WDA_BarackObama_001_wav2vec2_emb.pt --model_config=scripts/sampling/configs/svd_image.yaml --resize_size=512 --use_latent=True --num_steps=10 \ --max_seconds=10 '--force_uc_zero_embeddings=[cond_frames, audio_emb]' --video_folder=/fsx/behavioural_computing_data/voxceleb2 --latent_folder=/fsx/rs2517/data/ \ voxceleb2_sd_latent --latent_folder=video_crop_emb --video_folder=video_crop
+```
+
+You can check the script for more parameters and options.
+
+## Example of trained model
+
+Current best model path for image generation: /data/home/antoni/code/generative-models/logs/2024-07-23T14-34-12_example_training-svd_image/checkpoints/last.ckpt/checkpoint/mp_rank_00_model_states.pt
+  - config at /data/home/antoni/code/generative-models/scripts/sampling/configs/svd_image.yaml
+
+To infer the model, you can run the following command:
+
+```bash
+python scripts/sampling/simple_image_sample.py  --video_path=/fsx/rs2517/data/HDTF/video_crop/WDA_BarackObama_001.mp4  --cond_aug 0. --audio_path=/fsx/rs2517/data/HDTF/ \ audio_emb/WDA_BarackObama_001_wav2vec2_emb.pt --model_config=scripts/sampling/configs/svd_image.yaml --resize_size=512 --use_latent=True --num_steps=10 \ --max_seconds=10 '--force_uc_zero_embeddings=[cond_frames, audio_emb]' --video_folder=/fsx/behavioural_computing_data/voxceleb2 --latent_folder=/fsx/rs2517/data/ \ voxceleb2_sd_latent --latent_folder=video_crop_emb --video_folder=video_crop
+```
+
+It has been trained with this command:
+  
+```bash
+python main.py --resume logs/2024-07-23T14-34-12_example_training-svd_image --base configs/example_training/svd_image.yaml --wandb True lightning.trainer.num_nodes 8 \
+    lightning.strategy=deepspeed_stage_1 lightning.trainer.precision=32 model.base_learning_rate=1.e-5 \
+    data.params.train.datapipeline.filelist=/data/home/antoni/datasets/filelist_celebhq_hdtf.txt \
+    data.params.train.datapipeline.video_folder=video_crop  \
+    data.params.train.datapipeline.audio_folder=audio_emb \
+    data.params.train.datapipeline.latent_folder=video_crop_emb \
+    data.params.train.loader.num_workers=6 \
+    data.params.train.datapipeline.audio_in_video=False \
+    data.params.train.datapipeline.load_all_possible_indexes=False \
+    lightning.trainer.devices=4 lightning.trainer.accumulate_grad_batches=1 data.params.train.datapipeline.virtual_increase=1000 \
+    model.params.network_config.params.audio_cond_method=to_time_emb_image data.params.train.loader.batch_size=32 \
+    model.params.loss_fn_config.params.lambda_lower=2. model.params.network_config.params.skip_time=False \
+    data.params.train.datapipeline.change_file_proba=1. 
+```
+
+
 # Generative Models by Stability AI
 
 ![sample1](assets/000.jpg)

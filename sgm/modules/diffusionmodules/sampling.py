@@ -43,6 +43,9 @@ class BaseDiffusionSampler:
         self.verbose = verbose
         self.device = device
 
+    def set_num_steps(self, num_steps: int):
+        self.num_steps = num_steps
+
     def prepare_sampling_loop(self, x, cond, uc=None, num_steps=None, strength=1.0):
         print("Num steps: ", self.num_steps if num_steps is None else num_steps)
         sigmas = self.discretization(self.num_steps if num_steps is None else num_steps, device=self.device)
@@ -167,6 +170,44 @@ class EDMSampler(SingleStepDiffusionSampler):
                 cond,
                 uc,
                 gamma,
+            )
+
+        return x
+
+
+class EDMSampleCFGplusplus(SingleStepDiffusionSampler):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def sampler_step(self, sigma, next_sigma, denoiser, x, cond, uc=None, gamma=0.0):
+        sigma_hat = sigma
+
+        denoised, x_u = self.denoise(x, denoiser, sigma_hat, cond, uc)
+        if x.ndim == 5:
+            denoised = rearrange(denoised, "(b t) c h w -> b c t h w", b=x.shape[0])
+            x_u = rearrange(x_u, "(b t) c h w -> b c t h w", b=x.shape[0])
+
+        d = to_d(x, sigma_hat, x_u)
+        dt = append_dims(next_sigma - sigma_hat, x.ndim)
+        next_sigma = append_dims(next_sigma, x.ndim)
+
+        euler_step = self.euler_step(denoised, d, next_sigma)
+        x = self.possible_correction_step(euler_step, x, d, dt, next_sigma, denoiser, cond, uc)
+        return x
+
+    def __call__(self, denoiser, x, cond, uc=None, num_steps=None, strength=1.0):
+        x, s_in, sigmas, num_sigmas, cond, uc = self.prepare_sampling_loop(x, cond, uc, num_steps, strength=strength)
+
+        for i in self.get_sigma_gen(num_sigmas):
+            s_in = x.new_ones([x.shape[0]])
+            x = self.sampler_step(
+                s_in * sigmas[i],
+                s_in * sigmas[i + 1],
+                denoiser,
+                x,
+                cond,
+                uc,
+                None,
             )
 
         return x
@@ -430,6 +471,11 @@ class LinearMultistepSampler(BaseDiffusionSampler):
 
 
 class EulerEDMSampler(EDMSampler):
+    def possible_correction_step(self, euler_step, x, d, dt, next_sigma, denoiser, cond, uc):
+        return euler_step
+
+
+class EulerEDMSamplerPlusPlus(EDMSampleCFGplusplus):
     def possible_correction_step(self, euler_step, x, d, dt, next_sigma, denoiser, cond, uc):
         return euler_step
 

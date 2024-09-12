@@ -159,11 +159,16 @@ def main():
                     encoded = encode_video(video)
 
             # Create output path in same directory as video
+            if encoded.shape[0] > len(video_reader):
+                encoded = encoded[: len(video_reader)]
+            assert encoded.shape[0] == len(video_reader), f"{encoded.shape} != {len(video_reader)}"
+
             # Save the latent vector
             if args.save_as_tensor:
                 torch.save(encoded.cpu(), out_path)
             else:
                 save_file({"latents": encoded.cpu(), "init_rez": torch.tensor(video.shape[-2:])}, out_path)
+
         except:
             print(f"Failed for file {video_file}")
 

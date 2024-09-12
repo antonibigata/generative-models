@@ -4,6 +4,9 @@ from packaging import version
 from einops import repeat, rearrange
 from diffusers.utils import _get_model_file
 from diffusers.models.modeling_utils import load_state_dict
+from ...modules.diffusionmodules.augment_pipeline import AugmentPipe
+from ...modules.encoders.modules import ConcatTimestepEmbedderND
+from ...util import append_dims
 
 
 OPENAIUNETWRAPPER = "sgm.modules.diffusionmodules.wrappers.OpenAIWrapper"
@@ -24,18 +27,77 @@ class IdentityWrapper(nn.Module):
 
 
 class OpenAIWrapper(IdentityWrapper):
+    def __init__(
+        self,
+        diffusion_model,
+        compile_model: bool = False,
+        ada_aug_percent=0.0,
+        fix_image_leak=False,
+        add_embeddings=False,
+        im_size=[64, 64],
+        n_channels=4,
+    ):
+        super().__init__(diffusion_model, compile_model)
+        self.fix_image_leak = fix_image_leak
+        if fix_image_leak:
+            self.beta_m = 15
+            self.a = 5
+            self.noise_encoder = ConcatTimestepEmbedderND(256)
+
+        self.augment_pipe = None
+        if ada_aug_percent > 0.0:
+            augment_kwargs = dict(xflip=1e8, yflip=1, scale=1, rotate_frac=1, aniso=1, translate_frac=1)
+            self.augment_pipe = AugmentPipe(ada_aug_percent, **augment_kwargs)
+
+        self.add_embeddings = add_embeddings
+        if add_embeddings:
+            self.learned_mask = nn.Parameter(torch.zeros(n_channels, im_size[0], im_size[1]))
+
+    def get_noised_input(self, sigmas_bc: torch.Tensor, noise: torch.Tensor, input: torch.Tensor) -> torch.Tensor:
+        noised_input = input + noise * sigmas_bc
+        return noised_input
+
     def forward(self, x: torch.Tensor, t: torch.Tensor, c: dict, **kwargs) -> torch.Tensor:
         cond_cat = c.get("concat", torch.Tensor([]).type_as(x))
+
+        T = x.shape[0] // cond_cat.shape[0]
+        if self.fix_image_leak:
+            noise_aug_strength = get_sigma_s(
+                rearrange(t, "(b t) ... -> b t ...", b=T)[: cond_cat.shape[0], 0] / 700, self.a, self.beta_m
+            )
+            noise_aug = append_dims(noise_aug_strength, 4).to(x.device)
+            noise = torch.randn_like(noise_aug)
+            cond_cat = self.get_noised_input(noise_aug, noise, cond_cat)
+            noise_emb = self.noise_encoder(noise_aug_strength).to(x.device)
+            c["vector"] = noise_emb if "vector" not in c else torch.cat([c["vector"], noise_emb], dim=1)
+            # c["vector"] = noise_emb
+
         if len(cond_cat.shape) and cond_cat.shape[0] and x.shape[0] != cond_cat.shape[0]:
-            cond_cat = repeat(cond_cat, "b c h w -> b c t h w", t=x.shape[0] // cond_cat.shape[0])
+            cond_cat = repeat(cond_cat, "b c h w -> b c t h w", t=T)
             cond_cat = rearrange(cond_cat, "b c t h w -> (b t) c h w")
         x = torch.cat((x, cond_cat), dim=1)
+
+        if self.add_embeddings:
+            learned_mask = repeat(self.learned_mask.to(x.device), "c h w -> b c h w", b=cond_cat.shape[0])
+            x = torch.cat((x, learned_mask), dim=1)
+
+        if self.augment_pipe is not None:
+            x, labels = self.augment_pipe(x)
+        else:
+            labels = torch.zeros(x.shape[0], 9, device=x.device)
+
+        # if c.get("reference", None) is not None:
+        #     c["crossattn"] = c["reference"]
+
         return self.diffusion_model(
             x,
             timesteps=t,
             context=c.get("crossattn", None),
+            reference_context=c.get("reference", None),
             y=c.get("vector", None),
             audio_emb=c.get("audio_emb", None),
+            landmarks=c.get("landmarks", None),
+            aug_labels=labels,
             **kwargs,
         )
 
@@ -113,6 +175,7 @@ class DubbingWrapper(IdentityWrapper):
 
         
         cond_cat = c.get("concat", torch.Tensor([]).type_as(x))
+        # print(x.shape, cond_cat.shape)
         if len(cond_cat.shape):
             T = x.shape[0] // cond_cat.shape[0]
             if cond_cat.shape[1] == 4:
@@ -151,6 +214,23 @@ class DubbingWrapper(IdentityWrapper):
         return out
 
 
+def logit_normal_sampler(m, s=1, beta_m=15, sample_num=1000000):
+    y_samples = torch.randn(sample_num) * s + m
+    x_samples = beta_m * (torch.exp(y_samples) / (1 + torch.exp(y_samples)))
+    return x_samples
+
+
+def mu_t(t, a=5, mu_max=1):
+    t = t.to("cpu")
+    return 2 * mu_max * t**a - mu_max
+
+
+def get_sigma_s(t, a, beta_m):
+    mu = mu_t(t, a=a)
+    sigma_s = logit_normal_sampler(m=mu, sample_num=t.shape[0], beta_m=beta_m)
+    return sigma_s
+
+
 class InterpolationWrapper(IdentityWrapper):
     def __init__(
         self,
@@ -160,6 +240,7 @@ class InterpolationWrapper(IdentityWrapper):
         n_channels=4,
         starting_mask_method="zeros",
         add_mask=True,
+        fix_image_leak=False,
     ):
         super().__init__(diffusion_model, compile_model)
         im_size = [x // 8 for x in im_size]  # 8 is the default downscaling factor in the vae model
@@ -181,11 +262,33 @@ class InterpolationWrapper(IdentityWrapper):
         self.add_mask = add_mask
         # self.zeros_mask = torch.zeros(n_channels, im_size[0], im_size[1])
         # self.ones_mask = torch.ones(n_channels, im_size[0], im_size[1])
+        self.fix_image_leak = fix_image_leak
+        if fix_image_leak:
+            self.beta_m = 15
+            self.a = 5
+            self.noise_encoder = ConcatTimestepEmbedderND(256)
+
+    def get_noised_input(self, sigmas_bc: torch.Tensor, noise: torch.Tensor, input: torch.Tensor) -> torch.Tensor:
+        noised_input = input + noise * sigmas_bc
+        return noised_input
 
     def forward(self, x: torch.Tensor, t: torch.Tensor, c: dict, **kwargs) -> torch.Tensor:
         cond_cat = c.get("concat", torch.Tensor([]).type_as(x))
-        cond_cat = rearrange(cond_cat, "b (t c) h w -> b c t h w", t=2)
         T = x.shape[0] // cond_cat.shape[0]
+
+        if self.fix_image_leak:
+            noise_aug_strength = get_sigma_s(
+                rearrange(t, "(b t) ... -> b t ...", b=T)[: cond_cat.shape[0], 0] / 700, self.a, self.beta_m
+            )
+            noise_aug = append_dims(noise_aug_strength, 4).to(x.device)
+            noise = torch.randn_like(noise_aug)
+            cond_cat = self.get_noised_input(noise_aug, noise, cond_cat)
+            noise_emb = self.noise_encoder(noise_aug_strength).to(x.device)
+            # cond["vector"] = noise_emb if "vector" not in cond else torch.cat([cond["vector"], noise_emb], dim=1)
+            c["vector"] = noise_emb
+
+        cond_cat = rearrange(cond_cat, "b (t c) h w -> b c t h w", t=2)
+
         start, end = cond_cat.chunk(2, dim=2)
         if self.learned_mask is None:
             learned_mask = torch.stack([start.squeeze(2)] * (T // 2 - 1) + [end.squeeze(2)] * (T // 2 - 1), dim=2)

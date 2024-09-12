@@ -31,6 +31,7 @@ def create_interpolation_inputs(video, audio, num_frames, video_emb=None, overla
 
     # Break video into chunks of num_frames with overlap 1
     assert video.shape[0] == audio.shape[0], "Video and audio must have the same number of frames"
+
     video_chunks = []
     audio_chunks = []
     video_emb_chunks = []
@@ -61,7 +62,9 @@ def create_interpolation_inputs(video, audio, num_frames, video_emb=None, overla
     return gt_chunks, video_chunks, audio_chunks, video_emb_chunks
 
 
-def get_audio_embeddings(audio_path: str, audio_rate: int = 16000, fps: int = 25):
+def get_audio_embeddings(
+    audio_path: str, audio_rate: int = 16000, fps: int = 25, audio_folder=None, audio_emb_folder=None
+):
     # Process audio
     audio = None
     raw_audio = None
@@ -91,7 +94,9 @@ def get_audio_embeddings(audio_path: str, audio_rate: int = 16000, fps: int = 25
             # audio = torch.cat(audio_embeddings, dim=1).squeeze(0)
     elif audio_path is not None and audio_path.endswith(".pt"):
         audio = torch.load(audio_path)
-        raw_audio_path = audio_path.replace(".pt", ".wav").replace("_whisper_emb", "")
+        raw_audio_path = audio_path.replace(".pt", ".wav").replace("_wav2vec2_emb", "")
+        if audio_folder is not None:
+            raw_audio_path = raw_audio_path.replace(audio_emb_folder, audio_folder)
 
         if os.path.exists(raw_audio_path):
             raw_audio = get_raw_audio(raw_audio_path, audio_rate)
@@ -105,11 +110,16 @@ def sample(
     input_path: str = "",  # Can either be image file or folder with image files
     video_path: Optional[str] = None,
     audio_path: Optional[str] = None,
+    video_folder: Optional[str] = None,
+    audio_folder: Optional[str] = None,
+    audio_emb_folder: Optional[str] = None,
+    latent_folder: Optional[str] = None,
+    landmark_folder: Optional[str] = None,
     num_frames: Optional[int] = None,
     num_steps: Optional[int] = None,
     resize_size: Optional[int] = None,
     version: str = "svd",
-    fps_id: int = 6,
+    fps_id: int = 24,
     motion_bucket_id: int = 127,
     cond_aug: float = 0.02,
     seed: int = 23,
@@ -199,13 +209,16 @@ def sample(
         #     )
         video = read_video(video_path, output_format="TCHW")[0]
         video = (video / 255.0) * 2.0 - 1.0
+        video = torch.nn.functional.interpolate(video, (512, 512), mode="bilinear")
 
         video_embedding_path = video_path.replace(".mp4", "_video_512_latent.safetensors")
+        if video_folder is not None and latent_folder is not None:
+            video_embedding_path = video_embedding_path.replace(video_folder, latent_folder)
         video_emb = None
         if use_latent:
             video_emb = load_safetensors(video_embedding_path)["latents"]
 
-        audio, raw_audio = get_audio_embeddings(audio_path, 16000, fps_id + 1)
+        audio, raw_audio = get_audio_embeddings(audio_path, 16000, fps_id + 1, audio_folder, audio_emb_folder)
         if max_seconds is not None:
             max_frames = max_seconds * fps_id
             if video.shape[0] > max_frames:
@@ -423,10 +436,10 @@ def load_model(
     input_key: str,
 ):
     config = OmegaConf.load(config)
-    if device == "cuda":
-        config.model.params.conditioner_config.params.emb_models[
-            0
-        ].params.open_clip_embedding_config.params.init_device = device
+    # if device == "cuda":
+    #     config.model.params.conditioner_config.params.emb_models[
+    #         0
+    #     ].params.open_clip_embedding_config.params.init_device = device
 
     config["model"]["params"]["input_key"] = input_key
 

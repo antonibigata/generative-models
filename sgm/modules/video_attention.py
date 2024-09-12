@@ -162,6 +162,7 @@ class SpatialVideoTransformer(SpatialTransformer):
         disable_temporal_crossattention=False,
         max_time_embed_period: int = 10000,
         skip_time=False,
+        reference_to=None,
     ):
         super().__init__(
             in_channels,
@@ -174,6 +175,7 @@ class SpatialVideoTransformer(SpatialTransformer):
             context_dim=context_dim,
             use_linear=use_linear,
             disable_self_attn=disable_self_attn,
+            reference_to=reference_to,
         )
         self.time_depth = time_depth
         self.depth = depth
@@ -189,25 +191,28 @@ class SpatialVideoTransformer(SpatialTransformer):
         if use_spatial_context:
             time_context_dim = context_dim
 
-        self.time_stack = nn.ModuleList(
-            [
-                VideoTransformerBlock(
-                    inner_dim,
-                    n_time_mix_heads,
-                    time_mix_d_head,
-                    dropout=dropout,
-                    context_dim=time_context_dim,
-                    timesteps=timesteps,
-                    checkpoint=checkpoint,
-                    ff_in=ff_in,
-                    inner_dim=time_mix_inner_dim,
-                    attn_mode=attn_mode,
-                    disable_self_attn=disable_self_attn,
-                    disable_temporal_crossattention=disable_temporal_crossattention,
-                )
-                for _ in range(self.depth)
-            ]
-        )
+        if not self.skip_time:
+            self.time_stack = nn.ModuleList(
+                [
+                    VideoTransformerBlock(
+                        inner_dim,
+                        n_time_mix_heads,
+                        time_mix_d_head,
+                        dropout=dropout,
+                        context_dim=time_context_dim,
+                        timesteps=timesteps,
+                        checkpoint=checkpoint,
+                        ff_in=ff_in,
+                        inner_dim=time_mix_inner_dim,
+                        attn_mode=attn_mode,
+                        disable_self_attn=disable_self_attn,
+                        disable_temporal_crossattention=disable_temporal_crossattention,
+                    )
+                    for _ in range(self.depth)
+                ]
+            )
+        else:
+            self.time_stack = None
 
         self.audio_stack = None
         if audio_context_dim is not None:
@@ -232,6 +237,8 @@ class SpatialVideoTransformer(SpatialTransformer):
             )
             self.audio_mixer = AlphaBlender(alpha=merge_audio_factor, merge_strategy=merge_strategy)
 
+        if self.time_stack is None:
+            self.time_stack = [None] * len(self.transformer_blocks)
         assert len(self.time_stack) == len(self.transformer_blocks)
 
         self.use_spatial_context = use_spatial_context
@@ -250,6 +257,7 @@ class SpatialVideoTransformer(SpatialTransformer):
         self,
         x: torch.Tensor,
         context: Optional[torch.Tensor] = None,
+        reference_context: Optional[torch.Tensor] = None,
         time_context: Optional[torch.Tensor] = None,
         audio_context: Optional[torch.Tensor] = None,
         timesteps: Optional[int] = None,
@@ -261,11 +269,22 @@ class SpatialVideoTransformer(SpatialTransformer):
         if exists(context):
             spatial_context = context
 
-        if self.use_spatial_context:
-            assert context.ndim == 3, f"n dims of spatial context should be 3 but are {context.ndim}"
+        if not isinstance(spatial_context, list):
+            spatial_context = [spatial_context]
+        if reference_context is not None and not isinstance(reference_context, list):
+            reference_context = [reference_context]
+        # else:
+        #     # spatial_context.reverse()
+        #     print([c.shape for c in spatial_context])
+
+        if self.use_spatial_context and not self.skip_time:
+            assert (
+                isinstance(context, list) or context.ndim == 3
+            ), f"n dims of spatial context should be 3 but are {context.ndim}"
             time_context = context
-            time_context_first_timestep = time_context[::timesteps]
-            time_context = repeat(time_context_first_timestep, "b ... -> (b n) ...", n=h * w)
+            if not isinstance(context, list):
+                time_context_first_timestep = time_context[::timesteps]
+                time_context = repeat(time_context_first_timestep, "b ... -> (b n) ...", n=h * w)
         elif time_context is not None and not self.use_spatial_context:
             time_context = repeat(time_context, "b ... -> (b n) ...", n=h * w)
             if time_context.ndim == 2:
@@ -297,9 +316,13 @@ class SpatialVideoTransformer(SpatialTransformer):
             emb = emb[:, None, :]
 
         for it_, (block, mix_block) in enumerate(zip(self.transformer_blocks, self.time_stack)):
+            if it_ > 0 and len(spatial_context) == 1:
+                it_ = 0  # use same context for each block
+
             x = block(
                 x,
-                context=spatial_context,
+                context=spatial_context[it_],
+                reference_context=reference_context[it_] if reference_context is not None else None,
             )
 
             if not self.skip_time:
