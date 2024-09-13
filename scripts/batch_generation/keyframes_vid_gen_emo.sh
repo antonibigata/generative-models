@@ -52,7 +52,8 @@ python scripts/sampling/full_pipeline_batch.py \
     --audio_emb_folder=audio_emb \
     --output_folder=/data/home/antoni/results/${output_folder} \
     --keyframes_ckpt=${keyframes_ckpt} \
-    --double_first=True \
+    --double_first=False \
+    --add_zero_flag=True \
     --emotion_folder=emotions \
 
 

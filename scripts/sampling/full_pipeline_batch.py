@@ -145,7 +145,8 @@ def create_pipeline_inputs(
         first_element = audio[0]
         if emotions is not None:
             first_element_emotions = (emotions[0][0], emotions[1][0])
-        for i in range(0, len(audio_image_preds), num_frames):
+        len_audio_image_preds = len(audio_image_preds) + (len(audio_image_preds) + 1) % num_frames
+        for i in range(num_frames, len_audio_image_preds, num_frames):
             audio_image_preds.insert(i, first_element)
             audio_image_preds_idx.insert(i, audio_image_preds_idx[0])
             if emotions is not None:
@@ -167,7 +168,7 @@ def create_pipeline_inputs(
         audio_image_preds_idx = [sample for i, sample in enumerate(audio_image_preds_idx) if (i) % (num_frames) != 0]
     elif add_zero_flag:
         audio_image_preds_idx = [
-            sample for i, sample in enumerate(audio_image_preds_idx) if (i + 1) % (num_frames + 1) != 0
+            sample for i, sample in enumerate(audio_image_preds_idx) if ((i) % (num_frames) != 0) or (i == 0)
         ]
     print(audio_image_preds_idx)
 
@@ -428,8 +429,8 @@ def sample_interpolation(
         samples_x = [sample for i, sample in enumerate(samples_x) if (i) % (num_frames) != 0]
         samples_z = [sample for i, sample in enumerate(samples_z) if (i) % (num_frames) != 0]
     elif add_zero_flag:
-        samples_x = [sample for i, sample in enumerate(samples_x) if (i + 1) % (num_frames + 1) != 0]
-        samples_z = [sample for i, sample in enumerate(samples_z) if (i + 1) % (num_frames + 1) != 0]
+        samples_x = [sample for i, sample in enumerate(samples_x) if ((i) % (num_frames) != 0) or (i == 0)]
+        samples_z = [sample for i, sample in enumerate(samples_z) if ((i) % (num_frames) != 0) or (i == 0)]
 
     for i in range(0, len(samples_z) - 1, overlap if overlap > 0 else 2):
         interpolation_cond_list.append(torch.stack([samples_x[i], samples_x[i + 1]], dim=1))
@@ -1101,6 +1102,7 @@ def main(
     recurse: bool = False,
     double_first: bool = False,
 ):
+    num_frames = default(num_frames, 14)
     model, filter, n_batch = load_model(
         model_config,
         device,

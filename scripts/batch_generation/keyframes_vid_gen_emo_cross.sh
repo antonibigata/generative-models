@@ -37,7 +37,6 @@ python scripts/sampling/full_pipeline_batch.py \
     --cond_aug 0. \
     --resize_size=512 \
     --use_latent=True \
-    --num_steps=10 \
     --max_seconds=15 \
     --force_uc_zero_embeddings='[cond_frames, audio_emb]' \
     --latent_folder=video_crop_emb \
@@ -53,7 +52,7 @@ python scripts/sampling/full_pipeline_batch.py \
     --output_folder=/data/home/antoni/results/${output_folder} \
     --keyframes_ckpt=${keyframes_ckpt} \
     --double_first=False \
-    --add_zero_flag=False \
+    --add_zero_flag=True \
     --emotion_folder=emotions \
 
 

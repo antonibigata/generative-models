@@ -191,25 +191,24 @@ model:
     sampler_config:
       target: sgm.modules.diffusionmodules.sampling.EulerEDMSampler
       params:
-        num_steps: 10
+        num_steps: 50
         discretization_config:
           target: sgm.modules.diffusionmodules.discretizer.AYSDiscretization
           # params:
             # sigma_max: 700.0
 
-        guider_config:
-          target: sgm.modules.diffusionmodules.guiders.VanillaCFG
-          params:
-            scale: 3.0
-            # low_sigma: 0.
-            # high_sigma: 1.61
-
         # guider_config:
-        #   target: sgm.modules.diffusionmodules.guiders.LinearPredictionGuider
+        #   target: sgm.modules.diffusionmodules.guiders.VanillaCFGplusplus
         #   params:
-        #     max_scale: 4.0
-        #     num_frames: 14
-        #     min_scale: 2.0
-        #     only_first: False
+        #     scale: 2.0
+        #     # low_sigma: 0.
+        #     # high_sigma: 1.61
+
+        guider_config:
+          target: sgm.modules.diffusionmodules.guiders.LinearPredictionGuider
+          params:
+            max_scale: 2.0
+            num_frames: 14
+            min_scale: 1.0
 
    
