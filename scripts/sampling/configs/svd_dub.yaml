@@ -1,7 +1,6 @@
 model:
   target: sgm.models.diffusion.DiffusionEngine
   params:
-    print_missing_keys: False
     scale_factor: 0.18215
     disable_first_stage_autocast: True
     # separate_unet_ckpt:  /data/home/antoni/code/generative-models/checkpoints/svd.safetensors 
@@ -101,7 +100,7 @@ model:
           target: sgm.modules.encoders.modules.VideoPredictionEmbedderWithEncoder
           params:
             disable_encoder_autocast: True
-            n_cond_frames: 1
+            n_cond_frames: 14
             n_copies: 1
             is_ae: True
             encoder_config:
