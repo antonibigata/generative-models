@@ -42,8 +42,10 @@ class StandardDiffusionLoss(nn.Module):
         lambda_upper: float = 1.0,
         fix_image_leak: bool = False,
         add_lpips: bool = False,
-        # weight_pixel: float = 0.0,
-        # n_frames_pixel: Optional[int] = 1,
+        weight_pixel: float = 0.0,
+        n_frames_pixel: Optional[int] = 1,
+        what_pixel_losses: Optional[List[str]] = [],
+        disable_first_stage_autocast: bool = True,
     ):
         super().__init__()
 
@@ -57,13 +59,17 @@ class StandardDiffusionLoss(nn.Module):
         self.lambda_lower = lambda_lower
         self.lambda_upper = lambda_upper
         self.add_lpips = add_lpips
-        # self.weight_pixel = weight_pixel
-        # self.n_frames_pixel = n_frames_pixel
+        self.weight_pixel = weight_pixel
+        self.n_frames_pixel = n_frames_pixel
+        self.what_pixel_losses = what_pixel_losses
+
+        self.en_and_decode_n_samples_a_time = 1
+        self.disable_first_stage_autocast = disable_first_stage_autocast
 
         if loss_type == "lpips":
             self.lpips = LPIPS().eval()
 
-        if add_lpips:
+        if add_lpips or "lpips" in what_pixel_losses:
             self.lpips = lpips.LPIPS(net="alex").eval()
 
         if not batch2model_keys:
@@ -113,9 +119,10 @@ class StandardDiffusionLoss(nn.Module):
         conditioner: GeneralConditioner,
         input: torch.Tensor,
         batch: Dict,
+        first_stage_model: nn.Module = None,
     ) -> torch.Tensor:
         cond = conditioner(batch)
-        return self._forward(network, denoiser, cond, input, batch)
+        return self._forward(network, denoiser, cond, input, batch, first_stage_model)
 
     def _forward(
         self,
@@ -124,6 +131,7 @@ class StandardDiffusionLoss(nn.Module):
         cond: Dict,
         input: torch.Tensor,
         batch: Dict,
+        first_stage_model: nn.Module = None,
     ) -> Tuple[torch.Tensor, Dict]:
         additional_model_inputs = {key: batch[key] for key in self.batch2model_keys.intersection(batch)}
         sigmas = self.sigma_sampler(input.shape[0]).to(input)
@@ -153,9 +161,9 @@ class StandardDiffusionLoss(nn.Module):
         model_output = denoiser(network, noised_input, sigmas, cond, **additional_model_inputs)
         mask = cond.get("mask", None)
         w = append_dims(self.loss_weighting(sigmas), input.ndim)
-        return self.get_loss(model_output, input, w, mask)
+        return self.get_loss(model_output, input, w, mask, first_stage_model, batch.get("original_frames", None))
 
-    def get_loss(self, model_output, target, w, mask=None):
+    def get_loss(self, model_output, target, w, mask=None, first_stage_model=None, original_frames=None):
         if mask is not None:
             print(w.shape, mask.shape)
             w = w * mask
@@ -170,6 +178,7 @@ class StandardDiffusionLoss(nn.Module):
             # w = rearrange(w, "b ... -> b t ...")
 
         # other_losses_mask = torch.clone(w)
+        or_w = w.clone()
 
         if self.lambda_lower != 1.0:
             weight_lower = torch.ones_like(model_output, device=w.device)
@@ -201,15 +210,36 @@ class StandardDiffusionLoss(nn.Module):
             ).reshape(-1)
             loss_dict["loss"] += loss_dict["lpips"].mean()
 
-        # if self.weight_pixel > 0.0:
-        #     if T > self.n_frames_pixel:
-        #         # Randomly select n_frames_pixel frames
-        #         selected_frames = torch.randperm(T)[: self.n_frames_pixel]
-        #         model_output = rearrange(model_output, "(b t) ... -> b t ...", t=T)[:, selected_frames]
-        #         model_output = rearrange(model_output, "b t ... -> (b t) ...")
-        #         target = rearrange(target, "(b t) ... -> b t ...", t=T)[:, selected_frames]
-        #         target = rearrange(target, "b t ... -> (b t) ...")
-        #         w = rearrange(w, "(b t) ... -> b t ...", t=T)[:, selected_frames]
-        #         w = rearrange(w, "b t ... -> (b t) ...")
+        if self.weight_pixel > 0.0:
+            assert original_frames is not None
+            # Randomly select n_frames_pixel frames
+            selected_frames = torch.randperm(T)[: self.n_frames_pixel]
+            selected_model_output = rearrange(model_output, "(b t) ... -> b t ...", t=T)[:, selected_frames]
+            selected_model_output = rearrange(selected_model_output, "b t ... -> (b t) ...")
+            selected_original_frames = original_frames[:, :, selected_frames]
+            selected_original_frames = rearrange(selected_original_frames, "b c t ... -> (b t) c ...")
+            selected_w = rearrange(or_w, "(b t) ... -> b t ...", t=T)[:, selected_frames]
+            selected_w = rearrange(selected_w, "b t ... -> (b t) ...")
+            decoded_frames = self.decode_first_stage(selected_model_output, first_stage_model)
+            # print(decoded_frames.shape, selected_original_frames.shape, selected_w.shape)
+
+            for loss_name in self.what_pixel_losses:
+                if loss_name == "l2":
+                    loss_pixel = torch.mean(
+                        (selected_w * (decoded_frames - selected_original_frames) ** 2).reshape(
+                            selected_original_frames.shape[0], -1
+                        ),
+                        1,
+                    )
+                    loss_dict["pixel_l2"] = self.weight_pixel * loss_pixel.mean()
+                    loss += self.weight_pixel * loss_pixel.mean()
+                elif loss_name == "lpips":
+                    loss_pixel = (
+                        self.lpips(decoded_frames, selected_original_frames).reshape(-1) * selected_w[:, 0, 0, 0]
+                    )
+                    loss_dict["pixel_lpips"] = loss_pixel.mean()
+                    loss += self.weight_pixel * loss_pixel.mean()
+                else:
+                    raise NotImplementedError(f"Unknown pixel loss type {loss_name}")
 
         return loss_dict

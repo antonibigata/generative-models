@@ -90,7 +90,6 @@ def get_video_duration(video_path):
     cap = cv2.VideoCapture(video_path)
     fps = cap.get(cv2.CAP_PROP_FPS)
     frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    duration = frame_count / fps
     cap.release()
     return frame_count
 
@@ -138,6 +137,7 @@ def get_audio_embeddings(audio_path, output_path, model_size, fps, video_fps):
             if args.count_missing:
                 continue
 
+            video_fps = args.fps
             video_path = audio_file.replace(args.audio_folder, args.video_folder).replace(".wav", ".mp4")
             if "AA_processed" in video_path:
                 video_path = video_path.replace(".mp4", "_output_output.mp4")
@@ -171,8 +171,10 @@ def get_audio_embeddings(audio_path, output_path, model_size, fps, video_fps):
                 audio, sr = torchaudio.load(audio_file)
             if sr != audio_rate:
                 audio = torchaudio.functional.resample(audio, orig_freq=sr, new_freq=audio_rate)[0]
+            # print(audio.shape)
             if audio.dim() == 2:
                 audio = audio.mean(0, keepdim=True)
+            # print(audio.shape)
 
             if args.model_type == "wav2vec2":
                 audio = (audio - audio.mean()) / torch.sqrt(audio.var() + 1e-7)
@@ -189,6 +191,17 @@ def get_audio_embeddings(audio_path, output_path, model_size, fps, video_fps):
                 del audio
                 torch.cuda.empty_cache()
             else:
+                # Difference between max len video and audio
+                # Calculate the difference between max len video and audio in seconds
+                audio_duration = audio.shape[-1] / audio_rate
+                video_duration = max_len_sec if max_len_sec is not None else audio_duration
+                duration_difference = abs(video_duration - audio_duration)
+                # print(f"Duration difference: {duration_difference:.2f} seconds")
+                if duration_difference > 1:
+                    raise ValueError(
+                        f"Duration difference is too big: {duration_difference:.2f} seconds, in file {audio_file}"
+                    )
+
                 audio = trim_pad_audio(audio, audio_rate, max_len_sec=max_len_sec)[0]
                 audio = make_into_multiple_of(audio, samples_per_frame, dim=0)
                 audio_frames = rearrange(audio, "(f s) -> f s", s=samples_per_frame)

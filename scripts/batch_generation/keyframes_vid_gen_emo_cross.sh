@@ -54,5 +54,6 @@ python scripts/sampling/full_pipeline_batch.py \
     --double_first=False \
     --add_zero_flag=True \
     --emotion_folder=emotions \
+    --extra_audio=True \
 
 

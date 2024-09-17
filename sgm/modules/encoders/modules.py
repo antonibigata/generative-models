@@ -249,8 +249,39 @@ class IdentityEncoder(AbstractEmbModel):
         return x
 
 
+class EmotionLabelEmbedder(AbstractEmbModel):
+    def __init__(self, num_emotions=8, embedding_dim=256):
+        super().__init__()
+        self.embedding = nn.Embedding(num_emotions, embedding_dim)
+        self.embedding_dim = embedding_dim
+
+    def forward(self, x):
+        # x should be a tensor of emotion label indices
+        # Shape: (batch_size, num_frames
+        return rearrange(self.embedding(x), "b t d -> (b t) d")
+
+
+# class CombinedEmotionEmbedder(AbstractEmbModel):
+#     def __init__(
+#         self, num_emotions, va_dim=2, label_dim=64, va_dim_out=64, final_dim=128, cond_type="emotion_combined"
+#     ):
+#         super().__init__()
+#         self.cond_type = cond_type
+#         self.label_embedder = EmotionLabelEmbedder(num_emotions, label_dim)
+#         self.va_embedder = EmotionValenceArousalEmbedder(va_dim, output_dim=va_dim_out)
+#         self.final_layer = nn.Linear(label_dim + va_dim_out, final_dim)
+
+#     def forward(self, labels, va_values):
+#         # labels: (batch_size, num_frames)
+#         # va_values: (batch_size, num_frames, 2)
+#         label_emb = self.label_embedder(labels)
+#         va_emb = self.va_embedder(va_values)
+#         combined = torch.cat([label_emb, va_emb], dim=-1)
+#         return self.final_layer(combined)
+
+
 class WhisperAudioEmbedder(AbstractEmbModel):
-    def __init__(self, merge_method="mean", linear_dim=None, cond_type=None):
+    def __init__(self, merge_method="mean", linear_dim=None, cond_type=None, audio_dim=None):
         super().__init__()
         if cond_type is not None:
             setattr(self, "cond_type", cond_type)
@@ -258,7 +289,10 @@ class WhisperAudioEmbedder(AbstractEmbModel):
             self.cond_type = "audio_emb"
         self.merge_method = merge_method
         self.linear = None
-        self.audio_dim = 768 * 2 if merge_method == "concat" else 768
+        if audio_dim is not None:
+            self.audio_dim = audio_dim * 2 if merge_method == "concat" else audio_dim
+        else:
+            self.audio_dim = 768 * 2 if merge_method == "concat" else 768
         if linear_dim is not None:
             self.linear = nn.Linear(self.audio_dim, linear_dim)
 

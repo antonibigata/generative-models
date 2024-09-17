@@ -94,17 +94,35 @@ class EmotionDetector(nn.Module):
     def process_video(self, video_path: str, landmarks: Optional[torch.Tensor] = None) -> Dict[str, Any]:
         vr = decord.VideoReader(video_path)
         assert len(vr) > 0
-
+        min_len = len(vr)
         if landmarks is not None:
-            assert landmarks.shape[0] == len(
-                vr
-            ), f"Landmarks shape {landmarks.shape[0]} does not match video length {len(vr)}"
+            # assert landmarks.shape[0] == len(
+            #     vr
+            # ), f"Landmarks shape {landmarks.shape[0]} does not match video length {len(vr)}"
+            if landmarks.shape[0] > len(vr):
+                print(f"Landmarks shape {landmarks.shape[0]} does not match video length {len(vr)}")
+                landmarks = landmarks[:min_len]
+            elif landmarks.shape[0] < min_len:
+                print(f"Landmarks shape {landmarks.shape[0]} does not match video length {len(vr)}")
+                # Ensure landmarks have the same size as video by repeating the last landmark
+                if landmarks.shape[0] > 0:
+                    num_to_repeat = min_len - landmarks.shape[0]
+                    last_landmark = landmarks[-1].unsqueeze(0)
+                    # Ensure the tensor has the correct number of dimensions for repeating
+                    if last_landmark.dim() < 3:
+                        last_landmark = last_landmark.unsqueeze(0)
+                    repeated_landmarks = last_landmark.repeat(num_to_repeat, 1, 1)
+                    landmarks = torch.cat([landmarks, repeated_landmarks], dim=0)
+                else:
+                    print(f"Error: Landmarks tensor is empty for video {video_path}")
+                    return None  # Return None if landmarks are empty
+                    return None  # or handle this case as appropriate for your application
 
         fps = vr.get_avg_fps()
 
         partial_results = []
-        for i in range(0, len(vr), self.chunk_size):
-            video = vr.get_batch(range(i, min(len(vr), i + self.chunk_size))).to(self.mean_face.device)
+        for i in range(0, min_len, self.chunk_size):
+            video = vr.get_batch(range(i, min(min_len, i + self.chunk_size))).to(self.mean_face.device)
             landmarks_chunk = landmarks[i : i + self.chunk_size] if landmarks is not None else None
 
             with torch.no_grad():

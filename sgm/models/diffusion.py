@@ -324,7 +324,7 @@ class DiffusionEngine(pl.LightningModule):
         return z
 
     def forward(self, x, batch):
-        loss_dict = self.loss_fn(self.model, self.denoiser, self.conditioner, x, batch)
+        loss_dict = self.loss_fn(self.model, self.denoiser, self.conditioner, x, batch, self.first_stage_model)
         # loss_mean = loss.mean()
         for k in loss_dict:
             loss_dict[k] = loss_dict[k].mean()

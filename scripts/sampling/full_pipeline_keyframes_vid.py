@@ -209,6 +209,8 @@ def get_audio_embeddings(
     audio_emb_type="wav2vec2",
     audio_folder=None,
     audio_emb_folder=None,
+    extra_audio: bool = False,
+    max_frames: int = None,
 ):
     # Process audio
     audio = None
@@ -239,6 +241,16 @@ def get_audio_embeddings(
             # audio = torch.cat(audio_embeddings, dim=1).squeeze(0)
     elif audio_path is not None and audio_path.endswith(".pt"):
         audio = torch.load(audio_path)
+        if max_frames is not None:
+            audio = audio[:max_frames]
+        if extra_audio:
+            extra_audio = torch.load(audio_path.replace(f"_{audio_emb_type}_emb", "_beats_emb"))
+            if max_frames is not None:
+                extra_audio = extra_audio[:max_frames]
+            print(
+                f"Loaded extra audio embeddings from {audio_path.replace(f'_{audio_emb_type}_emb', '_beats_emb')} {extra_audio.shape}."
+            )
+            audio = torch.cat([audio, extra_audio], dim=-1)
         print(f"Loaded audio embeddings from {audio_path} {audio.shape}.")
         raw_audio_path = audio_path.replace(".pt", ".wav").replace(f"_{audio_emb_type}_emb", "")
         if audio_folder is not None:
@@ -618,6 +630,7 @@ def sample(
     add_zero_flag: bool = False,
     recurse: bool = False,
     double_first: bool = False,
+    extra_audio: bool = False,
 ):
     """
     Simple script to generate a single sample conditioned on an image `input_path` or multiple images, one for each
@@ -691,8 +704,16 @@ def sample(
         if use_latent:
             video_emb = load_safetensors(video_embedding_path)["latents"]
 
+        if max_seconds is not None:
+            max_frames = max_seconds * fps_id
         audio, raw_audio = get_audio_embeddings(
-            audio_path, 16000, fps_id + 1, audio_folder=audio_folder, audio_emb_folder=audio_emb_folder
+            audio_path,
+            16000,
+            fps_id + 1,
+            audio_folder=audio_folder,
+            audio_emb_folder=audio_emb_folder,
+            extra_audio=extra_audio,
+            max_frames=max_frames,
         )
         if max_seconds is not None:
             max_frames = max_seconds * fps_id
