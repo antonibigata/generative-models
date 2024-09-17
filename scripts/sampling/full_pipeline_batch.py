@@ -145,7 +145,8 @@ def create_pipeline_inputs(
         first_element = audio[0]
         if emotions is not None:
             first_element_emotions = (emotions[0][0], emotions[1][0])
-        for i in range(0, len(audio_image_preds), num_frames):
+        len_audio_image_preds = len(audio_image_preds) + (len(audio_image_preds) + 1) % num_frames
+        for i in range(num_frames, len_audio_image_preds, num_frames):
             audio_image_preds.insert(i, first_element)
             audio_image_preds_idx.insert(i, audio_image_preds_idx[0])
             if emotions is not None:
@@ -167,7 +168,7 @@ def create_pipeline_inputs(
         audio_image_preds_idx = [sample for i, sample in enumerate(audio_image_preds_idx) if (i) % (num_frames) != 0]
     elif add_zero_flag:
         audio_image_preds_idx = [
-            sample for i, sample in enumerate(audio_image_preds_idx) if (i + 1) % (num_frames + 1) != 0
+            sample for i, sample in enumerate(audio_image_preds_idx) if ((i) % (num_frames) != 0) or (i == 0)
         ]
     print(audio_image_preds_idx)
 
@@ -209,6 +210,8 @@ def get_audio_embeddings(
     audio_emb_type="wav2vec2",
     audio_folder=None,
     audio_emb_folder=None,
+    extra_audio=False,
+    max_frames=None,
 ):
     # Process audio
     audio = None
@@ -239,6 +242,19 @@ def get_audio_embeddings(
             # audio = torch.cat(audio_embeddings, dim=1).squeeze(0)
     elif audio_path is not None and audio_path.endswith(".pt"):
         audio = torch.load(audio_path)
+        if max_frames is not None:
+            audio = audio[:max_frames]
+        if extra_audio:
+            extra_audio_emb = torch.load(audio_path.replace(f"_{audio_emb_type}_emb", "_beats_emb"))
+            if max_frames is not None:
+                extra_audio_emb = extra_audio_emb[:max_frames]
+            print(
+                f"Loaded extra audio embeddings from {audio_path.replace(f'_{audio_emb_type}_emb', '_beats_emb')} {extra_audio_emb.shape}."
+            )
+            min_size = min(audio.shape[0], extra_audio_emb.shape[0])
+            audio = torch.cat([audio[:min_size], extra_audio_emb[:min_size]], dim=-1)
+            print(f"Loaded audio embeddings from {audio_path} {audio.shape}.")
+
         print(f"Loaded audio embeddings from {audio_path} {audio.shape}.")
         raw_audio_path = audio_path.replace(".pt", ".wav").replace(f"_{audio_emb_type}_emb", "")
         if audio_folder is not None:
@@ -428,8 +444,8 @@ def sample_interpolation(
         samples_x = [sample for i, sample in enumerate(samples_x) if (i) % (num_frames) != 0]
         samples_z = [sample for i, sample in enumerate(samples_z) if (i) % (num_frames) != 0]
     elif add_zero_flag:
-        samples_x = [sample for i, sample in enumerate(samples_x) if (i + 1) % (num_frames + 1) != 0]
-        samples_z = [sample for i, sample in enumerate(samples_z) if (i + 1) % (num_frames + 1) != 0]
+        samples_x = [sample for i, sample in enumerate(samples_x) if ((i) % (num_frames) != 0) or (i == 0)]
+        samples_z = [sample for i, sample in enumerate(samples_z) if ((i) % (num_frames) != 0) or (i == 0)]
 
     for i in range(0, len(samples_z) - 1, overlap if overlap > 0 else 2):
         interpolation_cond_list.append(torch.stack([samples_x[i], samples_x[i + 1]], dim=1))
@@ -469,7 +485,8 @@ def sample_interpolation(
 
     value_dict["cond_frames"] = embbedings
     value_dict["cond_aug"] = cond_aug
-    value_dict["audio_emb"] = audio_cond
+    value_dict["audio_emb"] = audio_cond[:, :, :, :768]
+    print(value_dict["audio_emb"].shape)
     # value_dict["gt"] = rearrange(embbedings, "b t c h w -> b c t h w").to(device)
     # masked_gt = value_dict["gt"] * (1 - value_dict["masks"])
 
@@ -622,6 +639,7 @@ def sample(
     double_first: bool = False,
     n_batch: int = 1,
     n_batch_keyframes: int = 1,
+    extra_audio: bool = False,
 ):
     """
     Simple script to generate a single sample conditioned on an image `input_path` or multiple images, one for each
@@ -690,8 +708,16 @@ def sample(
         if use_latent:
             video_emb = load_safetensors(video_embedding_path)["latents"]
 
+        if max_seconds is not None:
+            max_frames = max_seconds * fps_id
         audio, raw_audio = get_audio_embeddings(
-            audio_path, 16000, fps_id + 1, audio_folder=audio_folder, audio_emb_folder=audio_emb_folder
+            audio_path,
+            16000,
+            fps_id + 1,
+            audio_folder=audio_folder,
+            audio_emb_folder=audio_emb_folder,
+            extra_audio=extra_audio,
+            max_frames=max_frames,
         )
         if max_seconds is not None:
             max_frames = max_seconds * fps_id
@@ -1100,7 +1126,9 @@ def main(
     add_zero_flag: bool = False,
     recurse: bool = False,
     double_first: bool = False,
+    extra_audio: bool = False,
 ):
+    num_frames = default(num_frames, 14)
     model, filter, n_batch = load_model(
         model_config,
         device,
@@ -1176,6 +1204,7 @@ def main(
             double_first=double_first,
             n_batch=n_batch,
             n_batch_keyframes=n_batch_keyframes,
+            extra_audio=extra_audio,
         )
 
 

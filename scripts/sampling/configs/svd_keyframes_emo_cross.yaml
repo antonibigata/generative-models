@@ -165,6 +165,7 @@ model:
             merge_method: mean 
             linear_dim: 1024
             cond_type: crossattn
+            audio_dim: 1536
 
     first_stage_config:
       target: sgm.models.autoencoder.AutoencodingEngine
@@ -215,8 +216,16 @@ model:
         guider_config:
           target: sgm.modules.diffusionmodules.guiders.VanillaCFG
           params:
-            scale: 2.5
+            scale: 2.
             # low_sigma: 0.
             # high_sigma: 1.61
+
+        # guider_config:
+        #   target: sgm.modules.diffusionmodules.guiders.LinearPredictionGuider
+        #   params:
+        #     max_scale: 2.0
+        #     num_frames: 14
+        #     min_scale: 2.0
+        #     only_first: False
 
    
