@@ -211,10 +211,10 @@ class VideoDataset(Dataset):
             emotions["labels"][video_indexes],
         )
 
-    def get_frame_indices(self, total_video_frames, select_randomly=False):
+    def get_frame_indices(self, total_video_frames, select_randomly=False, start_idx=0):
         if select_randomly:
             # Randomly select self.num_frames indices from the available range
-            available_indices = list(range(total_video_frames))
+            available_indices = list(range(start_idx, total_video_frames))
             if len(available_indices) < self.num_frames:
                 raise ValueError("Not enough frames in the video to sample with given parameters.")
             indexes = random.sample(available_indices, self.num_frames)
@@ -225,7 +225,7 @@ class VideoDataset(Dataset):
 
             # Generate a random start index
             if max_start_idx > 0:
-                start_idx = np.random.randint(0, max_start_idx)
+                start_idx = np.random.randint(start_idx, max_start_idx)
             else:
                 raise ValueError("Not enough frames in the video to sample with given parameters.")
 
@@ -291,7 +291,7 @@ class VideoDataset(Dataset):
             else:
                 vr = decord.VideoReader(video_file)
             len_video = len(vr)
-            if "AA_processed" in video_file:
+            if "AA_processed" in video_file or "1000actors_nsv" in video_file:
                 len_video *= 25 / 60
                 len_video = int(len_video)
         else:
@@ -301,18 +301,20 @@ class VideoDataset(Dataset):
             else:
                 vr = decord.VideoReader(video_file)
             len_video = len(vr)
-            if "AA_processed" in video_file:
+            if "AA_processed" in video_file or "1000actors_nsv" in video_file:
                 len_video *= 25 / 60
                 len_video = int(len_video)
             # start_idx = np.random.randint(0, len_video - self.num_frames)
             # indexes = list(range(start_idx, start_idx + self.num_frames))
-            indexes = self.get_frame_indices(len_video, select_randomly=self.select_randomly)
+            indexes = self.get_frame_indices(
+                len_video, select_randomly=self.select_randomly, start_idx=120 if "1000actors_nsv" in video_file else 0
+            )
 
         if self.get_separate_id:
             id_idx = np.random.randint(0, len_video)
             indexes.insert(0, id_idx)
 
-        if "AA_processed" in video_file:
+        if "AA_processed" in video_file or "1000actors_nsv" in video_file:
             video_indexes = self.convert_indexes(indexes, fps_from=25, fps_to=60)
             audio_file = audio_file.replace("_output_output", "")
             audio_path_extra = ".safetensors"
@@ -506,16 +508,28 @@ class VideoDataset(Dataset):
         aa_processed_count = sum(
             1 for item in self._indexes if "AA_processed" in (item[1] if len(item) == 3 else item[0])
         )
-        other_count = len(self._indexes) - aa_processed_count
+        nsv_processed_count = sum(
+            1 for item in self._indexes if "1000actors_nsv" in (item[1] if len(item) == 3 else item[0])
+        )
+        other_count = len(self._indexes) - aa_processed_count - nsv_processed_count
 
         aa_processed_weight = 1 / aa_processed_count if aa_processed_count > 0 else 0
+        nsv_processed_weight = 1 / nsv_processed_count if nsv_processed_count > 0 else 0
         other_weight = 1 / other_count if other_count > 0 else 0
 
-        print(f"AA processed count: {aa_processed_count}, other count: {other_count}")
-        print(f"AA processed weight: {aa_processed_weight}, other weight: {other_weight}")
+        print(
+            f"AA processed count: {aa_processed_count}, NSV processed count: {nsv_processed_count}, other count: {other_count}"
+        )
+        print(f"AA processed weight: {aa_processed_weight}")
+        print(f"NSV processed weight: {nsv_processed_weight}")
+        print(f"Other weight: {other_weight}")
 
         weights = [
-            aa_processed_weight if "AA_processed" in (item[1] if len(item) == 3 else item[0]) else other_weight
+            aa_processed_weight
+            if "AA_processed" in (item[1] if len(item) == 3 else item[0])
+            else nsv_processed_weight
+            if "1000actors_nsv" in (item[1] if len(item) == 3 else item[0])
+            else other_weight
             for item in self._indexes
         ]
         return weights

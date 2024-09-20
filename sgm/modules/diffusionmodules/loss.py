@@ -239,6 +239,15 @@ class StandardDiffusionLoss(nn.Module):
                     )
                     loss_dict["pixel_lpips"] = loss_pixel.mean()
                     loss += self.weight_pixel * loss_pixel.mean()
+                elif loss_name == "l1":
+                    loss_pixel = torch.mean(
+                        (selected_w * (decoded_frames - selected_original_frames).abs()).reshape(
+                            selected_original_frames.shape[0], -1
+                        ),
+                        1,
+                    )
+                    loss_dict["pixel_l1"] = self.weight_pixel * loss_pixel.mean()
+                    loss += self.weight_pixel * loss_pixel.mean()
                 else:
                     raise NotImplementedError(f"Unknown pixel loss type {loss_name}")
 

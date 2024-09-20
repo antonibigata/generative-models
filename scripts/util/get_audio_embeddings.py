@@ -180,13 +180,27 @@ def get_audio_embeddings(audio_path, output_path, model_size, fps, video_fps):
                 audio = (audio - audio.mean()) / torch.sqrt(audio.var() + 1e-7)
                 if max_len_sec is not None:
                     audio = trim_pad_audio(audio, audio_rate, max_len_sec=max_len_sec)[0]
+                else:
+                    audio = audio[0]
                 audio = make_into_multiple_of(audio, samples_per_frame, dim=0)
                 audio_frames = rearrange(audio, "(f s) -> f s", s=samples_per_frame)
                 if not args.skip_video:
                     assert audio_frames.shape[0] == len_video, f"{audio_frames.shape} != {len_video}"
                 audio = rearrange(audio_frames, "f s -> () (f s)")
-                # print(audio.shape, max_len_sec * audio_rate)
-                audio_embeddings = model.encode_audio(audio.cuda())
+
+                if args.max_size is not None and audio.shape[1] > args.max_size:
+                    # Split into 2 chunks if over max size
+                    mid = audio.shape[1] // 2
+                    chunk1 = audio[:, :mid].cuda()
+                    chunk2 = audio[:, mid:].cuda()
+
+                    embeddings1 = model.encode_audio(chunk1)
+                    embeddings2 = model.encode_audio(chunk2)
+
+                    audio_embeddings = torch.cat([embeddings1.cpu(), embeddings2.cpu()], dim=1)
+                else:
+                    audio_embeddings = model.encode_audio(audio.cuda())
+
                 audio_embeddings = audio_embeddings.cpu()  # Move to CPU immediately
                 del audio
                 torch.cuda.empty_cache()
@@ -202,12 +216,15 @@ def get_audio_embeddings(audio_path, output_path, model_size, fps, video_fps):
                         f"Duration difference is too big: {duration_difference:.2f} seconds, in file {audio_file}"
                     )
 
-                audio = trim_pad_audio(audio, audio_rate, max_len_sec=max_len_sec)[0]
+                if max_len_sec is not None:
+                    audio = trim_pad_audio(audio, audio_rate, max_len_sec=max_len_sec)[0]
+                else:
+                    audio = audio[0]
                 audio = make_into_multiple_of(audio, samples_per_frame, dim=0)
                 audio_frames = rearrange(audio, "(f s) -> f s", s=samples_per_frame)
                 if not args.skip_video and audio_frames.shape[0] - len_video == 1:
                     audio_frames = audio_frames[:len_video]
-                assert audio_frames.shape[0] == len_video, f"{audio_frames.shape} != {len_video}"
+                    assert audio_frames.shape[0] == len_video, f"{audio_frames.shape} != {len_video}"
                 if audio_frames.shape[0] % 2 != 0:
                     audio_frames = torch.cat([audio_frames, torch.zeros(1, samples_per_frame)], dim=0)
 

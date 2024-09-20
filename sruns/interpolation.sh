@@ -31,4 +31,4 @@ srun python main.py --resume logs/2024-09-05T16-19-38_example_training-svd_inter
     lightning.trainer.devices=4 lightning.trainer.accumulate_grad_batches=1 \
     model.params.network_config.params.audio_cond_method=to_time_emb \
     'model.params.to_freeze=["time_"]' 'model.params.to_unfreeze=["time_embed"]' data.params.train.loader.batch_size=2 \
-    model.params.loss_fn_config.params.lambda_lower=2. data.params.train.datapipeline.balance_datasets=True model.params.network_wrapper.params.fix_image_leak=True model.params.network_config.params.adm_in_channels=256
+    model.params.loss_fn_config.params.lambda_lower=2. data.params.train.datapipeline.balance_datasets=True 

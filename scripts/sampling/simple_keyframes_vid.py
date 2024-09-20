@@ -80,10 +80,14 @@ def create_prediction_inputs(
         gt_chunks.append(video[video_index, :])
         audio_chunks.append(audio[video_index, :])
         if emotions is not None:
-            print((emotions[0][video_index], emotions[1][video_index]))
-            emotions_chunks.append((emotions[0][video_index], emotions[1][video_index]))
+            print((emotions[0][video_index], emotions[1][video_index], emotions[2][video_index]))
+            emotions_chunks.append((emotions[0][video_index], emotions[1][video_index], emotions[2][video_index]))
             # emotions_chunks.append(
-            #     (-torch.ones_like(emotions[0][video_index]), torch.ones_like(emotions[1][video_index]))
+            #     (
+            #         -torch.ones_like(emotions[0][video_index]),
+            #         torch.ones_like(emotions[1][video_index]),
+            #         emotions[2][video_index],
+            #     )
             # )
 
     cond = video[0]
@@ -201,6 +205,7 @@ def sample_with_scale(
         if len(emotions_chunks) > 0:
             value_dict["valence"] = emotions_chunks[i][0].unsqueeze(0).to(device)
             value_dict["arousal"] = emotions_chunks[i][1].unsqueeze(0).to(device)
+            value_dict["emo_labels"] = emotions_chunks[i][2].unsqueeze(0).to(device)
 
         with torch.no_grad():
             with torch.autocast(device):
@@ -436,7 +441,11 @@ def sample(
         if emotion_folder is not None:
             emotions_path = video_path.replace(video_folder, emotion_folder).replace(".mp4", ".pt")
             emotions = torch.load(emotions_path)
-            emotions = emotions["valence"][:max_frames], emotions["arousal"][:max_frames]
+            emotions = (
+                emotions["valence"][:max_frames],
+                emotions["arousal"][:max_frames],
+                emotions["labels"][:max_frames],
+            )
 
         h, w = video.shape[2:]
         # if degradation > 1:

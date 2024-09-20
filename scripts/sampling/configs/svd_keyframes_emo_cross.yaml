@@ -157,6 +157,13 @@ model:
             is_temporal: True
             outdim: 256
 
+        # - input_key: emo_labels
+        #   is_trainable: False
+        #   target: sgm.modules.encoders.modules.EmotionLabelEmbedder
+        #   params:
+        #     num_emotions: 8
+        #     embedding_dim: 256
+
         - input_key: audio_emb
           is_trainable: True
           ucg_rate: 0.2
@@ -165,7 +172,7 @@ model:
             merge_method: mean 
             linear_dim: 1024
             cond_type: crossattn
-            audio_dim: 1536
+            # audio_dim: 1536
 
     first_stage_config:
       target: sgm.models.autoencoder.AutoencodingEngine

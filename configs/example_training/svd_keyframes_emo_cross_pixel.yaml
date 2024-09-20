@@ -181,6 +181,7 @@ model:
             merge_method: mean 
             linear_dim: 1024
             cond_type: crossattn
+            audio_dim: 1536
 
     first_stage_config:
       target: sgm.models.autoencoder.AutoencodingEngine

@@ -26,11 +26,19 @@ while IFS= read -r file_name; do
     # Extract the directory part (up to video_crop)
     dir_part=$(dirname "$file_name")
     audio_dir_part=$(echo "$dir_part" | sed 's/video_crop/audio_emb/')
+    emotion_dir_part=$(echo "$dir_part" | sed 's/video_crop/emotions/')
 
     # Extract the filename without extension and output suffix
     file_part=$(basename "$file_name" | sed -E 's/_output_output\.mp4$//')
 
     counter=0
+
+    # Skip if file does not exist
+    if [ ! -f "/fsx/behavioural_computing_data/face_generation_data/AA_processed/${emotion_dir_part}/${file_part}_output_output.pt" ]; then
+        echo "Skipping /fsx/behavioural_computing_data/face_generation_data/AA_processed/${emotion_dir_part}/${file_part}_output_output.pt because it does not exist"
+        continue
+    fi
+
 
     # Run the Python script with the appropriate arguments
     python scripts/sampling/full_pipeline_keyframes_vid.py \
@@ -41,12 +49,12 @@ while IFS= read -r file_name; do
         --resize_size=512 \
         --use_latent=True \
         --num_steps=10 \
-        --max_seconds=20 \
+        --max_seconds=15 \
         --force_uc_zero_embeddings='[cond_frames, audio_emb]' \
         --latent_folder=video_crop_emb \
         --video_folder=video_crop \
         --model_config=scripts/sampling/configs/svd_interpolation.yaml \
-        --model_keyframes_config=scripts/sampling/configs/svd_keyframes_vid.yaml \
+        --model_keyframes_config=scripts/sampling/configs/svd_keyframes_emo_cross.yaml \
         --get_landmarks=True \
         --landmark_folder=landmarks_crop \
         --overlap=${overlapping} \
@@ -55,7 +63,9 @@ while IFS= read -r file_name; do
         --audio_emb_folder=audio_emb \
         --output_folder=/data/home/antoni/results/${output_folder} \
         --keyframes_ckpt=${keyframes_ckpt} \
-        --add_zero_flag=True
+        --add_zero_flag=True \
+        --emotion_folder=emotions \
+        --extra_audio=False \
 
     echo "Processed $base_name"
 done < "$file_list"

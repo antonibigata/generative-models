@@ -42,7 +42,7 @@ python scripts/sampling/full_pipeline_batch.py \
     --latent_folder=video_crop_emb \
     --video_folder=video_crop \
     --model_config=scripts/sampling/configs/svd_interpolation.yaml \
-    --model_keyframes_config=scripts/sampling/configs/svd_keyframes_emo_cross.yaml \
+    --model_keyframes_config=scripts/sampling/configs/svd_keyframes_beats.yaml \
     --get_landmarks=False \
     --landmark_folder=landmarks_crop \
     --overlap=${overlapping} \
@@ -54,6 +54,6 @@ python scripts/sampling/full_pipeline_batch.py \
     --double_first=False \
     --add_zero_flag=True \
     --emotion_folder=emotions \
-    --extra_audio=False \
+    --extra_audio=True \
 
 
