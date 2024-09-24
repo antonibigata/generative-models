@@ -1,11 +1,11 @@
 #!/bin/bash
 #SBATCH --job-name=antoni_project
-#SBATCH --partition=learnai4rl
+#SBATCH --partition=learnai
 #SBATCH --gres=gpu:4
 #SBATCH --ntasks-per-node=4
 #SBATCH --cpus-per-task=12
 #SBATCH --nodes=8
-#SBATCH --time=168:00:00
+#SBATCH --time=72:00:00
 #SBATCH --output=/data/home/antoni/slurm_logs/generative_models/%j.out
 #SBATCH --error=/data/home/antoni/slurm_errors/generative_models/%j.err
 #SBATCH --no-requeue
@@ -33,5 +33,5 @@ srun python main.py --base configs/example_training/svd_keyframes_emo_cross_pixe
     data.params.train.loader.batch_size=1 \
     model.params.loss_fn_config.params.lambda_lower=2. data.params.train.datapipeline.virtual_increase=1 \
     data.params.train.datapipeline.select_randomly=False 'model.params.to_freeze=[]' 'model.params.to_unfreeze=[]' \
-    data.params.train.datapipeline.balance_datasets=True model.params.loss_fn_config.params.weight_pixel=1 'model.params.loss_fn_config.params.what_pixel_losses=["lpips", "l1"]' \
+    data.params.train.datapipeline.balance_datasets=True model.params.loss_fn_config.params.weight_pixel=1 'model.params.loss_fn_config.params.what_pixel_losses=["lpips"]' \
     model.params.loss_fn_config.params.n_frames_pixel=1 data.params.train.datapipeline.add_extra_audio_emb=True

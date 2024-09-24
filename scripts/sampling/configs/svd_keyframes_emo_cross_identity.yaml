@@ -221,7 +221,7 @@ model:
           #   sigma_max: 80.0
 
         guider_config:
-          target: sgm.modules.diffusionmodules.guiders.VanillaCFG
+          target: sgm.modules.diffusionmodules.guiders.IdentityGuider
           params:
             scale: 2.
             # low_sigma: 0.

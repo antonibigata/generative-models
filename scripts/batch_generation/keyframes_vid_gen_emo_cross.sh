@@ -7,9 +7,12 @@ file_list="/data/home/antoni/datasets/HDTF/filelist_val.txt"
 output_folder=$1
 
 # Get the keyframes_ckpt from the command line argument, default to none if not provided
-keyframes_ckpt=${2:-null}
+keyframes_ckpt=${2:-None}
 
-overlapping=${3:-1}
+# Get the interpolation_ckpt from the command line argument, default to none if not provided
+interpolation_ckpt=${3:-None}
+
+overlapping=${4:-1}
 
 # Check if keyframes_ckpt is provided and not null
 if [ "$keyframes_ckpt" != "null" ]; then
@@ -51,9 +54,9 @@ python scripts/sampling/full_pipeline_batch.py \
     --audio_emb_folder=audio_emb \
     --output_folder=/data/home/antoni/results/${output_folder} \
     --keyframes_ckpt=${keyframes_ckpt} \
+    --interpolation_ckpt=${interpolation_ckpt} \
     --double_first=False \
     --add_zero_flag=True \
     --emotion_folder=emotions \
-    --extra_audio=False \
-
+    --extra_audio=key \
 

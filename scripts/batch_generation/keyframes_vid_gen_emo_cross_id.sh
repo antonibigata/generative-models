@@ -40,16 +40,16 @@ python scripts/sampling/full_pipeline_batch.py \
     --cond_aug 0. \
     --resize_size=512 \
     --use_latent=True \
-    --max_seconds=10 \
+    --max_seconds=15 \
     --force_uc_zero_embeddings='[cond_frames, audio_emb]' \
     --latent_folder=video_crop_emb \
     --video_folder=video_crop \
     --model_config=scripts/sampling/configs/svd_interpolation.yaml \
-    --model_keyframes_config=scripts/sampling/configs/svd_keyframes_vid_bad.yaml \
+    --model_keyframes_config=scripts/sampling/configs/svd_keyframes_emo_cross_identity.yaml \
     --get_landmarks=False \
     --landmark_folder=landmarks_crop \
     --overlap=${overlapping} \
-    --chunk_size=2 \
+    --chunk_size=5 \
     --audio_folder=audio \
     --audio_emb_folder=audio_emb \
     --output_folder=/data/home/antoni/results/${output_folder} \

@@ -65,7 +65,7 @@ while IFS= read -r file_name; do
         --keyframes_ckpt=${keyframes_ckpt} \
         --add_zero_flag=True \
         --emotion_folder=emotions \
-        --extra_audio=False \
+        --extra_audio=None \
 
     echo "Processed $base_name"
 done < "$file_list"

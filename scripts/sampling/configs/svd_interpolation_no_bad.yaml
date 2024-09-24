@@ -149,6 +149,7 @@ model:
             merge_method: mean 
             linear_dim: 1024
             cond_type: crossattn
+            audio_dim: 1536
 
     first_stage_config:
       target: sgm.models.autoencoder.AutoencodingEngine
@@ -190,7 +191,7 @@ model:
     sampler_config:
       target: sgm.modules.diffusionmodules.sampling.EulerEDMSampler
       params:
-        num_steps: 25
+        num_steps: 10
         discretization_config:
           target: sgm.modules.diffusionmodules.discretizer.AYSDiscretization
           # params:

@@ -15,21 +15,21 @@ interpolation_ckpt=${3:-None}
 overlapping=${4:-1}
 
 # Check if keyframes_ckpt is provided and not null
-if [ "$keyframes_ckpt" != "null" ]; then
+if [ "$interpolation_ckpt" != "null" ]; then
     # Extract the folder name from the path
-    folder_name=$(echo "$keyframes_ckpt" | sed -n 's/.*logs\/\([0-9T-]*_[^\/]*\).*/\1/p')
+    folder_name=$(echo "$interpolation_ckpt" | sed -n 's/.*logs\/\([0-9T-]*_[^\/]*\).*/\1/p')
 
     
     # Create the destination directory if it doesn't exist
     mkdir -p checkpoints/infered_models
     
     # Copy the checkpoint file to the new location with the new name
-    cp "$keyframes_ckpt" "checkpoints/infered_models/${folder_name}.pt" || { echo "Failed to copy keyframes checkpoint"; exit 1; }
+    cp "$interpolation_ckpt" "checkpoints/infered_models/${folder_name}.pt" || { echo "Failed to copy keyframes checkpoint"; exit 1; }
     
     echo "Copied keyframes checkpoint to checkpoints/infered_models/${folder_name}.pt"
     
     # Update keyframes_ckpt to use the new path
-    keyframes_ckpt="checkpoints/infered_models/${folder_name}.pt"
+    interpolation_ckpt="checkpoints/infered_models/${folder_name}.pt"
 fi
 
 
@@ -40,16 +40,16 @@ python scripts/sampling/full_pipeline_batch.py \
     --cond_aug 0. \
     --resize_size=512 \
     --use_latent=True \
-    --max_seconds=10 \
+    --max_seconds=15 \
     --force_uc_zero_embeddings='[cond_frames, audio_emb]' \
     --latent_folder=video_crop_emb \
     --video_folder=video_crop \
-    --model_config=scripts/sampling/configs/svd_interpolation.yaml \
-    --model_keyframes_config=scripts/sampling/configs/svd_keyframes_vid_bad.yaml \
+    --model_config=scripts/sampling/configs/svd_interpolation_no_bad.yaml \
+    --model_keyframes_config=scripts/sampling/configs/svd_keyframes_emo_cross.yaml \
     --get_landmarks=False \
     --landmark_folder=landmarks_crop \
     --overlap=${overlapping} \
-    --chunk_size=2 \
+    --chunk_size=5 \
     --audio_folder=audio \
     --audio_emb_folder=audio_emb \
     --output_folder=/data/home/antoni/results/${output_folder} \
@@ -58,5 +58,5 @@ python scripts/sampling/full_pipeline_batch.py \
     --double_first=False \
     --add_zero_flag=True \
     --emotion_folder=emotions \
-    --extra_audio=key \
+    --extra_audio=both \
 

@@ -148,7 +148,7 @@ def create_pipeline_inputs(
         len_audio_image_preds = len(audio_image_preds) + (len(audio_image_preds) + 1) % num_frames
         for i in range(num_frames, len_audio_image_preds, num_frames):
             audio_image_preds.insert(i, first_element)
-            audio_image_preds_idx.insert(i, audio_image_preds_idx[0])
+            audio_image_preds_idx.insert(i, None)
             if emotions is not None:
                 emotions_chunks.insert(i, first_element_emotions)
 
@@ -158,18 +158,17 @@ def create_pipeline_inputs(
         len_audio_image_preds = len(audio_image_preds) + (len(audio_image_preds) + 1) % num_frames
         for i in range(0, len_audio_image_preds, num_frames):
             audio_image_preds.insert(i, audio_image_preds[i])
-            audio_image_preds_idx.insert(i, audio_image_preds_idx[i])
+            audio_image_preds_idx.insert(i, None)
             if emotions is not None:
                 emotions_chunks.insert(i, emotions_chunks[i])
 
     print(audio_image_preds_idx)
-    if double_first:
+    to_remove = [idx is None for idx in audio_image_preds_idx]
+    print(to_remove)
+    if double_first or add_zero_flag:
         # Remove the added elements from the list
-        audio_image_preds_idx = [sample for i, sample in enumerate(audio_image_preds_idx) if (i) % (num_frames) != 0]
-    elif add_zero_flag:
-        audio_image_preds_idx = [
-            sample for i, sample in enumerate(audio_image_preds_idx) if ((i) % (num_frames) != 0) or (i == 0)
-        ]
+        audio_image_preds_idx = [sample for i, sample in zip(to_remove, audio_image_preds_idx) if not i]
+
     print(audio_image_preds_idx)
 
     interpolation_cond_list = []
@@ -200,6 +199,7 @@ def create_pipeline_inputs(
         emotions_chunks,
         random_cond_idx,
         frames_needed,
+        to_remove,
     )
 
 
@@ -244,7 +244,7 @@ def get_audio_embeddings(
         audio = torch.load(audio_path)
         if max_frames is not None:
             audio = audio[:max_frames]
-        if extra_audio:
+        if extra_audio is not None:
             extra_audio_emb = torch.load(audio_path.replace(f"_{audio_emb_type}_emb", "_beats_emb"))
             if max_frames is not None:
                 extra_audio_emb = extra_audio_emb[:max_frames]
@@ -414,7 +414,6 @@ def sample_interpolation(
     num_frames,
     device,
     overlap,
-    add_zero_flag,
     raw_audio,
     fps_id,
     motion_bucket_id,
@@ -428,7 +427,8 @@ def sample_interpolation(
     video_path_gt,
     scale,
     num_steps,
-    double_first,
+    cut_audio: bool = False,
+    to_remove: list[int] = [],
 ):
     if scale is not None:
         model.sampler.guider.set_scale(scale)
@@ -440,12 +440,14 @@ def sample_interpolation(
     interpolation_cond_list_emb = []
 
     # Remove zero embeddings if the flag is activated
-    if double_first:
-        samples_x = [sample for i, sample in enumerate(samples_x) if (i) % (num_frames) != 0]
-        samples_z = [sample for i, sample in enumerate(samples_z) if (i) % (num_frames) != 0]
-    elif add_zero_flag:
-        samples_x = [sample for i, sample in enumerate(samples_x) if ((i) % (num_frames) != 0) or (i == 0)]
-        samples_z = [sample for i, sample in enumerate(samples_z) if ((i) % (num_frames) != 0) or (i == 0)]
+    # if double_first:
+    #     samples_x = [sample for i, sample in enumerate(samples_x) if (i) % (num_frames) != 0]
+    #     samples_z = [sample for i, sample in enumerate(samples_z) if (i) % (num_frames) != 0]
+    # elif add_zero_flag:
+    #     samples_x = [sample for i, sample in enumerate(samples_x) if ((i) % (num_frames) != 0) or (i == 0)]
+    #     samples_z = [sample for i, sample in enumerate(samples_z) if ((i) % (num_frames) != 0) or (i == 0)]
+    samples_x = [sample for i, sample in zip(to_remove, samples_x) if not i]
+    samples_z = [sample for i, sample in zip(to_remove, samples_z) if not i]
 
     for i in range(0, len(samples_z) - 1, overlap if overlap > 0 else 2):
         interpolation_cond_list.append(torch.stack([samples_x[i], samples_x[i + 1]], dim=1))
@@ -485,7 +487,10 @@ def sample_interpolation(
 
     value_dict["cond_frames"] = embbedings
     value_dict["cond_aug"] = cond_aug
-    value_dict["audio_emb"] = audio_cond[:, :, :, :768]
+    if cut_audio:
+        value_dict["audio_emb"] = audio_cond[:, :, :, :768]
+    else:
+        value_dict["audio_emb"] = audio_cond
     print(value_dict["audio_emb"].shape)
     # value_dict["gt"] = rearrange(embbedings, "b t c h w -> b c t h w").to(device)
     # masked_gt = value_dict["gt"] * (1 - value_dict["masks"])
@@ -622,6 +627,7 @@ def sample(
     model_config: Optional[str] = None,
     model_keyframes_config: Optional[str] = None,
     max_seconds: Optional[int] = None,
+    min_seconds: Optional[int] = None,
     lora_path_interp: Optional[str] = None,
     lora_path_keyframes: Optional[str] = None,
     force_uc_zero_embeddings=[
@@ -726,6 +732,12 @@ def sample(
                 audio = audio[:max_frames]
                 video_emb = video_emb[:max_frames] if video_emb is not None else None
                 raw_audio = raw_audio[:max_frames] if raw_audio is not None else None
+        if min_seconds is not None:
+            min_frames = min_seconds * fps_id
+            video = video[min_frames:]
+            audio = audio[min_frames:]
+            video_emb = video_emb[min_frames:] if video_emb is not None else None
+            raw_audio = raw_audio[min_frames:] if raw_audio is not None else None
         audio = audio.cuda()
 
         emotions = None
@@ -765,7 +777,7 @@ def sample(
                     f"WARNING: Your image is of size {h}x{w} which is not divisible by 64. We are resizing to {height}x{width}!"
                 )
 
-        gt_chunks, audio_interpolation_list, audio_list, emb, cond, emotions_chunks, _, added_frames = (
+        gt_chunks, audio_interpolation_list, audio_list, emb, cond, emotions_chunks, _, added_frames, to_remove = (
             create_pipeline_inputs(
                 model_input,
                 audio,
@@ -895,7 +907,6 @@ def sample(
                     num_frames,
                     device,
                     overlap,
-                    add_zero_flag,
                     raw_audio,
                     fps_id,
                     motion_bucket_id,
@@ -909,7 +920,8 @@ def sample(
                     video_path_gt,
                     scale_interpolation,
                     steps_interpolation,
-                    double_first,
+                    cut_audio=extra_audio != "both",
+                    to_remove=to_remove,
                 )
         else:
             base_count = len(glob(os.path.join(output_folder, "*.mp4")))
@@ -950,7 +962,6 @@ def sample(
                 num_frames,
                 device,
                 overlap,
-                add_zero_flag,
                 raw_audio,
                 fps_id,
                 motion_bucket_id,
@@ -964,7 +975,8 @@ def sample(
                 video_path_gt,
                 None,
                 None,
-                double_first,
+                cut_audio=extra_audio != "both",
+                to_remove=to_remove,
             )
 
 
@@ -1111,6 +1123,7 @@ def main(
     model_config: Optional[str] = None,
     model_keyframes_config: Optional[str] = None,
     max_seconds: Optional[int] = None,
+    min_seconds: Optional[int] = None,
     lora_path_interp: Optional[str] = None,
     lora_path_keyframes: Optional[str] = None,
     force_uc_zero_embeddings=[
@@ -1126,7 +1139,7 @@ def main(
     add_zero_flag: bool = False,
     recurse: bool = False,
     double_first: bool = False,
-    extra_audio: bool = False,
+    extra_audio: str = None,
 ):
     num_frames = default(num_frames, 14)
     model, filter, n_batch = load_model(
@@ -1190,6 +1203,7 @@ def main(
             model_config=model_config,
             model_keyframes_config=model_keyframes_config,
             max_seconds=max_seconds,
+            min_seconds=min_seconds,
             lora_path_interp=lora_path_interp,
             lora_path_keyframes=lora_path_keyframes,
             force_uc_zero_embeddings=force_uc_zero_embeddings,

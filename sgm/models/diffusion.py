@@ -61,7 +61,6 @@ class DiffusionEngine(pl.LightningModule):
         super().__init__()
 
         # self.automatic_optimization = False
-
         self.log_keys = log_keys
         self.no_log_keys = no_log_keys
         self.input_key = input_key

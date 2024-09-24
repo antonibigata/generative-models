@@ -5,8 +5,8 @@ model:
     input_key: latents
     scale_factor: 0.18215
     disable_first_stage_autocast: True
-    ckpt_path: logs/2024-09-05T13-03-14_example_training-svd_keyframes_vid/checkpoints/last.ckpt/checkpoint/mp_rank_00_model_states.pt
-    bad_model_path: logs/2024-09-09T10-23-22_example_training-svd_keyframes_vid/checkpoints/last.ckpt/checkpoint/mp_rank_00_model_states.pt
+    ckpt_path: logs/2024-08-23T10-55-09_example_training-svd_keyframes_vid/checkpoints/last.ckpt/checkpoint/mp_rank_00_model_states.pt
+    bad_model_path: logs/2024-09-23T15-12-54_example_training-svd_keyframes_emo_cross_pixel/checkpoints/last.ckpt/checkpoint/mp_rank_00_model_states.pt
 
     # LoRA
     use_lora: False
@@ -39,7 +39,7 @@ model:
     network_config:
       target: sgm.modules.diffusionmodules.video_model.VideoUNet
       params:
-        adm_in_channels: 0
+        adm_in_channels: 512
         num_classes: sequential
         use_checkpoint: True
         in_channels: 8
@@ -58,9 +58,9 @@ model:
         merge_strategy: learned_with_images
         video_kernel_size: [3, 1, 1]
         fine_tuning_method: null
-        audio_cond_method: to_time_emb
+        audio_cond_method: both_keyframes
         additional_audio_frames: 0
-        audio_dim: 768
+        audio_dim: 1024
         unfreeze_blocks: [] # Because we changed the input block
         # adapter_kwargs:
         #   # down_ratio: 1
@@ -83,17 +83,17 @@ model:
       target: sgm.modules.GeneralConditioner
       params:
         emb_models:
-        - is_trainable: False
-          input_key: cond_frames_without_noise
-          ucg_rate: 0.1
-          target: sgm.modules.encoders.modules.FrozenOpenCLIPImagePredictionEmbedder
-          params:
-            n_cond_frames: 1
-            n_copies: 1
-            open_clip_embedding_config:
-              target: sgm.modules.encoders.modules.FrozenOpenCLIPImageEmbedder
-              params:
-                freeze: True
+        # - is_trainable: False
+        #   input_key: cond_frames_without_noise
+        #   ucg_rate: 0.1
+        #   target: sgm.modules.encoders.modules.FrozenOpenCLIPImagePredictionEmbedder
+        #   params:
+        #     n_cond_frames: 1
+        #     n_copies: 1
+        #     open_clip_embedding_config:
+        #       target: sgm.modules.encoders.modules.FrozenOpenCLIPImageEmbedder
+        #       params:
+        #         freeze: True
 
         # - input_key: fps_id
         #   is_trainable: False
@@ -143,13 +143,36 @@ model:
         #   params:
         #     outdim: 256
 
+        - input_key: valence
+          is_trainable: False
+          target: sgm.modules.encoders.modules.ConcatTimestepEmbedderND
+          params:
+            is_temporal: True
+            outdim: 256
+
+        - input_key: arousal
+          is_trainable: False
+          target: sgm.modules.encoders.modules.ConcatTimestepEmbedderND
+          params:
+            is_temporal: True
+            outdim: 256
+
+        # - input_key: emo_labels
+        #   is_trainable: False
+        #   target: sgm.modules.encoders.modules.EmotionLabelEmbedder
+        #   params:
+        #     num_emotions: 8
+        #     embedding_dim: 256
+
         - input_key: audio_emb
           is_trainable: True
           ucg_rate: 0.2
           target: sgm.modules.encoders.modules.WhisperAudioEmbedder
           params:
             merge_method: mean 
-            linear_dim: null
+            linear_dim: 1024
+            cond_type: crossattn
+            audio_dim: 1536
 
     first_stage_config:
       target: sgm.models.autoencoder.AutoencodingEngine
@@ -200,8 +223,16 @@ model:
         guider_config:
           target: sgm.modules.diffusionmodules.guiders.KarrasGuider
           params:
-            scale: 3.
+            scale: 2.
             # low_sigma: 0.
             # high_sigma: 1.61
+
+        # guider_config:
+        #   target: sgm.modules.diffusionmodules.guiders.LinearPredictionGuider
+        #   params:
+        #     max_scale: 2.0
+        #     num_frames: 14
+        #     min_scale: 2.0
+        #     only_first: False
 
    
