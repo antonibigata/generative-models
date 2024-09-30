@@ -70,7 +70,7 @@ class StandardDiffusionLoss(nn.Module):
             self.lpips = LPIPS().eval()
 
         if add_lpips or "lpips" in what_pixel_losses:
-            self.lpips = lpips.LPIPS(net="alex").eval()
+            self.lpips = lpips.LPIPS(net="vgg").eval()
 
         if not batch2model_keys:
             batch2model_keys = []

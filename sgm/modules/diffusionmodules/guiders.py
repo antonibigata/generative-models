@@ -159,6 +159,50 @@ class MultipleCondVanilla(Guider):
         return torch.cat([x] * (self.n_conditions + 1)), torch.cat([s] * (self.n_conditions + 1)), c_out
 
 
+class AudioRefMultiCondGuider(MultipleCondVanilla):
+    def __init__(self, audio_ratio: float = 5.0, ref_ratio: float = 3.0):
+        super().__init__(scales=[audio_ratio, ref_ratio], condition_names=["audio_emb", "concat"])
+        self.audio_ratio = audio_ratio
+        self.ref_ratio = ref_ratio
+
+    def __call__(self, x: torch.Tensor, sigma: torch.Tensor) -> torch.Tensor:
+        e_base, e_ref, e_audio = x.chunk(3)
+
+        e_final = self.audio_ratio * (e_audio - e_ref) + self.ref_ratio * (e_ref - e_base) + e_base
+
+        return e_final
+
+    def set_scale(self, scale: torch.Tensor):
+        self.audio_ratio = scale[0]
+        self.ref_ratio = scale[1]
+        print(f"Audio ratio: {self.audio_ratio}, Ref ratio: {self.ref_ratio}")
+
+    def prepare_inputs(self, x, s, c, uc):
+        c_out = dict()
+
+        # Prepare inputs for e_base (no audio, no ref concat)
+        c_base = {k: v for k, v in c.items()}
+        c_base["crossattn"] = uc["crossattn"]
+        c_base["concat"] = uc["concat"]  # Remove ref concat
+
+        # Prepare inputs for e_ref (no audio, with ref concat)
+        c_ref = {k: v for k, v in c.items()}
+        # c_ref["concat"] = uc["concat"]  # Remove ref concat
+
+        # Prepare inputs for e_audio (all conditions)
+        c_audio = {k: v for k, v in c.items()}
+        c_audio["crossattn"] = uc["crossattn"]
+
+        # Combine all conditions
+        for k in c:
+            if k in ["vector", "crossattn", "concat", "audio_emb", "image_embeds", "landmarks", "masks", "gt"]:
+                c_out[k] = torch.cat((c_base[k], c_ref[k], c_audio[k]), 0)
+            else:
+                c_out[k] = c[k]
+
+        return torch.cat([x] * 3), torch.cat([s] * 3), c_out
+
+
 class IdentityGuider(Guider):
     def __init__(self, *args, **kwargs):
         # self.num_frames = num_frames

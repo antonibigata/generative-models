@@ -139,8 +139,9 @@ def get_audio_embeddings(audio_path, output_path, model_size, fps, video_fps):
 
             video_fps = args.fps
             video_path = audio_file.replace(args.audio_folder, args.video_folder).replace(".wav", ".mp4")
-            if "AA_processed" in video_path:
-                video_path = video_path.replace(".mp4", "_output_output.mp4")
+            if "AA_processed" in video_path or "1000actors_nsv" in video_path:
+                if "AA_processed" in video_path:
+                    video_path = video_path.replace(".mp4", "_output_output.mp4")
                 video_fps = 60
             if not args.skip_video and not os.path.exists(video_path):
                 print(f"Video file {video_path} does not exist. Skipping...")

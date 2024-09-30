@@ -5,7 +5,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../.
 
 from scripts.util.audio.Whisper import Whisper
 
-# from scripts.util.audio.WavLM import WavLM_wrapper
+from scripts.util.audio.WavLM import WavLM_wrapper
 from scripts.util.audio.BEATs import BEATWrapper
 
 import torch
@@ -58,7 +58,12 @@ class AudioWrapper(nn.Module):
             self.model = Whisper(model_size, fps, "None")
             self.encode_audio = self.whisper_encoding
         elif model_type == "wavlm":
-            self.model = WavLM_wrapper(model_size, feed_as_frames=False, merge_type="None")
+            self.model = WavLM_wrapper(
+                model_size="Base+",
+                feed_as_frames=False,
+                merge_type="None",
+                model_path="/data/home/antoni/code/generative-models/checkpoints/WavLM-Base+.pt",
+            )
             self.encode_audio = self.wavlm_encoding
         elif model_type == "wav2vec2":
             self.model = Wav2Vec2ForCTC.from_pretrained(
@@ -105,12 +110,13 @@ class AudioWrapper(nn.Module):
 
     @torch.no_grad()
     def wavlm_encoding(self, audio_frames):
-        audio_embeddings = self.model(audio_frames.unsqueeze(0))
+        assert audio_frames.dim() == 2, f"Audio frames must be 2D, got {audio_frames.dim()}D"
+        audio_embeddings = self.model(audio_frames.unsqueeze(0).cuda())
 
         assert (
             audio_embeddings.shape[1] == audio_frames.shape[0]
         ), f"{audio_embeddings.shape[1]} != {audio_frames.shape[0]}"
-        return audio_embeddings
+        return audio_embeddings.squeeze(0)
 
     def calculate_splits(self, tensor, min_last_size):
         # Check the total number of elements in the tensor

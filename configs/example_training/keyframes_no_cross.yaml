@@ -105,17 +105,17 @@ model:
       target: sgm.modules.GeneralConditioner
       params:
         emb_models:
-        # - is_trainable: False
-        #   input_key: cond_frames_without_noise
-        #   ucg_rate: 0.1
-        #   target: sgm.modules.encoders.modules.FrozenOpenCLIPImagePredictionEmbedder
-        #   params:
-        #     n_cond_frames: 1
-        #     n_copies: 1
-        #     open_clip_embedding_config:
-        #       target: sgm.modules.encoders.modules.FrozenOpenCLIPImageEmbedder
-        #       params:
-        #         freeze: True
+        - is_trainable: False
+          input_key: cond_frames_without_noise
+          ucg_rate: 0.1
+          target: sgm.modules.encoders.modules.FrozenOpenCLIPImagePredictionEmbedder
+          params:
+            n_cond_frames: 1
+            n_copies: 1
+            open_clip_embedding_config:
+              target: sgm.modules.encoders.modules.FrozenOpenCLIPImageEmbedder
+              params:
+                freeze: True
 
         # - input_key: fps_id
         #   is_trainable: False
@@ -173,13 +173,6 @@ model:
             is_temporal: True
             outdim: 256
 
-        # - input_key: emo_labels
-        #   is_trainable: False
-        #   target: sgm.modules.encoders.modules.EmotionLabelEmbedder
-        #   params:
-        #     num_emotions: 8
-        #     embedding_dim: 256
-
         - input_key: audio_emb
           is_trainable: True
           ucg_rate: 0.2
@@ -187,9 +180,9 @@ model:
           params:
             merge_method: mean 
             linear_dim: 1024
-            cond_type: crossattn
+            # cond_type: crossattn
             audio_dim: 1536
-            
+
     first_stage_config:
       target: sgm.models.autoencoder.AutoencodingEngine
       params:
@@ -246,7 +239,10 @@ model:
     loss_fn_config:
       target: sgm.modules.diffusionmodules.loss.StandardDiffusionLoss
       params:  
-        lambda_lower: 1.      
+        lambda_lower: 1.
+        weight_pixel: 0.
+        n_frames_pixel: 1
+        what_pixel_losses: []      
         batch2model_keys:
           - image_only_indicator
           - num_video_frames
@@ -319,7 +315,8 @@ data:
         skip_frames: 12
         get_separate_id: False
         use_emotions: True
-        get_original_frames: False
+        get_original_frames: True
+        
       loader:
         batch_size: 1
         num_workers: 6

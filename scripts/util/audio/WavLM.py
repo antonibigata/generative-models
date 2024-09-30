@@ -21,7 +21,7 @@ from einops import rearrange
 import requests
 from clint.textui import progress
 import os
-from src.models.components.audio.WavLM_modules import (
+from scripts.util.audio.WavLM_modules import (
     Fp32GroupNorm,
     Fp32LayerNorm,
     GradMultiply,
@@ -37,10 +37,11 @@ logger = logging.getLogger(__name__)
 
 
 class WavLM_wrapper(nn.Module):
-    def __init__(self, model_size="Base+", feed_as_frames=True, merge_type="cat"):
+    def __init__(self, model_size="Base+", feed_as_frames=True, merge_type="cat", model_path=None):
         super().__init__()
         assert model_size in ["Base+", "Large"]
-        model_path = os.path.join(os.path.dirname(__file__), f"WavLM-{model_size}.pt")
+        if model_path is None:
+            model_path = os.path.join(os.path.dirname(__file__), f"WavLM-{model_size}.pt")
         if not os.path.exists(model_path):
             self.download_model(model_path, model_size)
         checkpoint = torch.load(model_path)
@@ -141,8 +142,7 @@ def compute_mask_indices(
 
     all_num_mask = int(
         # add a random number for probabilistic rounding
-        mask_prob * all_sz / float(mask_length)
-        + np.random.rand()
+        mask_prob * all_sz / float(mask_length) + np.random.rand()
     )
 
     all_num_mask = max(min_masks, all_num_mask)
@@ -153,8 +153,7 @@ def compute_mask_indices(
             sz = all_sz - padding_mask[i].long().sum().item()
             num_mask = int(
                 # add a random number for probabilistic rounding
-                mask_prob * sz / float(mask_length)
-                + np.random.rand()
+                mask_prob * sz / float(mask_length) + np.random.rand()
             )
             num_mask = max(min_masks, num_mask)
         else:
@@ -228,9 +227,7 @@ def compute_mask_indices(
 
 class WavLMConfig:
     def __init__(self, cfg=None):
-        self.extractor_mode: str = (
-            "default"  # mode for feature extractor. default has a single group norm with d groups in the first conv block, whereas layer_norm has layer norms in every block (meant to use with normalize=True)
-        )
+        self.extractor_mode: str = "default"  # mode for feature extractor. default has a single group norm with d groups in the first conv block, whereas layer_norm has layer norms in every block (meant to use with normalize=True)
         self.encoder_layers: int = 12  # num encoder layers in the transformer
 
         self.encoder_embed_dim: int = 768  # encoder embedding dimension
@@ -239,9 +236,7 @@ class WavLMConfig:
         self.activation_fn: str = "gelu"  # activation function to use
 
         self.layer_norm_first: bool = False  # apply layernorm first in the transformer
-        self.conv_feature_layers: str = (
-            "[(512,10,5)] + [(512,3,2)] * 4 + [(512,2,2)] * 2"  # string describing convolutional feature extraction layers in form of a python list that contains [(dim, kernel_size, stride), ...]
-        )
+        self.conv_feature_layers: str = "[(512,10,5)] + [(512,3,2)] * 4 + [(512,2,2)] * 2"  # string describing convolutional feature extraction layers in form of a python list that contains [(dim, kernel_size, stride), ...]
         self.conv_bias: bool = False  # include bias in conv encoder
         self.feature_grad_mult: float = 1.0  # multiply feature extractor var grads by this
 
@@ -395,7 +390,6 @@ class WavLM(nn.Module):
         output_layer: Optional[int] = None,
         ret_layer_results: bool = False,
     ):
-
         if self.feature_grad_mult > 0:
             features = self.feature_extractor(source)
             if self.feature_grad_mult != 1.0:
@@ -535,7 +529,6 @@ class ConvFeatureExtractionModel(nn.Module):
             pass
 
     def forward(self, x, mask=None):
-
         # BxT -> BxCxT
         x = x.unsqueeze(1)
         if self.conv_type == "custom":
@@ -622,7 +615,6 @@ class TransformerEncoder(nn.Module):
         return x, layer_results
 
     def extract_features(self, x, padding_mask=None, streaming_mask=None, tgt_layer=None):
-
         if padding_mask is not None:
             x[padding_mask] = 0
 
@@ -691,7 +683,6 @@ class TransformerSentenceEncoderLayer(nn.Module):
         rescale_init: bool = False,
         gru_rel_pos: bool = False,
     ) -> None:
-
         super().__init__()
         # Initialize parameters
         self.embedding_dim = embedding_dim

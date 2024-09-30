@@ -1099,6 +1099,7 @@ def load_model(
 def main(
     input_path: str = "",  # Can either be image file or folder with image files
     filelist: str = "",
+    filelist_audio: str = "",
     num_frames: Optional[int] = None,
     num_steps: Optional[int] = None,
     resize_size: Optional[int] = None,
@@ -1170,9 +1171,17 @@ def main(
     # Remove the newline character from each path
     video_paths = [path.strip() for path in video_paths]
 
-    audio_paths = [
-        video_path.replace("video_crop", "audio_emb").replace(".mp4", "_wav2vec2_emb.pt") for video_path in video_paths
-    ]
+    if filelist_audio:
+        with open(filelist_audio, "r") as f:
+            audio_paths = f.readlines()
+        audio_paths = [
+            path.strip().replace("video_crop", "audio_emb").replace(".mp4", "_wav2vec2_emb.pt") for path in audio_paths
+        ]
+    else:
+        audio_paths = [
+            video_path.replace("video_crop", "audio_emb").replace(".mp4", "_wav2vec2_emb.pt")
+            for video_path in video_paths
+        ]
 
     for video_path, audio_path in zip(video_paths, audio_paths):
         sample(

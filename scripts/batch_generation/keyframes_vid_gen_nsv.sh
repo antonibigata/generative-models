@@ -1,7 +1,9 @@
 #!/bin/bash
 
 # Read the file list
-file_list="/data/home/antoni/datasets/filelist_video_nsv.txt"
+file_list="/data/home/antoni/datasets/HDTF/filelist_val.txt"
+file_list_audio="/data/home/antoni/datasets/filelist_video_nsv_val.txt"
+
 
 # Get the output folder from the command line argument
 output_folder=$1
@@ -36,6 +38,7 @@ fi
 # Run the Python script with the appropriate arguments
 python scripts/sampling/full_pipeline_batch.py \
     --filelist=${file_list} \
+    --filelist_audio=${file_list_audio} \
     --decoding_t 1 \
     --cond_aug 0. \
     --resize_size=512 \
@@ -46,7 +49,7 @@ python scripts/sampling/full_pipeline_batch.py \
     --latent_folder=video_crop_emb \
     --video_folder=video_crop \
     --model_config=scripts/sampling/configs/svd_interpolation.yaml \
-    --model_keyframes_config=scripts/sampling/configs/svd_keyframes_emo_cross_identity.yaml \
+    --model_keyframes_config=scripts/sampling/configs/svd_keyframes_emo_cross.yaml \
     --get_landmarks=False \
     --landmark_folder=landmarks_crop \
     --overlap=${overlapping} \

@@ -97,7 +97,7 @@ def create_prediction_inputs(
     return gt_chunks, cond, audio_chunks, cond_emb, emotions_chunks, indexes_generated
 
 
-def get_audio_embeddings(audio_path: str, audio_rate: int = 16000, fps: int = 25):
+def get_audio_embeddings(audio_path: str, audio_rate: int = 16000, fps: int = 25, extra_audio: bool = False):
     # Process audio
     audio = None
     raw_audio = None
@@ -128,6 +128,15 @@ def get_audio_embeddings(audio_path: str, audio_rate: int = 16000, fps: int = 25
     elif audio_path is not None and audio_path.endswith(".pt"):
         audio = torch.load(audio_path)
         raw_audio_path = audio_path.replace(".pt", ".wav").replace("_wav2vec2_emb", "")
+        if extra_audio:
+            extra_audio_emb = torch.load(audio_path.replace("_wav2vec2_emb", "_beats_emb"))
+
+            print(
+                f"Loaded extra audio embeddings from {audio_path.replace('_wav2vec2_emb', '_beats_emb')} {extra_audio_emb.shape}."
+            )
+            min_size = min(audio.shape[0], extra_audio_emb.shape[0])
+            audio = torch.cat([audio[:min_size], extra_audio_emb[:min_size]], dim=-1)
+            print(f"Loaded audio embeddings from {audio_path} {audio.shape}.")
 
         if os.path.exists(raw_audio_path):
             raw_audio = get_raw_audio(raw_audio_path, audio_rate)
@@ -342,6 +351,7 @@ def sample(
     ckpt_path: Optional[str] = None,
     recurse: bool = False,
     double_first: bool = False,
+    extra_audio: bool = False,
 ):
     """
     Simple script to generate a single sample conditioned on an image `input_path` or multiple images, one for each
@@ -427,7 +437,7 @@ def sample(
         if use_latent:
             video_emb = load_safetensors(video_embedding_path)["latents"]
 
-        audio, raw_audio = get_audio_embeddings(audio_path, 16000, fps_id + 1)
+        audio, raw_audio = get_audio_embeddings(audio_path, 16000, fps_id + 1, extra_audio)
         if max_seconds is not None:
             max_frames = max_seconds * fps_id
             if video.shape[0] > max_frames:
@@ -490,7 +500,10 @@ def sample(
                 if scale.lower() == "stop":
                     break
                 try:
-                    scale = float(scale)
+                    if "," not in scale:
+                        scale = float(scale)
+                    else:
+                        scale = [float(x) for x in scale.split(",")]
                 except ValueError:
                     print("Invalid input. Please enter a number or 'stop'.")
                     continue
@@ -618,6 +631,8 @@ def load_model(
     if "IdentityGuider" in config.model.params.sampler_config.params.guider_config.target:
         n_batch = 1
     elif "MultipleCondVanilla" in config.model.params.sampler_config.params.guider_config.target:
+        n_batch = 3
+    elif "AudioRefMultiCondGuider" in config.model.params.sampler_config.params.guider_config.target:
         n_batch = 3
     else:
         n_batch = 2  # Conditional and unconditional

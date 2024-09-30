@@ -404,7 +404,7 @@ class VideoUNet(nn.Module):
                 dim_head,
                 depth=transformer_depth_middle,
                 context_dim=context_dim,
-                audio_context_dim=audio_dim if "cross_attention" in audio_cond_method else None,
+                audio_context_dim=audio_dim if "new_cross_attention" in audio_cond_method else None,
                 use_checkpoint=use_checkpoint,
             ),
             get_resblock(
