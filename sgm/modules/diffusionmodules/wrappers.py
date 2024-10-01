@@ -60,7 +60,8 @@ class OpenAIWrapper(IdentityWrapper):
     def forward(self, x: torch.Tensor, t: torch.Tensor, c: dict, **kwargs) -> torch.Tensor:
         cond_cat = c.get("concat", torch.Tensor([]).type_as(x))
 
-        T = x.shape[0] // cond_cat.shape[0]
+        if len(cond_cat.shape) and cond_cat.shape[0]:
+            T = x.shape[0] // cond_cat.shape[0]
         if self.fix_image_leak:
             noise_aug_strength = get_sigma_s(
                 rearrange(t, "(b t) ... -> b t ...", b=T)[: cond_cat.shape[0], 0] / 700, self.a, self.beta_m

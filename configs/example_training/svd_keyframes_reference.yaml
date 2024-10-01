@@ -3,7 +3,7 @@ model:
   target: sgm.models.diffusion.DiffusionEngine
   params:
     input_key: latents
-    no_log_keys: [audio_emb, fps_id, motion_bucket_id, cond_aug]
+    no_log_keys: [audio_emb, fps_id, motion_bucket_id, cond_aug, valence, arousal]
     scale_factor: 0.18215
     disable_first_stage_autocast: True
     ckpt_path: checkpoints/svd_no_emb.safetensors
@@ -55,7 +55,7 @@ model:
     network_config:
       target: sgm.modules.diffusionmodules.video_model.VideoUNet
       params:
-        adm_in_channels: 0
+        adm_in_channels: 512
         num_classes: sequential
         use_checkpoint: True
         in_channels: 4
@@ -74,12 +74,12 @@ model:
         merge_strategy: learned_with_images
         video_kernel_size: [3, 1, 1]
         fine_tuning_method: null
-        audio_cond_method: cross
+        audio_cond_method: both_keyframes
         additional_audio_frames: 0
         audio_dim: 1024
         unfreeze_blocks: [] # Because we changed the input block
         skip_time: False
-        reference_to: self
+        reference_to: self_extra
         # adapter_kwargs:
         #   # down_ratio: 1
         #   # adapter_type: null
@@ -121,6 +121,20 @@ model:
         #   params:
         #     outdim: 256
 
+        - input_key: valence
+          is_trainable: False
+          target: sgm.modules.encoders.modules.ConcatTimestepEmbedderND
+          params:
+            is_temporal: True
+            outdim: 256
+
+        - input_key: arousal
+          is_trainable: False
+          target: sgm.modules.encoders.modules.ConcatTimestepEmbedderND
+          params:
+            is_temporal: True
+            outdim: 256
+
         - input_key: audio_emb
           is_trainable: True
           ucg_rate: 0.2
@@ -129,6 +143,7 @@ model:
             merge_method: mean 
             linear_dim: 1024
             cond_type: crossattn
+            audio_dim: 1536
 
     first_stage_config:
       target: sgm.models.autoencoder.AutoencodingEngine
@@ -257,6 +272,8 @@ data:
         skip_frames: 12
         get_separate_id: False
         filter_by_length: False
+        use_emotions: True
+        get_original_frames: True
 
       loader:
         batch_size: 1

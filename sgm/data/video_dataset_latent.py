@@ -317,9 +317,11 @@ class VideoDataset(Dataset):
         if "AA_processed" in video_file or "1000actors_nsv" in video_file:
             video_indexes = self.convert_indexes(indexes, fps_from=25, fps_to=60)
             audio_file = audio_file.replace("_output_output", "")
-            audio_path_extra = (
-                ".safetensors" if "AA_processed" in video_file else f"_{self.audio_emb_type}_emb.safetensors"
-            )
+            if self.audio_emb_type == "wav2vec2" and "AA_processed" in video_file:
+                audio_path_extra = ".safetensors"
+            else:
+                audio_path_extra = f"_{self.audio_emb_type}_emb.safetensors"
+
             video_path_extra = f"_{self.latent_type}_512_latent.safetensors"
             audio_path_extra_extra = ".pt" if "AA_processed" in video_file else "_beats_emb.pt"
         else:
