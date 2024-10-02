@@ -305,7 +305,7 @@ class WhisperAudioEmbedder(AbstractEmbModel):
             x = rearrange(x, "b n c d -> b n (c d)")
         elif self.merge_method == "add":
             x = x.sum(dim=2)
-        elif self.merge_method == "none":
+        elif self.merge_method == "none" or self.merge_method is None:
             pass
         else:
             raise NotImplementedError(f"Unknown merge method: {self.merge_method}")
