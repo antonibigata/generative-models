@@ -175,7 +175,6 @@ def get_audio_embeddings(audio_path, output_path, model_size, fps, video_fps):
             # print(audio.shape)
             if audio.dim() == 2:
                 audio = audio.mean(0, keepdim=True)
-            # print(audio.shape)
 
             if args.model_type == "wav2vec2":
                 audio = (audio - audio.mean()) / torch.sqrt(audio.var() + 1e-7)
@@ -185,11 +184,12 @@ def get_audio_embeddings(audio_path, output_path, model_size, fps, video_fps):
                     audio = audio[0]
                 audio = make_into_multiple_of(audio, samples_per_frame, dim=0)
                 audio_frames = rearrange(audio, "(f s) -> f s", s=samples_per_frame)
+                samples_frames = audio_frames.shape[0]
                 if not args.skip_video:
                     assert audio_frames.shape[0] == len_video, f"{audio_frames.shape} != {len_video}"
                 audio = rearrange(audio_frames, "f s -> () (f s)")
 
-                if args.max_size is not None and audio.shape[1] > args.max_size:
+                if args.max_size is not None and samples_frames > args.max_size:
                     # Split into 2 chunks if over max size
                     mid = audio.shape[1] // 2
                     chunk1 = audio[:, :mid].cuda()

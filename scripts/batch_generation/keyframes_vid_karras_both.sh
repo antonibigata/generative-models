@@ -1,18 +1,20 @@
 #!/bin/bash
 
 # Read the file list
-file_list="/data/home/antoni/datasets/HDTF/filelist_val.txt"
+
 
 # Get the output folder from the command line argument
 output_folder=$1
 
+file_list=${2:-"/data/home/antoni/datasets/HDTF/filelist_val.txt"}
+
 # Get the keyframes_ckpt from the command line argument, default to none if not provided
-keyframes_ckpt=${2:-None}
+keyframes_ckpt=${3:-None}
 
 # Get the interpolation_ckpt from the command line argument, default to none if not provided
-interpolation_ckpt=${3:-None}
+interpolation_ckpt=${4:-None}
 
-overlapping=${4:-1}
+overlapping=${5:-1}
 
 # Check if keyframes_ckpt is provided and not null
 if [ "$keyframes_ckpt" != "null" ]; then

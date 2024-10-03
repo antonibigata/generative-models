@@ -3,13 +3,12 @@ model:
   target: sgm.models.diffusion.DiffusionEngine
   params:
     input_key: latents
-    no_log_keys: [audio_emb, fps_id, motion_bucket_id, cond_aug]
+    no_log_keys: [audio_emb, fps_id, motion_bucket_id, cond_aug, valence, arousal]
     scale_factor: 0.18215
     disable_first_stage_autocast: True
     ckpt_path: checkpoints/svd_no_emb.safetensors
     remove_keys_from_weights: [model.diffusion_model.label_emb.0.0.weight]
     compile_model: False
-    en_and_decode_n_samples_a_time: 1
     # optimizer_config: 
     #   target: deepspeed.ops.adam.DeepSpeedCPUAdam
 
@@ -22,13 +21,8 @@ model:
         f_max: [1.]
         f_min: [1.]
 
-    to_freeze: ["time_"]
-    to_unfreeze: ["time_embed"]
-
-    network_wrapper: 
-      target: sgm.modules.diffusionmodules.wrappers.OpenAIWrapper
-      params:
-        ada_aug_percent: &ada 0.
+    to_freeze: []
+    to_unfreeze: []
 
     # LoRA
     use_lora: False
@@ -38,7 +32,7 @@ model:
       r_linear: 16
       r_conv: 16
       loras: null  # path to lora .pt
-      verbose: True
+      # verbose: False
       # dropout_p: 0.0
       # scale: 1.0
       # search_class: both
@@ -48,6 +42,12 @@ model:
       params:
         scaling_config:
           target: sgm.modules.diffusionmodules.denoiser_scaling.VScalingWithEDMcNoise
+
+    network_wrapper: 
+      target: sgm.modules.diffusionmodules.wrappers.OpenAIWrapper
+      params:
+        fix_image_leak: False
+        add_embeddings: False
 
     # network_wrapper: sgm.modules.diffusionmodules.wrappers.IdentityWrapper
     # network_wrapper: 
@@ -61,7 +61,7 @@ model:
     network_config:
       target: sgm.modules.diffusionmodules.video_model.VideoUNet
       params:
-        adm_in_channels: 256
+        adm_in_channels: 512
         num_classes: sequential
         use_checkpoint: True
         in_channels: 8
@@ -80,12 +80,10 @@ model:
         merge_strategy: learned_with_images
         video_kernel_size: [3, 1, 1]
         fine_tuning_method: null
-        audio_cond_method: to_time_emb_image
-        additional_audio_frames: &add_audio 2
-        audio_dim: 768
+        audio_cond_method: to_time_emb
+        additional_audio_frames: 0
+        audio_dim: 1024
         unfreeze_blocks: [] # Because we changed the input block
-        skip_time: False
-        use_ada_aug: *ada
         # adapter_kwargs:
         #   # down_ratio: 1
         #   # adapter_type: null
@@ -107,17 +105,17 @@ model:
       target: sgm.modules.GeneralConditioner
       params:
         emb_models:
-        - is_trainable: False
-          input_key: cond_frames_without_noise
-          ucg_rate: 0.1
-          target: sgm.modules.encoders.modules.FrozenOpenCLIPImagePredictionEmbedder
-          params:
-            n_cond_frames: 1
-            n_copies: 1
-            open_clip_embedding_config:
-              target: sgm.modules.encoders.modules.FrozenOpenCLIPImageEmbedder
-              params:
-                freeze: True
+        # - is_trainable: False
+        #   input_key: cond_frames_without_noise
+        #   ucg_rate: 0.1
+        #   target: sgm.modules.encoders.modules.FrozenOpenCLIPImagePredictionEmbedder
+        #   params:
+        #     n_cond_frames: 1
+        #     n_copies: 1
+        #     open_clip_embedding_config:
+        #       target: sgm.modules.encoders.modules.FrozenOpenCLIPImageEmbedder
+        #       params:
+        #         freeze: True
 
         # - input_key: fps_id
         #   is_trainable: False
@@ -161,10 +159,18 @@ model:
                 lossconfig:
                   target: torch.nn.Identity
 
-        - input_key: cond_aug
+        - input_key: valence
           is_trainable: False
           target: sgm.modules.encoders.modules.ConcatTimestepEmbedderND
           params:
+            is_temporal: True
+            outdim: 256
+
+        - input_key: arousal
+          is_trainable: False
+          target: sgm.modules.encoders.modules.ConcatTimestepEmbedderND
+          params:
+            is_temporal: True
             outdim: 256
 
         - input_key: audio_emb
@@ -173,7 +179,9 @@ model:
           target: sgm.modules.encoders.modules.WhisperAudioEmbedder
           params:
             merge_method: mean 
-            linear_dim: null
+            linear_dim: 1024
+            cond_type: crossattn
+            audio_dim: 1536
 
     first_stage_config:
       target: sgm.models.autoencoder.AutoencodingEngine
@@ -215,22 +223,26 @@ model:
     sampler_config:
       target: sgm.modules.diffusionmodules.sampling.EulerEDMSampler
       params:
-        num_steps: 25
+        num_steps: 10
         discretization_config:
-          target: sgm.modules.diffusionmodules.discretizer.EDMDiscretization
-          params:
-            sigma_max: 700.0
+          target: sgm.modules.diffusionmodules.discretizer.AYSDiscretization
+          # params:
+          #   # sigma_max: 700.0
 
         guider_config:
-          target: sgm.modules.diffusionmodules.guiders.VanillaCFG
+          target: sgm.modules.diffusionmodules.guiders.LinearPredictionGuider
           params:
-            scale: 2.
+            max_scale: 2.5
+            min_scale: 1.0
+            num_frames: 14
 
     loss_fn_config:
       target: sgm.modules.diffusionmodules.loss.StandardDiffusionLoss
-      params:
+      params:  
         lambda_lower: 1.
-        add_lpips: False
+        weight_pixel: 0.
+        n_frames_pixel: 1
+        what_pixel_losses: []      
         batch2model_keys:
           - image_only_indicator
           - num_video_frames
@@ -242,15 +254,40 @@ model:
           params:
             # p_mean: 0.7
             # p_std: 1.6
-            p_mean: -1.2
-            p_std: 1.
+            p_mean: 1.
+            p_std: 1.2
 
 data:
-  target: sgm.data.video_image_datamodule.VideoDataModule
+  target: sgm.data.video_datamodule_latent.VideoDataModule
   params:
     train:
       datapipeline:
-        filelist: /home/abigata/PhD/datasets/HDTF/filelist_train.txt
+        # urls:
+        #   # USER: adapt this path the root of your custom dataset
+        #   - /data2/Datasets/LRW/webdata/train/out-{000000..000004}.tar
+        # pipeline_config:
+        #   shardshuffle: 10000
+        #   sample_shuffle: 100 # USER: you might wanna adapt depending on your available RAM
+
+        # decoders:
+        #   - custom
+        # postprocessors:
+        #   - target: sdata.mappers.SelectTuple
+        #     params:
+        #       key: 'mp4' # USER: you might wanna adapt this for your custom dataset
+        #       index: 0
+        #   - target: sdata.mappers.ToSVDFormat
+        #     params:
+        #       key: mp4
+        #       audio_key: pt
+        #       n_frames: 14
+        #       resize_size: 320
+        #       motion_id: 60
+        #       fps: 24 # FPS - 1 See: https://github.com/Stability-AI/generative-models/blob/ed0997173f98eaf8f4edf7ba5fe8f15c6b877fd3/scripts/sampling/simple_video_sample.py#L188
+        #       cond_noise: [-3.0, 0.5]
+        #       mode: interpolation
+        # filelist: /vol/paramonos2/projects/antoni/datasets/HDTF/filelist_videos_train.txt
+        filelist: /fsx/rs2517/data/lists/HDTF/filelist_videos_train.txt
         resize_size: 512
         audio_folder: audio
         video_folder: cropped_videos_original
@@ -260,26 +297,28 @@ data:
         audio_in_video: False
         audio_rate: 16000
         num_frames: 14
+        need_cond: False
+        mode: prediction
         use_latent: True
         latent_type: video
         latent_scale: 1  # For backwards compatibility
         from_audio_embedding: True
         load_all_possible_indexes: False
-        allow_all_possible_permutations: False
         audio_emb_type: wav2vec2
-        cond_noise: [-3.0, 0.5]
-        # cond_noise: 0.
-        motion_id: 60
-        # data_mean: null
-        # data_std: null
-        additional_audio_frames: *add_audio
-        virtual_increase: 10000
+        # cond_noise: [-3.0, 0.5]
+        cond_noise: 0.
+        fps: 25
+        motion_id: 125
+        data_mean: null
+        data_std: null
         use_latent_condition: True
-        n_out_frames: 1
-        change_file_proba: 0.1
-
+        skip_frames: 12
+        get_separate_id: False
+        use_emotions: True
+        get_original_frames: False
+        
       loader:
-        batch_size: 32
+        batch_size: 1
         num_workers: 6
         drop_last: True
         pin_memory: True
@@ -294,39 +333,41 @@ data:
     #     filelist: /data/home/antoni/datasets/HDTF/filelist_val.txt
     #     resize_size: 512
     #     audio_folder: audio
-    #     video_folder: video_crop
+    #     video_folder: cropped_videos_original
     #     video_extension: .mp4
     #     audio_extension: .wav
     #     latent_folder: null
     #     audio_in_video: False
     #     audio_rate: 16000
     #     num_frames: 14
+    #     need_cond: True
+    #     mode: prediction
     #     use_latent: True
     #     latent_type: video
     #     latent_scale: 1  # For backwards compatibility
     #     from_audio_embedding: True
     #     load_all_possible_indexes: False
-    #     allow_all_possible_permutations: False
     #     audio_emb_type: wav2vec2
     #     # cond_noise: [-3.0, 0.5]
     #     cond_noise: 0.
-    #     motion_id: 60
-    #     # data_mean: null
-    #     # data_std: null
-    #     additional_audio_frames: *add_audio
-    #     virtual_increase: 1
+    #     fps: 2
+    #     motion_id: 125
+    #     data_mean: null
+    #     data_std: null
     #     use_latent_condition: True
+    #     skip_frames: 12
+    #     get_separate_id: True
 
     #   loader:
     #     batch_size: 2
-    #     num_workers: 0
+    #     num_workers: 6
     #     drop_last: True
     #     pin_memory: True
-    #     persistent_workers: False
+    #     persistent_workers: True
     #     # collation_fn:
     #     #   target: sgm.data.collates.collate_video
     #     #   params:
-    #     #     merge_keys: [frames]
+        #     merge_keys: [frames]
 
 lightning:
   modelcheckpoint:
@@ -345,12 +386,11 @@ lightning:
         disabled: False
         enable_autocast: False
         batch_frequency: 1000
-        batch_frequency_val: 1
         max_videos: 1
         increase_log_steps: False
         log_first_step: True
         log_videos_kwargs:
-          ucg_keys: [cond_frames_without_noise, audio_emb]
+          ucg_keys: [cond_frames, cond_frames_without_noise, audio_emb]
           use_ema_scope: False
           N: 1
           n_rows: 1
@@ -363,5 +403,3 @@ lightning:
     max_epochs: 1000
     precision: bf16-mixed
     num_nodes: 1
-    # limit_train_batches: 2
-    # val_check_interval: 0.000006

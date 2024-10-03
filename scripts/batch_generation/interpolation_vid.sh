@@ -15,37 +15,37 @@ interpolation_ckpt=${3:-None}
 overlapping=${4:-1}
 
 # Check if keyframes_ckpt is provided and not null
-if [ "$interpolation_ckpt" != "null" ]; then
-    # Extract the folder name from the path
-    folder_name=$(echo "$interpolation_ckpt" | sed -n 's/.*logs\/\([0-9T-]*_[^\/]*\).*/\1/p')
+# if [ "$interpolation_ckpt" != "null" ]; then
+#     # Extract the folder name from the path
+#     folder_name=$(echo "$interpolation_ckpt" | sed -n 's/.*logs\/\([0-9T-]*_[^\/]*\).*/\1/p')
 
     
-    # Create the destination directory if it doesn't exist
-    mkdir -p checkpoints/infered_models
+#     # Create the destination directory if it doesn't exist
+#     mkdir -p checkpoints/infered_models
     
-    # Copy the checkpoint file to the new location with the new name
-    cp "$interpolation_ckpt" "checkpoints/infered_models/${folder_name}.pt" || { echo "Failed to copy keyframes checkpoint"; exit 1; }
+#     # Copy the checkpoint file to the new location with the new name
+#     cp "$interpolation_ckpt" "checkpoints/infered_models/${folder_name}.pt" || { echo "Failed to copy keyframes checkpoint"; exit 1; }
     
-    echo "Copied keyframes checkpoint to checkpoints/infered_models/${folder_name}.pt"
+#     echo "Copied keyframes checkpoint to checkpoints/infered_models/${folder_name}.pt"
     
-    # Update keyframes_ckpt to use the new path
-    interpolation_ckpt="checkpoints/infered_models/${folder_name}.pt"
-fi
+#     # Update keyframes_ckpt to use the new path
+#     interpolation_ckpt="checkpoints/infered_models/${folder_name}.pt"
+# fi
 
 
 # Run the Python script with the appropriate arguments
-python scripts/sampling/full_pipeline_batch.py \
+python scripts/sampling/full_pipeline_paper.py \
     --filelist=${file_list} \
     --decoding_t 1 \
     --cond_aug 0. \
     --resize_size=512 \
     --use_latent=True \
-    --max_seconds=15 \
+    --max_seconds=7 \
     --force_uc_zero_embeddings='[cond_frames, audio_emb]' \
     --latent_folder=video_crop_emb \
     --video_folder=video_crop \
-    --model_config=scripts/sampling/configs/svd_interpolation_no_bad.yaml \
-    --model_keyframes_config=scripts/sampling/configs/svd_keyframes_emo_cross.yaml \
+    --model_config=scripts/sampling/configs/svd_interpolation_new.yaml \
+    --model_keyframes_config=scripts/sampling/configs/svd_keyframes_vid_bad.yaml \
     --get_landmarks=False \
     --landmark_folder=landmarks_crop \
     --overlap=${overlapping} \

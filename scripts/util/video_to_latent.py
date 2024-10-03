@@ -20,6 +20,7 @@ from einops import rearrange
 from safetensors.torch import save_file
 from scripts.util.vae_wrapper import VaeWrapper
 from tqdm import tqdm
+import glob
 
 
 def default(value, default):
@@ -60,7 +61,7 @@ def main():
                 files = f.readlines()
             video_files += [x.strip() for x in files]
         else:
-            video_files.extend(list(Path(filelist).glob("*.mp4")))
+            video_files.extend(list(glob.glob(filelist)))
 
     # Load the model
     model = VaeWrapper(args.diffusion_type)

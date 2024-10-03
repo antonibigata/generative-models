@@ -6,7 +6,7 @@ model:
     # ckpt_path: /vol/paramonos2/projects/antoni/code/Personal/generative-models/checkpoints/svd.safetensors
     ckpt_path: logs/2024-08-02T15-04-08_example_training-svd_interpolation_no_emb/checkpoints/last.ckpt/checkpoint/mp_rank_00_model_states.pt
     # remove_keys_from_weights: [model.diffusion_model.input_blocks.0.0.weight]
-    bad_model_path: logs/2024-08-21T12-15-52_example_training-svd_interpolation_no_emb/checkpoints/last.ckpt/checkpoint/mp_rank_00_model_states.pt
+    bad_model_path: logs/2024-10-01T14-05-59_example_training-svd_interpolation_cross/checkpoints/last.ckpt/checkpoint/mp_rank_00_model_states.pt
 
     denoiser_config:
       target: sgm.modules.diffusionmodules.denoiser.KarrasTemporalMultiDiffusion
@@ -54,9 +54,9 @@ model:
         merge_strategy: learned_with_images
         video_kernel_size: [3, 1, 1]
         fine_tuning_method: null
-        audio_cond_method: to_time_emb
+        audio_cond_method: both_keyframes
         additional_audio_frames: 0
-        audio_dim: 768
+        audio_dim: 1024
         unfreeze_blocks: ["input"] # Because we changed the input block
         # adapter_kwargs:
         #   down_ratio: 5
@@ -73,16 +73,16 @@ model:
       target: sgm.modules.GeneralConditioner
       params:
         emb_models:
-        - is_trainable: False
-          input_key: cond_frames_without_noise
-          target: sgm.modules.encoders.modules.FrozenOpenCLIPImagePredictionEmbedder
-          params:
-            n_cond_frames: 2
-            n_copies: 1
-            open_clip_embedding_config:
-              target: sgm.modules.encoders.modules.FrozenOpenCLIPImageEmbedder
-              params:
-                freeze: True
+        # - is_trainable: False
+        #   input_key: cond_frames_without_noise
+        #   target: sgm.modules.encoders.modules.FrozenOpenCLIPImagePredictionEmbedder
+        #   params:
+        #     n_cond_frames: 2
+        #     n_copies: 1
+        #     open_clip_embedding_config:
+        #       target: sgm.modules.encoders.modules.FrozenOpenCLIPImageEmbedder
+        #       params:
+        #         freeze: True
 
         # - input_key: fps_id
         #   is_trainable: False
@@ -135,7 +135,9 @@ model:
           target: sgm.modules.encoders.modules.WhisperAudioEmbedder
           params:
             merge_method: mean 
-            linear_dim: null
+            linear_dim: 1024
+            cond_type: crossattn
+            audio_dim: 1536
 
     first_stage_config:
       target: sgm.models.autoencoder.AutoencodingEngine

@@ -31,6 +31,6 @@ srun python main.py --base configs/example_training/keyframes_base.yaml --wandb 
     model.params.network_config.params.audio_cond_method=both_keyframes \
     data.params.train.loader.batch_size=1 \
     model.params.loss_fn_config.params.lambda_lower=2. data.params.train.datapipeline.virtual_increase=1 \
-    data.params.train.datapipeline.select_randomly=False 'model.params.to_freeze=[]' 'model.params.to_unfreeze=[]' \
+    data.params.train.datapipeline.select_randomly=False 'model.params.to_freeze=["time_"]' 'model.params.to_unfreeze=["time_embed"]' \
     data.params.train.datapipeline.balance_datasets=True model.params.loss_fn_config.params.weight_pixel=1 'model.params.loss_fn_config.params.what_pixel_losses=["l2", "lpips"]' \
     model.params.loss_fn_config.params.n_frames_pixel=1 data.params.train.datapipeline.add_extra_audio_emb=True

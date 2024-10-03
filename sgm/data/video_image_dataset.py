@@ -10,6 +10,7 @@ from einops import rearrange
 import torchaudio
 import soundfile as sf
 from omegaconf import ListConfig
+from torch.utils.data import WeightedRandomSampler
 
 # from src.utils.utils import print_once
 from more_itertools import sliding_window
@@ -42,6 +43,7 @@ class VideoDataset(Dataset):
         audio_folder="Audio",
         video_folder="CroppedVideos",
         landmarks_folder=None,
+        emotions_folder="emotions",
         video_extension=".avi",
         audio_extension=".wav",
         audio_in_video=False,
@@ -72,6 +74,10 @@ class VideoDataset(Dataset):
         get_landmarks=False,
         skip_files=["id04974/5z4zNgCIe3c/00059"],
         change_file_proba=0.1,
+        use_emotions=False,
+        get_original_frames=False,
+        add_extra_audio_emb=False,
+        balance_datasets=True,
     ):
         self.audio_folder = audio_folder
         landmarks_folder = video_folder if landmarks_folder is None else landmarks_folder
@@ -90,6 +96,11 @@ class VideoDataset(Dataset):
         self.audio_in_video = audio_in_video
         self.n_out_frames = n_out_frames
         self.change_file_proba = change_file_proba
+        self.use_emotions = use_emotions
+        self.emotions_folder = emotions_folder
+        self.get_original_frames = get_original_frames
+        self.add_extra_audio_emb = add_extra_audio_emb
+        self.balance_datasets = balance_datasets
 
         self.filelist = []
         self.audio_filelist = []
@@ -165,6 +176,10 @@ class VideoDataset(Dataset):
         self.curr_audio = None
         self.curr_idx = None
         self.curr_latents = None
+
+        if self.balance_datasets:
+            self.weights = self._calculate_weights()
+            self.sampler = WeightedRandomSampler(self.weights, num_samples=len(self._indexes), replacement=True)
 
     def __len__(self):
         return len(self._indexes) * self.virtual_increase
@@ -268,12 +283,12 @@ class VideoDataset(Dataset):
         if self.load_all_possible_indexes:
             indexes, _, _, _ = self._indexes[self.curr_idx]
             len_video = len(vr)
-            if "AA_processed" in self.curr_file:
+            if "AA_processed" in self.curr_file or "1000actors_nsv" in self.curr_file:
                 len_video *= 25 / 60
                 len_video = int(len_video)
         else:
             len_video = len(vr)
-            if "AA_processed" in self.curr_file:
+            if "AA_processed" in self.curr_file or "1000actors_nsv" in self.curr_file:
                 len_video *= 25 / 60
                 len_video = int(len_video)
             init_index = np.random.randint(0, len_video)
@@ -289,7 +304,7 @@ class VideoDataset(Dataset):
             predict_index, self.additional_audio_frames, len(vr)
         )
 
-        if "AA_processed" in self.curr_file:
+        if "AA_processed" in self.curr_file or "1000actors_nsv" in self.curr_file:
             indexes = self.convert_indexes(indexes, fps_from=25, fps_to=60)
             init_index = indexes[0]
             predict_index = indexes[1:]
@@ -346,6 +361,15 @@ class VideoDataset(Dataset):
                 audio_frames = torch.cat([audio_frames] + [audio_frames[-1][None, :]] * right_copies)
             assert audio_frames.shape[0] == (self.additional_audio_frames * 2 + 1)
 
+        if self.add_extra_audio_emb:
+            audio_extra = self.curr_audio_extra
+            audio_extra = audio_extra[audio_indexes[0] : audio_indexes[-1] + 1, :]
+            if left_copies > 0:
+                audio_extra = torch.cat([audio_extra[0][None, :]] * left_copies + [audio_extra])
+            if right_copies > 0:
+                audio_extra = torch.cat([audio_extra] + [audio_extra[-1][None, :]] * right_copies)
+            audio_frames = torch.cat([audio_frames, audio_extra], dim=-1)
+
         diff_score = None
         if self.get_difference_score:
             if self.use_latent:
@@ -383,7 +407,34 @@ class VideoDataset(Dataset):
 
         # print("audio_frames", audio_frames.shape)
 
-        return clean_cond, noisy_cond, target, landmarks, audio_frames, diff_score, cond_noise
+        emotions = None
+        if self.use_emotions:
+            emotions = self.curr_emotions[predict_index]
+
+        if self.get_original_frames:
+            original_frames = vr.get_batch(predict_index).permute(3, 0, 1, 2).float()
+            original_frames = self.scale_and_crop((original_frames / 255.0) * 2 - 1)
+        else:
+            original_frames = None
+
+        if self.add_extra_audio_emb:
+            audio_extra = torch.load(
+                audio_file.replace(self.audio_folder, self.audio_emb_folder).split(".")[0] + "_beats_emb.pt"
+            )
+            audio_extra = audio_extra[audio_indexes]
+            audio_frames = torch.cat([audio_frames, audio_extra], dim=-1)
+
+        return (
+            clean_cond,
+            noisy_cond,
+            target,
+            landmarks,
+            audio_frames,
+            diff_score,
+            cond_noise,
+            original_frames,
+            emotions,
+        )
 
     def _get_indexes(self, video_filelist, audio_filelist):
         indexes = []
@@ -448,19 +499,33 @@ class VideoDataset(Dataset):
 
         audio_path_extra = f"_{self.audio_emb_type}_emb.safetensors"
         video_path_extra = f"_{self.latent_type}_512_latent.safetensors"
+        audio_path_extra_extra = "_beats_emb.pt"
         allow_pickle = False
-        if "AA_processed" in video_file:
-            audio_path_extra = ".safetensors"
+        if "AA_processed" in video_file or "1000actors_nsv" in video_file:
+            if self.audio_emb_type == "wav2vec2" and "AA_processed" in video_file:
+                audio_path_extra = ".safetensors"
+            else:
+                audio_path_extra = f"_{self.audio_emb_type}_emb.safetensors"
             video_path_extra = f"_{self.latent_type}_512_latent.safetensors"
+            audio_path_extra_extra = ".pt" if "AA_processed" in video_file else "_beats_emb.pt"
             land_file = land_file.replace("_output_output", "_output_keypoints") if self.get_landmarks else None
             allow_pickle = True
 
         if self.get_landmarks:
             self.curr_landmarks = np.load(land_file, allow_pickle=allow_pickle)
 
+        if self.use_emotions:
+            self.curr_emotions = self.get_emotions(video_file)
+
         with safe_open(audio_file.split(".")[0] + audio_path_extra, framework="pt") as f:
             self.curr_audio = f.get_slice("audio")
         # self.curr_audio = torch.load(audio_file.split(".")[0] + f"_{self.audio_emb_type}_emb.pt")
+
+        if self.add_extra_audio_emb:
+            self.curr_audio_extra = torch.load(
+                audio_file.replace(self.audio_folder, self.audio_emb_folder).split(".")[0] + audio_path_extra_extra
+            )
+
         if self.use_latent:
             latent_file = video_file.replace(self.video_ext, video_path_extra).replace(
                 self.video_folder, self.latent_folder
@@ -469,16 +534,45 @@ class VideoDataset(Dataset):
                 self.curr_latents = f.get_slice("latents")
             # self.curr_latents = load_file(latent_file)["latents"]
 
+    def get_emotions(self, video_file):
+        emotions_path = video_file.replace(self.video_folder, self.emotions_folder).replace(self.video_ext, ".pt")
+        emotions = torch.load(emotions_path)
+        return (
+            emotions["valence"],
+            emotions["arousal"],
+            emotions["labels"],
+        )
+
+    def _calculate_weights(self):
+        aa_processed_count = sum(1 for item in self._indexes if "AA_processed" in item[0])
+        nsv_processed_count = sum(1 for item in self._indexes if "1000actors_nsv" in item[0])
+        other_count = len(self._indexes) - aa_processed_count - nsv_processed_count
+
+        aa_processed_weight = 1 / aa_processed_count if aa_processed_count > 0 else 0
+        nsv_processed_weight = 1 / nsv_processed_count if nsv_processed_count > 0 else 0
+        other_weight = 1 / other_count if other_count > 0 else 0
+
+        weights = [
+            aa_processed_weight
+            if "AA_processed" in item[0]
+            else nsv_processed_weight
+            if "1000actors_nsv" in item[0]
+            else other_weight
+            for item in self._indexes
+        ]
+        return weights
+
     def __getitem__(self, idx, error=False):
         try:
             if error or (np.random.rand() > (1 - self.change_file_proba) or self.curr_video is None):
                 self.load_new_media()
-            clean_cond, noisy_cond, target, landmarks, audio, diff_score, cond_noise = self._get_frames_and_audio(
-                idx % len(self._indexes)
+            if self.balance_datasets:
+                idx = self.sampler.__iter__().__next__()
+            clean_cond, noisy_cond, target, landmarks, audio, diff_score, cond_noise, original_frames, emotions = (
+                self._get_frames_and_audio(idx % len(self._indexes))
             )
         except Exception as e:
             print(f"Error with index {idx}: {e}")
-            # raise e
             return self.__getitem__(np.random.randint(0, len(self)), error=True)
 
         _, video_file, _ = self._indexes[self.curr_idx]
@@ -524,6 +618,14 @@ class VideoDataset(Dataset):
             out_data["original_size_as_tuple"] = torch.tensor([self.resize_size, self.resize_size])
             out_data["crop_coords_top_left"] = torch.tensor([0, 0])
             out_data["target_size_as_tuple"] = torch.tensor([self.resize_size, self.resize_size])
+
+        if original_frames is not None:
+            out_data["original_frames"] = original_frames
+
+        if self.use_emotions:
+            out_data["valence"] = emotions[0]
+            out_data["arousal"] = emotions[1]
+            out_data["emo_labels"] = emotions[2]
 
         return out_data
 

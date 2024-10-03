@@ -57,6 +57,7 @@ class DiffusionEngine(pl.LightningModule):
         use_thunder: Optional[bool] = False,
         is_dubbing: Optional[bool] = False,
         bad_model_path: Optional[str] = None,
+        bad_model_config: Optional[Dict] = None,
     ):
         super().__init__()
 
@@ -176,7 +177,8 @@ class DiffusionEngine(pl.LightningModule):
 
         if "Karras" in denoiser_config.target:
             assert bad_model_path is not None, "bad_model_path must be provided for KarrasGuidanceDenoiser"
-            bad_model = self.initialize_network(network_config, network_wrapper, compile_model=compile_model)
+            karras_config = default(bad_model_config, network_config)
+            bad_model = self.initialize_network(karras_config, network_wrapper, compile_model=compile_model)
             state_dict = self.load_bad_model_weights(bad_model_path)
             bad_model.load_state_dict(state_dict)
             self.denoiser.set_bad_network(bad_model)
