@@ -17,22 +17,22 @@ interpolation_ckpt=${4:-None}
 overlapping=${5:-1}
 
 # Check if keyframes_ckpt is provided and not null
-if [ "$keyframes_ckpt" != "null" ]; then
-    # Extract the folder name from the path
-    folder_name=$(echo "$keyframes_ckpt" | sed -n 's/.*logs\/\([0-9T-]*_[^\/]*\).*/\1/p')
+# if [ "$keyframes_ckpt" != "null" ]; then
+#     # Extract the folder name from the path
+#     folder_name=$(echo "$keyframes_ckpt" | sed -n 's/.*logs\/\([0-9T-]*_[^\/]*\).*/\1/p')
 
     
-    # Create the destination directory if it doesn't exist
-    mkdir -p checkpoints/infered_models
+#     # Create the destination directory if it doesn't exist
+#     mkdir -p checkpoints/infered_models
     
-    # Copy the checkpoint file to the new location with the new name
-    cp "$keyframes_ckpt" "checkpoints/infered_models/${folder_name}.pt" || { echo "Failed to copy keyframes checkpoint"; exit 1; }
+#     # Copy the checkpoint file to the new location with the new name
+#     cp "$keyframes_ckpt" "checkpoints/infered_models/${folder_name}.pt" || { echo "Failed to copy keyframes checkpoint"; exit 1; }
     
-    echo "Copied keyframes checkpoint to checkpoints/infered_models/${folder_name}.pt"
+#     echo "Copied keyframes checkpoint to checkpoints/infered_models/${folder_name}.pt"
     
-    # Update keyframes_ckpt to use the new path
-    keyframes_ckpt="checkpoints/infered_models/${folder_name}.pt"
-fi
+#     # Update keyframes_ckpt to use the new path
+#     keyframes_ckpt="checkpoints/infered_models/${folder_name}.pt"
+# fi
 
 
 # Run the Python script with the appropriate arguments

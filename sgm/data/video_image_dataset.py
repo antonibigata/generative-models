@@ -42,6 +42,7 @@ class VideoDataset(Dataset):
         resize_size=None,
         audio_folder="Audio",
         video_folder="CroppedVideos",
+        audio_emb_folder="audio_emb",
         landmarks_folder=None,
         emotions_folder="emotions",
         video_extension=".avi",
@@ -80,6 +81,7 @@ class VideoDataset(Dataset):
         balance_datasets=True,
     ):
         self.audio_folder = audio_folder
+        self.audio_emb_folder = audio_emb_folder
         landmarks_folder = video_folder if landmarks_folder is None else landmarks_folder
         self.landmarks_folder = landmarks_folder
         self.get_landmarks = get_landmarks
@@ -409,20 +411,17 @@ class VideoDataset(Dataset):
 
         emotions = None
         if self.use_emotions:
-            emotions = self.curr_emotions[predict_index]
+            emotions = (
+                self.curr_emotions[0][predict_index],
+                self.curr_emotions[1][predict_index],
+                self.curr_emotions[2][predict_index],
+            )
 
         if self.get_original_frames:
             original_frames = vr.get_batch(predict_index).permute(3, 0, 1, 2).float()
             original_frames = self.scale_and_crop((original_frames / 255.0) * 2 - 1)
         else:
             original_frames = None
-
-        if self.add_extra_audio_emb:
-            audio_extra = torch.load(
-                audio_file.replace(self.audio_folder, self.audio_emb_folder).split(".")[0] + "_beats_emb.pt"
-            )
-            audio_extra = audio_extra[audio_indexes]
-            audio_frames = torch.cat([audio_frames, audio_extra], dim=-1)
 
         return (
             clean_cond,
@@ -458,7 +457,8 @@ class VideoDataset(Dataset):
 
     def scale_and_crop(self, video):
         h, w = video.shape[-2], video.shape[-1]
-        video = video.unsqueeze(0)  # (1, 3, h, w)
+        if video.dim() == 3:
+            video = video.unsqueeze(0)  # (1, 3, h, w)
         # scale shorter side to resolution
 
         if self.resize_size is not None:

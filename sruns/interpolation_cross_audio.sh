@@ -5,12 +5,12 @@
 #SBATCH --ntasks-per-node=4
 #SBATCH --cpus-per-task=12
 #SBATCH --nodes=8
-#SBATCH --time=09:30:00
+#SBATCH --time=19:00:00
 #SBATCH --output=/data/home/antoni/slurm_logs/generative_models/%j.out
 #SBATCH --error=/data/home/antoni/slurm_errors/generative_models/%j.err
 #SBATCH --no-requeue
 #SBATCH --account all
-#SBATCH --exclude=a100-st-p4d24xlarge-52,a100-st-p4d24xlarge-53
+#SBATCH --exclude=a100-st-p4d24xlarge-17
 source /data/home/antoni/miniconda3/etc/profile.d/conda.sh
 conda activate svd
 export WANDB_ENTITY=animator

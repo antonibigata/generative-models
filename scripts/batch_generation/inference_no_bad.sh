@@ -1,18 +1,20 @@
 #!/bin/bash
 
 # Read the file list
-file_list="/data/home/antoni/datasets/HDTF/filelist_val.txt"
+
 
 # Get the output folder from the command line argument
 output_folder=$1
 
+file_list=${2:-"/data/home/antoni/datasets/HDTF/filelist_val.txt"}
+
 # Get the keyframes_ckpt from the command line argument, default to none if not provided
-keyframes_ckpt=${2:-None}
+keyframes_ckpt=${3:-None}
 
 # Get the interpolation_ckpt from the command line argument, default to none if not provided
-interpolation_ckpt=${3:-None}
+interpolation_ckpt=${4:-None}
 
-overlapping=${4:-1}
+overlapping=${5:-1}
 
 # Check if keyframes_ckpt is provided and not null
 # if [ "$keyframes_ckpt" != "null" ]; then
@@ -32,15 +34,29 @@ overlapping=${4:-1}
 #     keyframes_ckpt="checkpoints/infered_models/${folder_name}.pt"
 # fi
 
+# output_dir="/data/home/antoni/results/${output_folder}"
+# if [ -d "$output_dir" ]; then
+#     last_video=$(ls -v "$output_dir"/*.mp4 2>/dev/null | tail -n 1)
+#     if [ -n "$last_video" ]; then
+#         starting_index=$(basename "$last_video" .mp4)
+#         starting_index=$((10#$starting_index + 1))
+#     else
+#         starting_index=None
+#     fi
+# else
+#     starting_index=None
+# fi
+
+# echo "Starting index: $starting_index"
 
 # Run the Python script with the appropriate arguments
-python scripts/sampling/full_pipeline_batch.py \
+python scripts/sampling/full_pipeline_paper.py \
     --filelist=${file_list} \
     --decoding_t 1 \
     --cond_aug 0. \
     --resize_size=512 \
     --use_latent=True \
-    --max_seconds=15 \
+    --max_seconds=14 \
     --force_uc_zero_embeddings='[cond_frames, audio_emb]' \
     --latent_folder=video_crop_emb \
     --video_folder=video_crop \
@@ -49,7 +65,7 @@ python scripts/sampling/full_pipeline_batch.py \
     --get_landmarks=False \
     --landmark_folder=landmarks_crop \
     --overlap=${overlapping} \
-    --chunk_size=5 \
+    --chunk_size=2 \
     --audio_folder=audio \
     --audio_emb_folder=audio_emb \
     --output_folder=/data/home/antoni/results/${output_folder} \
@@ -59,4 +75,7 @@ python scripts/sampling/full_pipeline_batch.py \
     --add_zero_flag=True \
     --emotion_folder=emotions \
     --extra_audio=key \
+    --compute_until=45 \
+    --audio_emb_type=wav2vec2 \
+    # --starting_index=${starting_index} \
 

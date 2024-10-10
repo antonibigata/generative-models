@@ -10,6 +10,7 @@
 #SBATCH --error=/data/home/antoni/slurm_errors/generative_models/%j.err
 #SBATCH --no-requeue
 #SBATCH --account all
+#SBATCH --exclude=a100-st-p4d24xlarge-17
 source /data/home/antoni/miniconda3/etc/profile.d/conda.sh
 conda activate svd
 export WANDB_ENTITY=animator

@@ -3,7 +3,7 @@ model:
   target: sgm.models.diffusion.DiffusionEngine
   params:
     input_key: latents
-    no_log_keys: [audio_emb, fps_id, motion_bucket_id, cond_aug]
+    no_log_keys: [audio_emb, fps_id, motion_bucket_id, cond_aug, valence, arousal]
     scale_factor: 0.18215
     disable_first_stage_autocast: True
     ckpt_path: checkpoints/svd_no_emb.safetensors
@@ -61,7 +61,7 @@ model:
     network_config:
       target: sgm.modules.diffusionmodules.video_model.VideoUNet
       params:
-        adm_in_channels: 256
+        adm_in_channels: 512
         num_classes: sequential
         use_checkpoint: True
         in_channels: 8
@@ -82,7 +82,7 @@ model:
         fine_tuning_method: null
         audio_cond_method: to_time_emb_image
         additional_audio_frames: &add_audio 2
-        audio_dim: 768
+        audio_dim: 1024
         unfreeze_blocks: [] # Because we changed the input block
         skip_time: False
         use_ada_aug: *ada
@@ -281,6 +281,8 @@ data:
         use_latent_condition: True
         n_out_frames: 1
         change_file_proba: 0.1
+        use_emotions: True
+        get_original_frames: True
 
       loader:
         batch_size: 32

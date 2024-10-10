@@ -40,7 +40,7 @@ python scripts/sampling/full_pipeline_paper.py \
     --cond_aug 0. \
     --resize_size=512 \
     --use_latent=True \
-    --max_seconds=7 \
+    --max_seconds=14 \
     --force_uc_zero_embeddings='[cond_frames, audio_emb]' \
     --latent_folder=video_crop_emb \
     --video_folder=video_crop \
@@ -59,4 +59,5 @@ python scripts/sampling/full_pipeline_paper.py \
     --add_zero_flag=True \
     --emotion_folder=emotions \
     --extra_audio=both \
+    --compute_until=13 \
 

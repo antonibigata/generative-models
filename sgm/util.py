@@ -30,21 +30,31 @@ def save_audio_video(
     """
     save_path = str(save_path)
     try:
-        torchvision.io.write_video("temp_video.mp4", rearrange(video, "t c h w -> t h w c"), frame_rate)
-        video_clip = mpy.VideoFileClip("temp_video.mp4")
+        video_tensor = rearrange(video, "t c h w -> t h w c")
         if audio is not None:
-            torchaudio.save("temp_audio.wav", audio, sample_rate)
-            audio_clip = mpy.AudioFileClip("temp_audio.wav")
-            video_clip = video_clip.set_audio(audio_clip)
-        video_clip.write_videofile(save_path, fps=frame_rate, codec="libx264", audio_codec="aac")
-        if not keep_intermediate:
-            os.remove("temp_video.mp4")
-            if audio is not None:
-                os.remove("temp_audio.wav")
+            # Assuming audio is a tensor of shape (channels, samples)
+            audio_tensor = audio
+            torchvision.io.write_video(
+                save_path,
+                video_tensor,
+                fps=frame_rate,
+                audio_array=audio_tensor,
+                audio_fps=sample_rate,
+                video_codec="h264",  # Specify a codec to address the error
+                audio_codec="aac",
+            )
+        else:
+            torchvision.io.write_video(
+                save_path,
+                video_tensor,
+                fps=frame_rate,
+                video_codec="h264",  # Specify a codec to address the error
+                audio_codec="aac",
+            )
         return 1
     except Exception as e:
-        print(e)
-        print("Saving video to file failed")
+        print(f"Error saving video: {e}")
+        print("Saving video to file failed. Make sure ffmpeg is installed and accessible.")
         return 0
 
 

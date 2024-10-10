@@ -6,7 +6,7 @@ model:
     # ckpt_path: /vol/paramonos2/projects/antoni/code/Personal/generative-models/checkpoints/svd.safetensors
     ckpt_path: logs/2024-08-02T15-04-08_example_training-svd_interpolation_no_emb/checkpoints/last.ckpt/checkpoint/mp_rank_00_model_states.pt
     # remove_keys_from_weights: [model.diffusion_model.input_blocks.0.0.weight]
-    bad_model_path: logs/2024-10-01T14-05-59_example_training-svd_interpolation_cross/checkpoints/last.ckpt/checkpoint/mp_rank_00_model_states.pt
+    bad_model_path: logs/2024-10-07T16-24-33_example_training-svd_interpolation_cross/checkpoints/last.ckpt/checkpoint/mp_rank_00_model_states.pt
 
     denoiser_config:
       target: sgm.modules.diffusionmodules.denoiser.KarrasTemporalMultiDiffusion

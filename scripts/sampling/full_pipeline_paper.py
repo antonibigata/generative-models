@@ -94,7 +94,7 @@ def get_audio_indexes(main_index, n_audio_frames, max_len):
 
 
 def create_pipeline_inputs(
-    video, audio, num_frames, video_emb, emotions=None, overlap=1, add_zero_flag=False, double_first=False
+    video, audio, audio_interpolation, num_frames, video_emb, emotions=None, overlap=1, add_zero_flag=False, double_first=False
 ):
     # Interpolation is every num_frames, we need to create the inputs for the model
     # We need to create a list of inputs, each input is a tuple of ([first, last], audio)
@@ -109,11 +109,14 @@ def create_pipeline_inputs(
     # Adjustment for overlap to ensure segments are created properly
     step = num_frames - overlap
 
+    # raw_audio = rearrange(raw_audio, "... (f s) -> f s", s=640)
+
     # Ensure there's at least one step forward on each iteration
     if step < 1:
         step = 1
     # audio_image_preds.append(audio[0])
     audio_image_preds_idx = []
+    audio_interp_preds_idx = []
     for i in range(0, audio.shape[0] - num_frames + 1, step):
         try:
             last = video[i + num_frames - 1]
@@ -137,7 +140,9 @@ def create_pipeline_inputs(
             # emotions_chunks.append(
             #     (torch.ones_like(emotions[0][segment_end - 1]), torch.ones_like(emotions[1][segment_end - 1]))
             # )
-        audio_interpolation_chunks.append(audio[i:segment_end])
+        audio_interpolation_chunks.append(audio_interpolation[i:segment_end])
+        audio_interp_preds_idx.append([i, segment_end - 1])
+        # raw_audio_chunks.append(raw_audio[i :segment_end])
         print(i, segment_end - 1)
 
     # If the flag is on, add element 0 every 14 audio elements
@@ -164,31 +169,36 @@ def create_pipeline_inputs(
 
     print(audio_image_preds_idx)
     to_remove = [idx is None for idx in audio_image_preds_idx]
+    audio_image_preds_idx_clone = [idx for idx in audio_image_preds_idx]
     print(to_remove)
     if double_first or add_zero_flag:
         # Remove the added elements from the list
         audio_image_preds_idx = [sample for i, sample in zip(to_remove, audio_image_preds_idx) if not i]
 
-    print(audio_image_preds_idx)
+    print(len(audio_image_preds_idx), audio_image_preds_idx)
 
     interpolation_cond_list = []
     for i in range(0, len(audio_image_preds_idx) - 1, overlap if overlap > 0 else 2):
         interpolation_cond_list.append([audio_image_preds_idx[i], audio_image_preds_idx[i + 1]])
-    print(interpolation_cond_list)
+    print(len(interpolation_cond_list), interpolation_cond_list)
 
     # Since we generate num_frames at a time, we need to ensure that the last chunk is of size num_frames
     # Calculate the number of frames needed to make audio_image_preds a multiple of num_frames
     frames_needed = (num_frames - (len(audio_image_preds) % num_frames)) % num_frames
 
     # Extend from the start of audio_image_preds
-    audio_image_preds = audio_image_preds + audio_image_preds[:frames_needed]
+    audio_image_preds = audio_image_preds + [audio_image_preds[-1]] * frames_needed
     if emotions is not None:
-        emotions_chunks = emotions_chunks + emotions_chunks[:frames_needed]
+        emotions_chunks = emotions_chunks + [emotions_chunks[-1]] * frames_needed
+    to_remove = to_remove + [True] * frames_needed
+    audio_image_preds_idx_clone = audio_image_preds_idx_clone + [audio_image_preds_idx_clone[-1]] * frames_needed
 
     print(f"Added {frames_needed} frames from the start to make audio_image_preds a multiple of {num_frames}")
 
     # random_cond_idx = np.random.randint(0, len(video_emb))
     random_cond_idx = 0
+
+    assert len(to_remove) == len(audio_image_preds), "to_remove and audio_image_preds must have the same length"
 
     return (
         gt_chunks,
@@ -200,6 +210,8 @@ def create_pipeline_inputs(
         random_cond_idx,
         frames_needed,
         to_remove,
+        audio_interp_preds_idx,
+        audio_image_preds_idx_clone,
     )
 
 
@@ -216,6 +228,7 @@ def get_audio_embeddings(
     # Process audio
     audio = None
     raw_audio = None
+    audio_interpolation = None
     if audio_path is not None and (audio_path.endswith(".wav") or audio_path.endswith(".mp3")):
         audio, sr = torchaudio.load(audio_path, channels_first=True)
         if audio.shape[0] > 1:
@@ -240,12 +253,20 @@ def get_audio_embeddings(
             # ):  # 750 is the max size of the audio chunks that can be processed by the model (= 30 seconds)
             #     audio_embeddings.append(audio_model(chunk.unsqueeze(0).cuda()))
             # audio = torch.cat(audio_embeddings, dim=1).squeeze(0)
-    elif audio_path is not None and audio_path.endswith(".pt"):
-        audio = torch.load(audio_path)
+    elif audio_path is not None and audio_path.endswith(".safetensors"):
+        audio = load_safetensors(audio_path)["audio"]
+        if audio_emb_type != "wav2vec2":
+            audio_interpolation = load_safetensors(audio_path.replace(f"_{audio_emb_type}_emb", "_wav2vec2_emb"))["audio"]
+        if audio.dim() == 2:
+            audio = audio.unsqueeze(1)
+        print(audio.shape)
         if max_frames is not None:
             audio = audio[:max_frames]
+            if audio_interpolation is not None:
+                audio_interpolation = audio_interpolation[:max_frames]
         if extra_audio is not None:
-            extra_audio_emb = torch.load(audio_path.replace(f"_{audio_emb_type}_emb", "_beats_emb"))
+            # extra_audio_emb = torch.load(audio_path.replace(f"_{audio_emb_type}_emb", "_beats_emb"))
+            extra_audio_emb = load_safetensors(audio_path.replace(f"_{audio_emb_type}_emb", "_beats_emb"))["audio"]
             if max_frames is not None:
                 extra_audio_emb = extra_audio_emb[:max_frames]
             print(
@@ -254,9 +275,13 @@ def get_audio_embeddings(
             min_size = min(audio.shape[0], extra_audio_emb.shape[0])
             audio = torch.cat([audio[:min_size], extra_audio_emb[:min_size]], dim=-1)
             print(f"Loaded audio embeddings from {audio_path} {audio.shape}.")
+        
+        print(audio.shape)
 
+        if audio_interpolation is None:
+            audio_interpolation = audio
         print(f"Loaded audio embeddings from {audio_path} {audio.shape}.")
-        raw_audio_path = audio_path.replace(".pt", ".wav").replace(f"_{audio_emb_type}_emb", "")
+        raw_audio_path = audio_path.replace(".safetensors", ".wav").replace(f"_{audio_emb_type}_emb", "")
         if audio_folder is not None:
             raw_audio_path = raw_audio_path.replace(audio_emb_folder, audio_folder)
 
@@ -265,7 +290,7 @@ def get_audio_embeddings(
         else:
             print(f"WARNING: Could not find raw audio file at {raw_audio_path}.")
 
-    return audio, raw_audio
+    return audio, audio_interpolation, raw_audio
 
 
 def sample_keyframes(
@@ -284,7 +309,6 @@ def sample_keyframes(
     n_batch_keyframes,
     added_frames,
     strength,
-    keyframe_path,
     scale,
     num_steps,
 ):
@@ -403,7 +427,6 @@ def sample_interpolation(
     num_frames,
     device,
     overlap,
-    raw_audio,
     fps_id,
     motion_bucket_id,
     cond_aug,
@@ -411,9 +434,6 @@ def sample_interpolation(
     n_batch,
     chunk_size,
     strength,
-    gt_chunks,
-    video_path,
-    video_path_gt,
     scale,
     num_steps,
     cut_audio: bool = False,
@@ -551,10 +571,10 @@ def sample_interpolation(
     #     frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
     #     writer.write(frame)
     # writer.release()
-    if raw_audio is not None:
-        raw_audio = rearrange(raw_audio[: len(vid)], "f s -> () (f s)")
+    # if raw_audio is not None:
+    #     raw_audio = rearrange(raw_audio[: len(vid)], "f s -> () (f s)")
 
-    return vid, raw_audio
+    return vid
 
 
 def sample(
@@ -607,6 +627,7 @@ def sample(
     n_batch_keyframes: int = 1,
     compute_until: float = "end",
     extra_audio: bool = False,
+    audio_emb_type:str="wav2vec2"
 ):
     """
     Simple script to generate a single sample conditioned on an image `input_path` or multiple images, one for each
@@ -637,6 +658,16 @@ def sample(
         # model_config = "scripts/sampling/configs/svd_xt_image_decoder.yaml"
     else:
         raise ValueError(f"Version {version} does not exist.")
+
+    os.makedirs(output_folder, exist_ok=True)
+
+    # base_count = len(glob(os.path.join(output_folder, "*.mp4")))
+
+    out_video_path = os.path.join(output_folder, os.path.basename(video_path))
+
+    if os.path.exists(out_video_path):
+        print(f"Video already exists at {out_video_path}. Skipping.")
+        return
 
     torch.manual_seed(seed)
 
@@ -673,21 +704,25 @@ def sample(
             video_embedding_path = video_embedding_path.replace(video_folder, latent_folder)
         video_emb = None
         if use_latent:
-            video_emb = load_safetensors(video_embedding_path)["latents"]
+            video_emb = load_safetensors(video_embedding_path)["latents"].cpu()
 
-        if compute_until is not None or compute_until != "end":
+        if compute_until == "end":
+            compute_until = int((video.shape[0] * 10) / 25)
+
+        if compute_until is not None:
             max_frames = compute_until * fps_id
-        audio, raw_audio = get_audio_embeddings(
+        print("max_frames", max_frames)
+        audio, audio_interpolation, raw_audio = get_audio_embeddings(
             audio_path,
             16000,
             fps_id + 1,
             audio_folder=audio_folder,
             audio_emb_folder=audio_emb_folder,
             extra_audio=extra_audio,
-            max_frames=None,
+            max_frames=max_frames,
+            audio_emb_type=audio_emb_type
         )
-        if compute_until is not None or compute_until != "end":
-            max_frames = compute_until * fps_id
+        if compute_until is not None:
             if video.shape[0] > max_frames:
                 video = video[:max_frames]
                 audio = audio[:max_frames]
@@ -699,7 +734,7 @@ def sample(
             audio = audio[min_frames:]
             video_emb = video_emb[min_frames:] if video_emb is not None else None
             raw_audio = raw_audio[min_frames:] if raw_audio is not None else None
-        audio = audio.cuda()
+        audio = audio
 
         print("Video has ", video.shape[0], "frames", "and", video.shape[0] / 25, "seconds")
 
@@ -727,7 +762,7 @@ def sample(
         #     write_video(out_path, (((video.permute(0, 2, 3, 1) + 1) / 2) * 255.0).cpu(), fps_id)
 
         if input_img_path is None or input_img_path == "":
-            model_input = video.cuda()
+            model_input = video
             if h % 64 != 0 or w % 64 != 0:
                 width, height = map(lambda x: x - x % 64, (w, h))
                 if resize_size is not None:
@@ -740,17 +775,28 @@ def sample(
                     f"WARNING: Your image is of size {h}x{w} which is not divisible by 64. We are resizing to {height}x{width}!"
                 )
 
-        gt_chunks, audio_interpolation_list, audio_list, emb, cond, emotions_chunks, _, added_frames, to_remove = (
-            create_pipeline_inputs(
-                model_input,
-                audio,
-                num_frames,
-                video_emb,
-                emotions,
-                overlap=overlap,
-                add_zero_flag=add_zero_flag,
-                double_first=double_first,
-            )
+        (
+            gt_chunks,
+            audio_interpolation_list,
+            audio_list,
+            emb,
+            cond,
+            emotions_chunks,
+            _,
+            added_frames,
+            to_remove,
+            test_interpolation_list,
+            test_keyframes_list,
+        ) = create_pipeline_inputs(
+            model_input,
+            audio,
+            audio_interpolation,
+            num_frames,
+            video_emb,
+            emotions,
+            overlap=overlap,
+            add_zero_flag=add_zero_flag,
+            double_first=double_first,
         )
 
         print(n_batch, n_batch_keyframes)
@@ -767,6 +813,12 @@ def sample(
         audio_list = torch.stack(audio_list).to(device)
         audio_list = rearrange(audio_list, "(b t) c d  -> b t c d", t=num_frames)
 
+        # Convert to_remove into chunks of num_frames
+        to_remove_chunks = [to_remove[i : i + num_frames] for i in range(0, len(to_remove), num_frames)]
+        test_keyframes_list = [
+            test_keyframes_list[i : i + num_frames] for i in range(0, len(test_keyframes_list), num_frames)
+        ]
+
         valence_list = None
         arousal_list = None
         if emotions is not None:
@@ -777,63 +829,116 @@ def sample(
 
         condition = cond
 
-        audio_cond = audio_list.cuda()
+        audio_cond = audio_list
         condition = condition.unsqueeze(0).to(device)
         embbedings = emb.unsqueeze(0).to(device) if emb is not None else None
 
-        os.makedirs(output_folder, exist_ok=True)
-
-        base_count = len(glob(os.path.join(output_folder, "*.mp4")))
-
-        video_path = os.path.join(output_folder, f"{base_count:06d}.mp4")
-
         # One batch of keframes is approximately 7 seconds
-        chunk_size = max_seconds / 7
+        chunk_size = max_seconds // 7
         complete_video = []
         complete_audio = []
+        start_idx = 0
+        last_frame_z = None
+        last_frame_x = None
+        last_keyframe_idx = None
+        last_to_remove = None
         for chunk_start in range(0, len(audio_cond), chunk_size):
+            # is_last_chunk = chunk_start + chunk_size >= len(audio_cond)
+
             chunk_end = min(chunk_start + chunk_size, len(audio_cond))
 
-            chunk_audio_cond = audio_cond[chunk_start:chunk_end]
-            chunk_valence_list = valence_list[chunk_start:chunk_end] if valence_list is not None else None
-            chunk_arousal_list = arousal_list[chunk_start:chunk_end] if arousal_list is not None else None
+            chunk_audio_cond = audio_cond[chunk_start:chunk_end].cuda()
+            chunk_valence_list = valence_list[chunk_start:chunk_end].cuda() if valence_list is not None else None
+            chunk_arousal_list = arousal_list[chunk_start:chunk_end].cuda() if arousal_list is not None else None
+
+            # # Free up some memory from the keyframes
+            # del model_keyframes
+            # torch.cuda.empty_cache()
+            test_keyframes_list_unwrapped = [
+                elem for sublist in test_keyframes_list[chunk_start:chunk_end] for elem in sublist
+            ]
+            to_remove_chunks_unwrapped = [
+                elem for sublist in to_remove_chunks[chunk_start:chunk_end] for elem in sublist
+            ]
+
+            if last_keyframe_idx is not None:
+                test_keyframes_list_unwrapped = [last_keyframe_idx] + test_keyframes_list_unwrapped
+                to_remove_chunks_unwrapped = [last_to_remove] + to_remove_chunks_unwrapped
+
+            last_keyframe_idx = test_keyframes_list_unwrapped[-1]
+            last_to_remove = to_remove_chunks_unwrapped[-1]
+            # Find the first non-None keyframe in the chunk
+            first_keyframe = next((kf for kf in test_keyframes_list_unwrapped if kf is not None), None)
+
+            # Find the last non-None keyframe in the chunk
+            last_keyframe = next((kf for kf in reversed(test_keyframes_list_unwrapped) if kf is not None), None)
+
+            start_idx = next(
+                (idx for idx, comb in enumerate(test_interpolation_list) if comb[0] == first_keyframe), None
+            )
+            end_idx = next(
+                (idx for idx, comb in enumerate(reversed(test_interpolation_list)) if comb[1] == last_keyframe), None
+            )
+
+            if start_idx is not None and end_idx is not None:
+                end_idx = len(test_interpolation_list) - 1 - end_idx  # Adjust for reversed enumeration
+            end_idx += 1
+
+            if end_idx < start_idx:
+                end_idx = len(audio_interpolation_list)
+
+            audio_interpolation_list_chunk = audio_interpolation_list[start_idx:end_idx]
+
+            print(start_idx, end_idx)
+            print("Testing keyframes: ", test_keyframes_list_unwrapped)
+            print("Testing interpolation: ", test_interpolation_list[start_idx:end_idx])
+            print("To remove: ", to_remove_chunks_unwrapped)
 
             samples_z, samples_x = sample_keyframes(
                 model_keyframes,
                 chunk_audio_cond,
-                condition,
+                condition.cuda(),
                 num_frames,
                 motion_bucket_id,
                 fps_id,
                 cond_aug,
                 device,
-                embbedings,
+                embbedings.cuda(),
                 chunk_valence_list,
                 chunk_arousal_list,
                 force_uc_zero_embeddings,
                 n_batch_keyframes,
-                added_frames,
+                0,
                 strength,
                 None,
                 None,
             )
-            # # Free up some memory from the keyframes
-            # del model_keyframes
-            # torch.cuda.empty_cache()
-            audio_interpolation_list_chunk = audio_interpolation_list[
-                chunk_start * 14 : min(chunk_end * 14, len(audio_interpolation_list))
-            ]
 
-            vid, audio_vid = sample_interpolation(
+            # print("sample_z shape", samples_z.shape)
+            # print("samples_x shape", samples_x.shape)
+            # print("is_last_chunk", is_last_chunk)
+            # print("added_frames", added_frames)
+            # print("audio_interpolation_list_chunk", len(audio_interpolation_list_chunk))
+            # print(to_remove_chunks[chunk_start:chunk_end])
+
+            # audio_vid = torch.cat(raw_audio_chunks[start_idx:end_idx])
+
+            if last_frame_x is not None:
+                samples_x = torch.cat([last_frame_x.unsqueeze(0), samples_x], axis=0)
+                samples_z = torch.cat([last_frame_z.unsqueeze(0), samples_z], axis=0)
+
+            last_frame_x = samples_x[-1]
+            last_frame_z = samples_z[-1]
+
+            vid = sample_interpolation(
                 model,
                 samples_z,
                 samples_x,
                 audio_interpolation_list_chunk,
-                condition,
+                condition.cuda(),
                 num_frames,
                 device,
                 overlap,
-                raw_audio,
                 fps_id,
                 motion_bucket_id,
                 cond_aug,
@@ -841,30 +946,30 @@ def sample(
                 n_batch,
                 chunk_size,
                 strength,
-                gt_chunks,
-                video_path,
                 None,
                 None,
                 cut_audio=extra_audio != "both",
-                to_remove=to_remove,
+                to_remove=to_remove_chunks_unwrapped,
             )
+
             if chunk_start == 0:
                 complete_video = vid
-                complete_audio = audio_vid
             else:
-                complete_video = torch.cat([complete_video[:-1], vid], dim=0)
-                complete_audio = torch.cat([complete_audio[:-640], audio_vid], dim=1)
+                complete_video = np.concatenate([complete_video[:-1], vid], axis=0)
+
+        if raw_audio is not None:
+            complete_audio = rearrange(raw_audio[: complete_video.shape[0]], "f s -> () (f s)")
 
         save_audio_video(
             complete_video,
             audio=complete_audio,
             frame_rate=fps_id + 1,
             sample_rate=16000,
-            save_path=video_path,
+            save_path=out_video_path,
             keep_intermediate=False,
         )
 
-    print(f"Saved video to {video_path}")
+    print(f"Saved video to {out_video_path}")
 
 
 def get_unique_embedder_keys_from_conditioner(conditioner):
@@ -1029,6 +1134,8 @@ def main(
     double_first: bool = False,
     extra_audio: str = None,
     compute_until: str = "end",
+    starting_index: int = 0,
+    audio_emb_type: str="wav2vec2"
 ):
     num_frames = default(num_frames, 14)
     model, filter, n_batch = load_model(
@@ -1063,13 +1170,17 @@ def main(
         with open(filelist_audio, "r") as f:
             audio_paths = f.readlines()
         audio_paths = [
-            path.strip().replace("video_crop", "audio_emb").replace(".mp4", "_wav2vec2_emb.pt") for path in audio_paths
+            path.strip().replace("video_crop", "audio_emb").replace(".mp4", f"_{audio_emb_type}_emb.safetensors") for path in audio_paths
         ]
     else:
         audio_paths = [
-            video_path.replace("video_crop", "audio_emb").replace(".mp4", "_wav2vec2_emb.pt")
+            video_path.replace("video_crop", "audio_emb").replace(".mp4", f"_{audio_emb_type}_emb.safetensors")
             for video_path in video_paths
         ]
+
+    if starting_index:
+        video_paths = video_paths[starting_index:]
+        audio_paths = audio_paths[starting_index:]
 
     for video_path, audio_path in zip(video_paths, audio_paths):
         sample(
@@ -1117,6 +1228,7 @@ def main(
             n_batch_keyframes=n_batch_keyframes,
             extra_audio=extra_audio,
             compute_until=compute_until,
+            audio_emb_type=audio_emb_type
         )
 
 
