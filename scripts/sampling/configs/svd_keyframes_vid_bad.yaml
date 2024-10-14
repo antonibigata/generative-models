@@ -6,7 +6,8 @@ model:
     scale_factor: 0.18215
     disable_first_stage_autocast: True
     ckpt_path: logs/2024-08-23T10-55-09_example_training-svd_keyframes_vid/checkpoints/last.ckpt/checkpoint/mp_rank_00_model_states.pt
-    bad_model_path: logs/2024-09-30T17-11-08_example_training-keyframes_base/checkpoints/last.ckpt/checkpoint/mp_rank_00_model_states.pt
+    # bad_model_path: logs/2024-09-30T17-11-08_example_training-keyframes_base/checkpoints/last.ckpt/checkpoint/mp_rank_00_model_states.pt
+    bad_model_path: logs/2024-10-10T09-47-59_example_training-keyframes_base/checkpoints/last.ckpt/checkpoint/mp_rank_00_model_states.pt
 
     # LoRA
     use_lora: False

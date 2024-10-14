@@ -1,20 +1,20 @@
 #!/bin/bash
 
 # Read the file list
-file_list="/data/home/antoni/datasets/HDTF/filelist_val.txt"
 file_list_audio="/data/home/antoni/datasets/filelist_video_nsv_val.txt"
 
 
-# Get the output folder from the command line argument
 output_folder=$1
 
+file_list=${2:-"/data/home/antoni/datasets/HDTF/filelist_val.txt"}
+
 # Get the keyframes_ckpt from the command line argument, default to none if not provided
-keyframes_ckpt=${2:-None}
+keyframes_ckpt=${3:-None}
 
 # Get the interpolation_ckpt from the command line argument, default to none if not provided
-interpolation_ckpt=${3:-None}
+interpolation_ckpt=${4:-None}
 
-overlapping=${4:-1}
+overlapping=${5:-1}
 
 # Check if keyframes_ckpt is provided and not null
 if [ "$keyframes_ckpt" != "null" ]; then
@@ -48,8 +48,8 @@ python scripts/sampling/full_pipeline_batch.py \
     --force_uc_zero_embeddings='[cond_frames, audio_emb]' \
     --latent_folder=video_crop_emb \
     --video_folder=video_crop \
-    --model_config=scripts/sampling/configs/svd_interpolation.yaml \
-    --model_keyframes_config=scripts/sampling/configs/svd_keyframes_emo_cross.yaml \
+    --model_config=scripts/sampling/configs/svd_interpolation_new.yaml \
+    --model_keyframes_config=scripts/sampling/configs/svd_keyframes_vid_bad.yaml \
     --get_landmarks=False \
     --landmark_folder=landmarks_crop \
     --overlap=${overlapping} \
@@ -62,5 +62,5 @@ python scripts/sampling/full_pipeline_batch.py \
     --double_first=False \
     --add_zero_flag=True \
     --emotion_folder=emotions \
-    --extra_audio=key \
+    --extra_audio=both \
 

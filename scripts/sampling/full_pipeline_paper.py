@@ -94,7 +94,15 @@ def get_audio_indexes(main_index, n_audio_frames, max_len):
 
 
 def create_pipeline_inputs(
-    video, audio, audio_interpolation, num_frames, video_emb, emotions=None, overlap=1, add_zero_flag=False, double_first=False
+    video,
+    audio,
+    audio_interpolation,
+    num_frames,
+    video_emb,
+    emotions=None,
+    overlap=1,
+    add_zero_flag=False,
+    double_first=False,
 ):
     # Interpolation is every num_frames, we need to create the inputs for the model
     # We need to create a list of inputs, each input is a tuple of ([first, last], audio)
@@ -256,7 +264,9 @@ def get_audio_embeddings(
     elif audio_path is not None and audio_path.endswith(".safetensors"):
         audio = load_safetensors(audio_path)["audio"]
         if audio_emb_type != "wav2vec2":
-            audio_interpolation = load_safetensors(audio_path.replace(f"_{audio_emb_type}_emb", "_wav2vec2_emb"))["audio"]
+            audio_interpolation = load_safetensors(audio_path.replace(f"_{audio_emb_type}_emb", "_wav2vec2_emb"))[
+                "audio"
+            ]
         if audio.dim() == 2:
             audio = audio.unsqueeze(1)
         print(audio.shape)
@@ -275,7 +285,7 @@ def get_audio_embeddings(
             min_size = min(audio.shape[0], extra_audio_emb.shape[0])
             audio = torch.cat([audio[:min_size], extra_audio_emb[:min_size]], dim=-1)
             print(f"Loaded audio embeddings from {audio_path} {audio.shape}.")
-        
+
         print(audio.shape)
 
         if audio_interpolation is None:
@@ -627,7 +637,7 @@ def sample(
     n_batch_keyframes: int = 1,
     compute_until: float = "end",
     extra_audio: bool = False,
-    audio_emb_type:str="wav2vec2"
+    audio_emb_type: str = "wav2vec2",
 ):
     """
     Simple script to generate a single sample conditioned on an image `input_path` or multiple images, one for each
@@ -720,7 +730,7 @@ def sample(
             audio_emb_folder=audio_emb_folder,
             extra_audio=extra_audio,
             max_frames=max_frames,
-            audio_emb_type=audio_emb_type
+            audio_emb_type=audio_emb_type,
         )
         if compute_until is not None:
             if video.shape[0] > max_frames:
@@ -883,7 +893,8 @@ def sample(
             if start_idx is not None and end_idx is not None:
                 end_idx = len(test_interpolation_list) - 1 - end_idx  # Adjust for reversed enumeration
             end_idx += 1
-
+            if start_idx is None:
+                break
             if end_idx < start_idx:
                 end_idx = len(audio_interpolation_list)
 
@@ -1135,7 +1146,7 @@ def main(
     extra_audio: str = None,
     compute_until: str = "end",
     starting_index: int = 0,
-    audio_emb_type: str="wav2vec2"
+    audio_emb_type: str = "wav2vec2",
 ):
     num_frames = default(num_frames, 14)
     model, filter, n_batch = load_model(
@@ -1170,7 +1181,8 @@ def main(
         with open(filelist_audio, "r") as f:
             audio_paths = f.readlines()
         audio_paths = [
-            path.strip().replace("video_crop", "audio_emb").replace(".mp4", f"_{audio_emb_type}_emb.safetensors") for path in audio_paths
+            path.strip().replace("video_crop", "audio_emb").replace(".mp4", f"_{audio_emb_type}_emb.safetensors")
+            for path in audio_paths
         ]
     else:
         audio_paths = [
@@ -1228,7 +1240,7 @@ def main(
             n_batch_keyframes=n_batch_keyframes,
             extra_audio=extra_audio,
             compute_until=compute_until,
-            audio_emb_type=audio_emb_type
+            audio_emb_type=audio_emb_type,
         )
 
 

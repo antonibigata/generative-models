@@ -20,7 +20,7 @@ export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
 export WANDB_CACHE_DIR=/data/home/dinovgk/projects/generative-models/.cache
 export WANDB_DATA_DIR=/data/home/dinovgk/projects/generative-models/.cache
 cd /data/home/dinovgk/projects/generative-models
-srun python main.py --base configs/example_training/svd_interpolation_cross.yaml --wandb True lightning.trainer.num_nodes 8 \
+srun python main.py --resume logs/2024-10-04T14-17-11_example_training-svd_interpolation_cross --base configs/example_training/svd_interpolation_cross.yaml --wandb True lightning.trainer.num_nodes 8 \
     lightning.strategy=deepspeed_stage_1 lightning.trainer.precision=32 model.base_learning_rate=1.e-5 \
     data.params.train.datapipeline.filelist=/data/home/antoni/datasets/filelist_aa_hdtf_nsv.txt \
     data.params.train.datapipeline.video_folder=video_crop  \

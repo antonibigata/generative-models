@@ -173,6 +173,7 @@ def create_pipeline_inputs(
     add_zero_flag=False,
     double_first=False,
     emotion_states=None,
+    accentuate=False,
 ):
     # Interpolation is every num_frames, we need to create the inputs for the model
     # We need to create a list of inputs, each input is a tuple of ([first, last], audio)
@@ -188,7 +189,7 @@ def create_pipeline_inputs(
     step = num_frames - overlap
 
     if emotion_states is not None:
-        emotions = create_emotion_list(emotion_states, audio.shape[0])
+        emotions = create_emotion_list(emotion_states, audio.shape[0], accentuate=accentuate)
 
     # Ensure there's at least one step forward on each iteration
     if step < 1:
@@ -717,6 +718,7 @@ def sample(
     audio_emb_type: str = "wav2vec2",
     emotion_states: Optional[list[str]] = None,
     extra_naming: str = "",
+    accentuate: bool = False,
 ):
     """
     Simple script to generate a single sample conditioned on an image `input_path` or multiple images, one for each
@@ -751,7 +753,10 @@ def sample(
     os.makedirs(output_folder, exist_ok=True)
 
     # base_count = len(glob(os.path.join(output_folder, "*.mp4")))
-    video_out_name = "_".join(video_path.split("/")[-6:]) + "_" + extra_naming
+    if extra_naming != "":
+        video_out_name = "_".join(video_path.split("/")[-6:]).replace(".mp4", "") + "_" + extra_naming + ".mp4"
+    else:
+        video_out_name = "_".join(video_path.split("/")[-6:])
     out_video_path = os.path.join(output_folder, video_out_name)
 
     if os.path.exists(out_video_path):
@@ -798,12 +803,12 @@ def sample(
             )
             landmarks = scale_landmarks(landmarks[:, :, :2], (h, w), (512, 512))
         #     )
-        for k in vid_to_init_frame.keys():
-            if k in video_path:
-                video_path = vid_to_init_frame[k]
-                break
-        else:
-            raise ValueError(f"No initial frame found for {video_path}")
+        # for k in vid_to_init_frame.keys():
+        #     if k in video_path:
+        #         video_path = vid_to_init_frame[k]
+        #         break
+        # else:
+        #     raise ValueError(f"No initial frame found for {video_path}")
 
         video = read_video(video_path, output_format="TCHW")[0]
         video = (video / 255.0) * 2.0 - 1.0
@@ -896,6 +901,7 @@ def sample(
             add_zero_flag=add_zero_flag,
             double_first=double_first,
             emotion_states=emotion_states,
+            accentuate=accentuate,
         )
 
         print(n_batch, n_batch_keyframes)
@@ -1244,6 +1250,7 @@ def main(
     starting_index: int = 0,
     audio_emb_type: str = "wav2vec2",
     emotion_states: Optional[list[str]] = None,
+    accentuate: bool = False,
 ):
     num_frames = default(num_frames, 14)
     model, filter, n_batch = load_model(
@@ -1340,6 +1347,7 @@ def main(
             audio_emb_type=audio_emb_type,
             emotion_states=emotion_states,
             extra_naming=os.path.basename(audio_path).split(".")[0] if filelist_audio else "",
+            accentuate=accentuate,
         )
 
 
