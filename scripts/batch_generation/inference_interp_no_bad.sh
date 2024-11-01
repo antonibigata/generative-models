@@ -7,11 +7,6 @@
 output_folder=$1
 
 file_list=${2:-"/data/home/antoni/datasets/HDTF/filelist_val.txt"}
-file_list_audio="/data/home/antoni/code/video-audio-matching/selected_nsvs.txt"
-if [ "$file_list" = "$file_list_audio" ]; then
-    file_list_audio=None
-    echo "File list audio is the same as file list"
-fi
 
 # Get the keyframes_ckpt from the command line argument, default to none if not provided
 keyframes_ckpt=${3:-None}
@@ -57,7 +52,6 @@ overlapping=${5:-1}
 # Run the Python script with the appropriate arguments
 python scripts/sampling/full_pipeline_paper.py \
     --filelist=${file_list} \
-    --filelist_audio=${file_list_audio} \
     --decoding_t 1 \
     --cond_aug 0. \
     --resize_size=512 \
@@ -66,7 +60,7 @@ python scripts/sampling/full_pipeline_paper.py \
     --force_uc_zero_embeddings='[cond_frames, audio_emb]' \
     --latent_folder=video_crop_emb \
     --video_folder=video_crop \
-    --model_config=scripts/sampling/configs/svd_interpolation_new.yaml \
+    --model_config=scripts/sampling/configs/svd_interpolation_no_bad.yaml \
     --model_keyframes_config=scripts/sampling/configs/svd_keyframes_emo_cross.yaml \
     --get_landmarks=False \
     --landmark_folder=landmarks_crop \
@@ -82,6 +76,6 @@ python scripts/sampling/full_pipeline_paper.py \
     --emotion_folder=emotions \
     --extra_audio=both \
     --compute_until=45 \
-    --audio_emb_type=wav2vec2
+    --audio_emb_type=wav2vec2 \
     # --starting_index=${starting_index} \
 

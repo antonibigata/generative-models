@@ -42,7 +42,7 @@ model:
         adm_in_channels: 512
         num_classes: sequential
         use_checkpoint: True
-        in_channels: 8
+        in_channels: 4
         out_channels: 4
         model_channels: 320
         attention_resolutions: [4, 2, 1]
@@ -62,6 +62,7 @@ model:
         additional_audio_frames: 0
         audio_dim: 1024
         unfreeze_blocks: [] # Because we changed the input block
+        reference_to: self_extra
         # adapter_kwargs:
         #   # down_ratio: 1
         #   # adapter_type: null
@@ -83,17 +84,13 @@ model:
       target: sgm.modules.GeneralConditioner
       params:
         emb_models:
-        # - is_trainable: False
-        #   input_key: cond_frames_without_noise
-        #   ucg_rate: 0.1
-        #   target: sgm.modules.encoders.modules.FrozenOpenCLIPImagePredictionEmbedder
-        #   params:
-        #     n_cond_frames: 1
-        #     n_copies: 1
-        #     open_clip_embedding_config:
-        #       target: sgm.modules.encoders.modules.FrozenOpenCLIPImageEmbedder
-        #       params:
-        #         freeze: True
+        - is_trainable: False
+          input_key: cond_frames
+          ucg_rate: 0.1
+          target: sgm.modules.encoders.modules.ReferenceNet
+          params:
+            path: /data/home/antoni/code/EchoMimic/pretrained_weights
+            cond_type: reference
 
         # - input_key: fps_id
         #   is_trainable: False
@@ -107,35 +104,6 @@ model:
         #   params:
         #     outdim: 256
 
-        - input_key: cond_frames
-          is_trainable: False
-          ucg_rate: 0.1
-          target: sgm.modules.encoders.modules.VideoPredictionEmbedderWithEncoder
-          params:
-            disable_encoder_autocast: True
-            n_cond_frames: 1
-            n_copies: 1
-            is_ae: True
-            load_encoder: False
-            encoder_config:
-              target: sgm.models.autoencoder.AutoencoderKLModeOnly
-              params:
-                embed_dim: 4
-                monitor: val/rec_loss
-                ddconfig:
-                  attn_type: vanilla-xformers
-                  double_z: True
-                  z_channels: 4
-                  resolution: 256
-                  in_channels: 3
-                  out_ch: 3
-                  ch: 128
-                  ch_mult: [1, 2, 4, 4]
-                  num_res_blocks: 2
-                  attn_resolutions: []
-                  dropout: 0.0
-                lossconfig:
-                  target: torch.nn.Identity
 
         # - input_key: cond_aug
         #   is_trainable: False
@@ -172,7 +140,7 @@ model:
             merge_method: mean 
             linear_dim: 1024
             cond_type: crossattn
-            audio_dim: 768
+            audio_dim: 1536
 
     first_stage_config:
       target: sgm.models.autoencoder.AutoencodingEngine
@@ -221,10 +189,9 @@ model:
           #   sigma_max: 80.0
 
         guider_config:
-          target: sgm.modules.diffusionmodules.guiders.AudioRefMultiCondGuider
+          target: sgm.modules.diffusionmodules.guiders.VanillaCFG
           params:
-            audio_ratio: 5.0
-            ref_ratio: 2.0
+            scale: 2.
             # low_sigma: 0.
             # high_sigma: 1.61
 

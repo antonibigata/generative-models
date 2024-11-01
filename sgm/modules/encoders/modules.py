@@ -298,7 +298,7 @@ class WhisperAudioEmbedder(AbstractEmbModel):
 
     def forward(self, x):
         # x shape: (batch_size, n_frames, 2, 1280)
-        # print(f"Audio input shape: {x.shape}")
+        print(f"Audio input shape: {x.shape}")
         if self.merge_method == "mean":
             x = x.mean(dim=2)
         elif self.merge_method == "concat":

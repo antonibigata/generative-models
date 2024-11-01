@@ -6,7 +6,12 @@
 # Get the output folder from the command line argument
 output_folder=$1
 
-file_list=${2:-"/data/home/antoni/datasets/filelist_video_emo.txt"}
+file_list=${2:-"/data/home/antoni/datasets/eval_dataset_emotions_MEAD_100.txt"}
+file_list_audio="/data/home/antoni/datasets/eval_dataset_emotions_MEAD_100.txt"
+if [ "$file_list" = "$file_list_audio" ]; then
+    file_list_audio=None
+    echo "File list audio is the same as file list"
+fi
 
 # Get the keyframes_ckpt from the command line argument, default to none if not provided
 keyframes_ckpt=${3:-None}
@@ -52,6 +57,7 @@ overlapping=${5:-1}
 # Run the Python script with the appropriate arguments
 python scripts/sampling/full_pipeline_emo.py \
     --filelist=${file_list} \
+    --filelist_audio=${file_list_audio} \
     --decoding_t 1 \
     --cond_aug 0. \
     --resize_size=512 \
@@ -77,5 +83,6 @@ python scripts/sampling/full_pipeline_emo.py \
     --extra_audio=key \
     --compute_until=45 \
     --audio_emb_type=wav2vec2 \
+    --accentuate=True \
     # --starting_index=${starting_index} \
 

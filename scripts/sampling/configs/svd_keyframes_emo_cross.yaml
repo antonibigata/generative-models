@@ -221,9 +221,10 @@ model:
           #   sigma_max: 80.0
 
         guider_config:
-          target: sgm.modules.diffusionmodules.guiders.VanillaCFG
+          target: sgm.modules.diffusionmodules.guiders.AudioRefMultiCondGuider
           params:
-            scale: 2.
+            audio_ratio: 5.0
+            ref_ratio: 2.0
             # low_sigma: 0.
             # high_sigma: 1.61
 

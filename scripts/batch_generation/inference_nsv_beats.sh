@@ -7,7 +7,7 @@
 output_folder=$1
 
 file_list=${2:-"/data/home/antoni/datasets/HDTF/filelist_val.txt"}
-file_list_audio="/data/home/antoni/code/video-audio-matching/selected_nsvs.txt"
+file_list_audio="/data/home/antoni/datasets/filelist_video_nsv_val.txt"
 if [ "$file_list" = "$file_list_audio" ]; then
     file_list_audio=None
     echo "File list audio is the same as file list"
@@ -67,7 +67,7 @@ python scripts/sampling/full_pipeline_paper.py \
     --latent_folder=video_crop_emb \
     --video_folder=video_crop \
     --model_config=scripts/sampling/configs/svd_interpolation_new.yaml \
-    --model_keyframes_config=scripts/sampling/configs/svd_keyframes_emo_cross.yaml \
+    --model_keyframes_config=scripts/sampling/configs/svd_keyframes_no_beats.yaml \
     --get_landmarks=False \
     --landmark_folder=landmarks_crop \
     --overlap=${overlapping} \
@@ -80,8 +80,8 @@ python scripts/sampling/full_pipeline_paper.py \
     --double_first=False \
     --add_zero_flag=True \
     --emotion_folder=emotions \
-    --extra_audio=both \
+    --extra_audio=interp \
     --compute_until=45 \
-    --audio_emb_type=wav2vec2
+    --audio_emb_type=beats
     # --starting_index=${starting_index} \
 

@@ -606,6 +606,8 @@ class VideoUNet(nn.Module):
                     y = audio_emb
             elif self.audio_cond_method == "to_time_emb_image":
                 assert audio_emb is not None
+                print("audio_emb shape", audio_emb.shape)
+                print("y shape", y.shape)
                 audio_emb = rearrange(audio_emb, "b t c -> b (t c)")
                 if y is not None:
                     y = th.cat([y, audio_emb], dim=1)

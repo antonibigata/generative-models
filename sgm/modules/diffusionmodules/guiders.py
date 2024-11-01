@@ -215,15 +215,63 @@ class MultipleCondVanilla(Guider):
 
 
 class AudioRefMultiCondGuider(MultipleCondVanilla):
-    def __init__(self, audio_ratio: float = 5.0, ref_ratio: float = 3.0):
+    def __init__(
+        self,
+        audio_ratio: float = 5.0,
+        ref_ratio: float = 3.0,
+        use_normalized: bool = False,
+        momentum: float = -0.75,
+        eta: float = 0.0,
+        norm_threshold: float = 2.5,
+    ):
         super().__init__(scales=[audio_ratio, ref_ratio], condition_names=["audio_emb", "concat"])
         self.audio_ratio = audio_ratio
         self.ref_ratio = ref_ratio
+        self.use_normalized = use_normalized
+        print(f"Use normalized: {self.use_normalized}")
+        self.momentum_buffer = MomentumBuffer(momentum)
+        self.eta = eta
+        self.norm_threshold = norm_threshold
+        self.momentum_buffer_audio = MomentumBuffer(momentum)
+        self.momentum_buffer_ref = MomentumBuffer(momentum)
 
     def __call__(self, x: torch.Tensor, sigma: torch.Tensor) -> torch.Tensor:
-        e_base, e_ref, e_audio = x.chunk(3)
+        e_uc, e_ref, c_audio_ref = x.chunk(3)
 
-        e_final = self.audio_ratio * (e_audio - e_ref) + self.ref_ratio * (e_ref - e_base) + e_base
+        if self.use_normalized:
+            # Normalized guidance version
+            # Compute diff for audio guidance
+            diff_audio = c_audio_ref - e_uc
+            if self.momentum_buffer_audio is not None:
+                self.momentum_buffer_audio.update(diff_audio)
+                diff_audio = self.momentum_buffer_audio.running_average
+            if self.norm_threshold > 0:
+                ones = torch.ones_like(diff_audio)
+                diff_norm = diff_audio.norm(p=2, dim=[-1, -2, -3], keepdim=True)
+                scale_factor = torch.minimum(ones, self.norm_threshold / diff_norm)
+                diff_audio = diff_audio * scale_factor
+            diff_audio_parallel, diff_audio_orthogonal = project(diff_audio, c_audio_ref)
+            normalized_update_audio = diff_audio_orthogonal + self.eta * diff_audio_parallel
+            guidance_audio = (self.audio_ratio - 1) * normalized_update_audio
+
+            # Compute diff for ref guidance
+            diff_ref = e_ref - e_uc
+            if self.momentum_buffer_ref is not None:
+                self.momentum_buffer_ref.update(diff_ref)
+                diff_ref = self.momentum_buffer_ref.running_average
+            if self.norm_threshold > 0:
+                ones = torch.ones_like(diff_ref)
+                diff_norm = diff_ref.norm(p=2, dim=[-1, -2, -3], keepdim=True)
+                scale_factor = torch.minimum(ones, self.norm_threshold / diff_norm)
+                diff_ref = diff_ref * scale_factor
+            diff_ref_parallel, diff_ref_orthogonal = project(diff_ref, e_ref)
+            normalized_update_ref = diff_ref_orthogonal + self.eta * diff_ref_parallel
+            guidance_ref = (self.ref_ratio - 1) * normalized_update_ref
+
+            e_final = e_uc + guidance_audio + guidance_ref
+        else:
+            # Original version
+            e_final = self.audio_ratio * (c_audio_ref - e_ref) + self.ref_ratio * (e_ref - e_uc) + e_uc
 
         return e_final
 
@@ -241,17 +289,17 @@ class AudioRefMultiCondGuider(MultipleCondVanilla):
         c_base["concat"] = uc["concat"]  # Remove ref concat
 
         # Prepare inputs for e_ref (no audio, with ref concat)
-        c_ref = {k: v for k, v in c.items()}
+        c_audio_ref = {k: v for k, v in c.items()}
         # c_ref["concat"] = uc["concat"]  # Remove ref concat
 
         # Prepare inputs for e_audio (all conditions)
-        c_audio = {k: v for k, v in c.items()}
-        c_audio["crossattn"] = uc["crossattn"]
+        c_ref = {k: v for k, v in c.items()}
+        c_ref["crossattn"] = uc["crossattn"]
 
         # Combine all conditions
         for k in c:
             if k in ["vector", "crossattn", "concat", "audio_emb", "image_embeds", "landmarks", "masks", "gt"]:
-                c_out[k] = torch.cat((c_base[k], c_ref[k], c_audio[k]), 0)
+                c_out[k] = torch.cat((c_base[k], c_ref[k], c_audio_ref[k]), 0)
             else:
                 c_out[k] = c[k]
 

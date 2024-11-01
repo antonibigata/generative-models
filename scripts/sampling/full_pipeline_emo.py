@@ -103,13 +103,13 @@ def get_audio_indexes(main_index, n_audio_frames, max_len):
 def create_emotion_list(emotion_states, total_frames, accentuate=False):
     emotion_values = {
         "happy": (0.85, 0.75),  # Joy/Happiness
-        "angry": (-0.85, 0.85),  # Anger
+        "angry": (-0.443, 0.908),  # Anger
         "surprised": (0.0, 0.85),  # Surprise
         "sad": (-0.85, -0.35),  # Sadness
         "neutral": (0.0, 0.0),  # Neutral
-        "fear": (-0.85, 0.85),  # Fear
+        "fear": (0.181, 0.949),  # Fear
         "disgusted": (-0.8, 0.5),  # Disgust
-        "contempt": (-0.7, 0.0),  # Contempt
+        "contempt": (0.307, 0.535),  # Contempt
         "calm": (0.65, -0.5),  # Calmness
         "excited": (0.9, 0.9),  # Excitement
         "bored": (-0.6, -0.9),  # Boredom
@@ -128,6 +128,47 @@ def create_emotion_list(emotion_states, total_frames, accentuate=False):
         "overwhelmed": (-0.6, 0.8),  # Overwhelm
         # Add more emotions as needed
     }
+    #     emo_by_person = {
+    #     "M003": {
+    #         "happy": (0.504, 0.319),
+    #         "angry": (-0.443, 0.908),
+    #         "fear": (0.022, 0.860),
+    #         "sad": (-0.362, 0.658),
+    #         "disgusted": (-0.430, 0.883),
+    #         "contempt": (0.271, 0.389),
+    #         "surprised": (-0.132, 0.926),
+    #     },
+    #     "M030": {
+    #         "happy": (0.559, 0.386),
+    #         "angry": (-0.283, 0.667),
+    #         "fear": (0.181, 0.949),
+    #         "sad": (-0.426, 0.129),
+    #         "disgusted": (-0.356, 0.704),
+    #         "contempt": (0.307, 0.535),
+    #         "surprised": (0.067, 1.077),
+    #     },
+    #     "W009": {
+    #         "happy": (0.418, 0.399),
+    #         "angry": (-0.314, 0.855),
+    #         "fear": (0.045, 1.042),
+    #         "sad": (-0.541, -0.095),
+    #         "disgusted": (-0.432, 0.407),
+    #         "contempt": (0.161, 0.706),
+    #         "surprised": (0.036, 1.127),
+    #     },
+    #     "W015": {
+    #         "happy": (0.474, 0.330),
+    #         "angry": (-0.433, 0.766),
+    #         "fear": (-0.242, 0.447),
+    #         "sad": (-0.448, -0.051),
+    #         "disgusted": (-0.484, 0.876),
+    #         "contempt": (0.115, 0.404),
+    #         "surprised": (-0.033, 0.981),
+    #     },
+    # }
+
+    # if person is not None:
+    #     emotion_values = emo_by_person[person]
 
     if accentuate:
         accentuated_values = {
@@ -190,6 +231,8 @@ def create_pipeline_inputs(
 
     if emotion_states is not None:
         emotions = create_emotion_list(emotion_states, audio.shape[0], accentuate=accentuate)
+    elif accentuate:
+        emotions = (torch.clamp(emotions[0] * 1.5, -1, 1), torch.clamp(emotions[1] * 1.5, -1, 1), emotions[2])
 
     # Ensure there's at least one step forward on each iteration
     if step < 1:
@@ -725,6 +768,9 @@ def sample(
     image file in folder `input_path`. If you run out of VRAM, try decreasing `decoding_t`.
     """
 
+    video_path = video_path.replace("level_3", "level_1")
+    audio_path = audio_path.replace("level_3", "level_1")
+
     assert not (double_first and add_zero_flag), "Cannot have both double_first and add_zero_flag"
 
     if version == "svd":
@@ -803,12 +849,12 @@ def sample(
             )
             landmarks = scale_landmarks(landmarks[:, :, :2], (h, w), (512, 512))
         #     )
-        # for k in vid_to_init_frame.keys():
-        #     if k in video_path:
-        #         video_path = vid_to_init_frame[k]
-        #         break
-        # else:
-        #     raise ValueError(f"No initial frame found for {video_path}")
+        for k in vid_to_init_frame.keys():
+            if k in video_path:
+                video_path = vid_to_init_frame[k]
+                break
+        else:
+            raise ValueError(f"No initial frame found for {video_path}")
 
         video = read_video(video_path, output_format="TCHW")[0]
         video = (video / 255.0) * 2.0 - 1.0
@@ -876,7 +922,7 @@ def sample(
                     f"WARNING: Your image is of size {h}x{w} which is not divisible by 64. We are resizing to {height}x{width}!"
                 )
 
-        # emotion_states = [audio_path.split("/")[-3]]
+        emotion_states = [audio_path.split("/")[-3]]
 
         (
             gt_chunks,
@@ -1184,6 +1230,8 @@ def load_model(
     if "IdentityGuider" in config.model.params.sampler_config.params.guider_config.target:
         n_batch = 1
     elif "MultipleCondVanilla" in config.model.params.sampler_config.params.guider_config.target:
+        n_batch = 3
+    elif "AudioRefMultiCondGuider" in config.model.params.sampler_config.params.guider_config.target:
         n_batch = 3
     else:
         n_batch = 2  # Conditional and unconditional

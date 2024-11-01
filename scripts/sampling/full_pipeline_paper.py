@@ -103,6 +103,7 @@ def create_pipeline_inputs(
     overlap=1,
     add_zero_flag=False,
     double_first=False,
+    is_image_model=False,
 ):
     # Interpolation is every num_frames, we need to create the inputs for the model
     # We need to create a list of inputs, each input is a tuple of ([first, last], audio)
@@ -135,14 +136,22 @@ def create_pipeline_inputs(
         # audio_indexes = get_audio_indexes(segment_end - 1, 2, len(audio))
         # print(i, audio_indexes, 2 * additional_audio_frames + 1)
         if i not in audio_image_preds_idx:
-            audio_image_preds.append(audio[i])
+            if is_image_model:
+                audio_indexes = get_audio_indexes(i, 2, len(audio))
+                audio_image_preds.append(audio[audio_indexes])
+            else:
+                audio_image_preds.append(audio[i])
             audio_image_preds_idx.append(i)
             if emotions is not None:
                 emotions_chunks.append((emotions[0][i], emotions[1][i]))
             # emotions_chunks.append((torch.ones_like(emotions[0][i]), torch.ones_like(emotions[1][i])))
         if segment_end - 1 not in audio_image_preds_idx:
             audio_image_preds_idx.append(segment_end - 1)
-            audio_image_preds.append(audio[segment_end - 1])
+            if is_image_model:
+                audio_indexes = get_audio_indexes(segment_end - 1, 2, len(audio))
+                audio_image_preds.append(audio[audio_indexes])
+            else:
+                audio_image_preds.append(audio[segment_end - 1])
             if emotions is not None:
                 emotions_chunks.append((emotions[0][segment_end - 1], emotions[1][segment_end - 1]))
             # emotions_chunks.append(
@@ -155,7 +164,7 @@ def create_pipeline_inputs(
 
     # If the flag is on, add element 0 every 14 audio elements
     if add_zero_flag:
-        first_element = audio[0]
+        first_element = audio_image_preds[0]
         if emotions is not None:
             first_element_emotions = (emotions[0][0], emotions[1][0])
         len_audio_image_preds = len(audio_image_preds) + (len(audio_image_preds) + 1) % num_frames
@@ -170,7 +179,11 @@ def create_pipeline_inputs(
         print(len(audio_image_preds))
         len_audio_image_preds = len(audio_image_preds) + (len(audio_image_preds) + 1) % num_frames
         for i in range(0, len_audio_image_preds, num_frames):
-            audio_image_preds.insert(i, audio_image_preds[i])
+            if is_image_model:
+                audio_indexes = get_audio_indexes(i, 2, len(audio))
+                audio_image_preds.insert(i, audio[audio_indexes])
+            else:
+                audio_image_preds.insert(i, audio_image_preds[i])
             audio_image_preds_idx.insert(i, None)
             if emotions is not None:
                 emotions_chunks.insert(i, emotions_chunks[i])
@@ -204,7 +217,7 @@ def create_pipeline_inputs(
     print(f"Added {frames_needed} frames from the start to make audio_image_preds a multiple of {num_frames}")
 
     # random_cond_idx = np.random.randint(0, len(video_emb))
-    random_cond_idx = 0
+    random_cond_idx = 25
 
     assert len(to_remove) == len(audio_image_preds), "to_remove and audio_image_preds must have the same length"
 
@@ -274,7 +287,7 @@ def get_audio_embeddings(
             audio = audio[:max_frames]
             if audio_interpolation is not None:
                 audio_interpolation = audio_interpolation[:max_frames]
-        if extra_audio is not None:
+        if extra_audio in ["key", "both"]:
             # extra_audio_emb = torch.load(audio_path.replace(f"_{audio_emb_type}_emb", "_beats_emb"))
             extra_audio_emb = load_safetensors(audio_path.replace(f"_{audio_emb_type}_emb", "_beats_emb"))["audio"]
             if max_frames is not None:
@@ -290,6 +303,16 @@ def get_audio_embeddings(
 
         if audio_interpolation is None:
             audio_interpolation = audio
+        if extra_audio == "interp":
+            extra_audio_emb = load_safetensors(audio_path.replace(f"_{audio_emb_type}_emb", "_beats_emb"))["audio"]
+            if max_frames is not None:
+                extra_audio_emb = extra_audio_emb[:max_frames]
+            print(
+                f"Loaded extra audio embeddings from {audio_path.replace(f'_{audio_emb_type}_emb', '_beats_emb')} {extra_audio_emb.shape}."
+            )
+            min_size = min(audio_interpolation.shape[0], extra_audio_emb.shape[0])
+            audio_interpolation = torch.cat([audio_interpolation[:min_size], extra_audio_emb[:min_size]], dim=-1)
+            print(f"Loaded audio embeddings from {audio_path} {audio.shape}.")
         print(f"Loaded audio embeddings from {audio_path} {audio.shape}.")
         raw_audio_path = audio_path.replace(".safetensors", ".wav").replace(f"_{audio_emb_type}_emb", "")
         if audio_folder is not None:
@@ -321,6 +344,7 @@ def sample_keyframes(
     strength,
     scale,
     num_steps,
+    is_image_model=False,
 ):
     if scale is not None:
         model_keyframes.sampler.guider.set_scale(scale)
@@ -366,6 +390,10 @@ def sample_keyframes(
             value_dict["valence"] = valence_list[i].unsqueeze(0)
             value_dict["arousal"] = arousal_list[i].unsqueeze(0)
 
+        if is_image_model:
+            value_dict["audio_emb"] = value_dict["audio_emb"].squeeze(0)
+            # value_dict["audio_emb"] = rearrange(value_dict["audio_emb"], "b t d c -> (b t) () d c")
+
         with torch.no_grad():
             with torch.autocast(device):
                 batch, batch_uc = get_batch(
@@ -384,10 +412,10 @@ def sample_keyframes(
 
                 for k in ["crossattn"]:
                     if c[k].shape[1] != num_frames:
-                        uc[k] = repeat(uc[k], "b ... -> b t ...", t=num_frames)
-                        uc[k] = rearrange(uc[k], "b t ... -> (b t) ...", t=num_frames)
-                        c[k] = repeat(c[k], "b ... -> b t ...", t=num_frames)
-                        c[k] = rearrange(c[k], "b t ... -> (b t) ...", t=num_frames)
+                        uc[k] = repeat(uc[k], "b ... -> b t ...", t=num_frames if not is_image_model else 1)
+                        uc[k] = rearrange(uc[k], "b t ... -> (b t) ...", t=num_frames if not is_image_model else 1)
+                        c[k] = repeat(c[k], "b ... -> b t ...", t=num_frames if not is_image_model else 1)
+                        c[k] = rearrange(c[k], "b t ... -> (b t) ...", t=num_frames if not is_image_model else 1)
 
                 video = torch.randn(shape, device=device)
 
@@ -638,6 +666,8 @@ def sample(
     compute_until: float = "end",
     extra_audio: bool = False,
     audio_emb_type: str = "wav2vec2",
+    extra_naming: str = "",
+    is_image_model: bool = False,
 ):
     """
     Simple script to generate a single sample conditioned on an image `input_path` or multiple images, one for each
@@ -672,8 +702,12 @@ def sample(
     os.makedirs(output_folder, exist_ok=True)
 
     # base_count = len(glob(os.path.join(output_folder, "*.mp4")))
+    if extra_naming != "":
+        video_out_name = os.path.basename(video_path).replace(".mp4", "") + "_" + extra_naming + ".mp4"
+    else:
+        video_out_name = os.path.basename(video_path)
 
-    out_video_path = os.path.join(output_folder, os.path.basename(video_path))
+    out_video_path = os.path.join(output_folder, video_out_name)
 
     if os.path.exists(out_video_path):
         print(f"Video already exists at {out_video_path}. Skipping.")
@@ -807,6 +841,7 @@ def sample(
             overlap=overlap,
             add_zero_flag=add_zero_flag,
             double_first=double_first,
+            is_image_model=is_image_model,
         )
 
         print(n_batch, n_batch_keyframes)
@@ -821,7 +856,10 @@ def sample(
         print(f"Additional audio frames: {additional_audio_frames}")
 
         audio_list = torch.stack(audio_list).to(device)
-        audio_list = rearrange(audio_list, "(b t) c d  -> b t c d", t=num_frames)
+        if is_image_model:
+            audio_list = rearrange(audio_list, "(b t) x c d  -> b t x c d", t=num_frames)
+        else:
+            audio_list = rearrange(audio_list, "(b t) c d  -> b t c d", t=num_frames)
 
         # Convert to_remove into chunks of num_frames
         to_remove_chunks = [to_remove[i : i + num_frames] for i in range(0, len(to_remove), num_frames)]
@@ -923,6 +961,7 @@ def sample(
                 strength,
                 None,
                 None,
+                is_image_model=is_image_model,
             )
 
             # print("sample_z shape", samples_z.shape)
@@ -959,7 +998,7 @@ def sample(
                 strength,
                 None,
                 None,
-                cut_audio=extra_audio != "both",
+                cut_audio=extra_audio not in ["both", "interp"],
                 to_remove=to_remove_chunks_unwrapped,
             )
 
@@ -1083,6 +1122,8 @@ def load_model(
         n_batch = 1
     elif "MultipleCondVanilla" in config.model.params.sampler_config.params.guider_config.target:
         n_batch = 3
+    elif "AudioRefMultiCondGuider" in config.model.params.sampler_config.params.guider_config.target:
+        n_batch = 3
     else:
         n_batch = 2  # Conditional and unconditional
     if device == "cuda":
@@ -1147,6 +1188,7 @@ def main(
     compute_until: str = "end",
     starting_index: int = 0,
     audio_emb_type: str = "wav2vec2",
+    is_image_model: bool = False,
 ):
     num_frames = default(num_frames, 14)
     model, filter, n_batch = load_model(
@@ -1241,6 +1283,8 @@ def main(
             extra_audio=extra_audio,
             compute_until=compute_until,
             audio_emb_type=audio_emb_type,
+            extra_naming=os.path.basename(audio_path).split(".")[0] if filelist_audio else "",
+            is_image_model=is_image_model,
         )
 
 
