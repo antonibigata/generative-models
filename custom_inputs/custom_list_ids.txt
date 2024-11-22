@@ -1,0 +1,9 @@
+/data/home/antoni/code/generative-models/custom_inputs/FEED_ids/nikita_croppd.png
+/data/home/antoni/code/generative-models/custom_inputs/FEED_ids/nikita_croppd.png
+/data/home/antoni/code/generative-models/custom_inputs/FEED_ids/nikita_croppd.png
+/data/home/antoni/code/generative-models/custom_inputs/FEED_ids/honglie_cropped.png
+/data/home/antoni/code/generative-models/custom_inputs/FEED_ids/honglie_cropped.png
+/data/home/antoni/code/generative-models/custom_inputs/FEED_ids/honglie_cropped.png
+/data/home/antoni/code/generative-models/custom_inputs/FEED_ids/victor_cropped.png
+/data/home/antoni/code/generative-models/custom_inputs/FEED_ids/victor_cropped.png
+/data/home/antoni/code/generative-models/custom_inputs/FEED_ids/victor_cropped.png

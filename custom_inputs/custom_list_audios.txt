@@ -1,0 +1,9 @@
+/data/home/antoni/code/generative-models/custom_inputs/audios/nsv_1.wav
+/data/home/antoni/code/generative-models/custom_inputs/audios/nsv_2.wav
+/data/home/antoni/code/generative-models/custom_inputs/audios/nsv_3.wav
+/data/home/antoni/code/generative-models/custom_inputs/audios/nsv_1.wav
+/data/home/antoni/code/generative-models/custom_inputs/audios/nsv_2.wav
+/data/home/antoni/code/generative-models/custom_inputs/audios/nsv_3.wav
+/data/home/antoni/code/generative-models/custom_inputs/audios/nsv_1.wav
+/data/home/antoni/code/generative-models/custom_inputs/audios/nsv_2.wav
+/data/home/antoni/code/generative-models/custom_inputs/audios/nsv_3.wav

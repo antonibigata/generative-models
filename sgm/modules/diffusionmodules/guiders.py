@@ -276,8 +276,8 @@ class AudioRefMultiCondGuider(MultipleCondVanilla):
         return e_final
 
     def set_scale(self, scale: torch.Tensor):
-        self.audio_ratio = scale[0]
-        self.ref_ratio = scale[1]
+        self.audio_ratio = float(scale[0])
+        self.ref_ratio = float(scale[1])
         print(f"Audio ratio: {self.audio_ratio}, Ref ratio: {self.ref_ratio}")
 
     def prepare_inputs(self, x, s, c, uc):

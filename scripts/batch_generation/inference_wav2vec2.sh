@@ -60,7 +60,7 @@ python scripts/sampling/full_pipeline_paper.py \
     --force_uc_zero_embeddings='[cond_frames, audio_emb]' \
     --latent_folder=video_crop_emb \
     --video_folder=video_crop \
-    --model_config=scripts/sampling/configs/svd_interpolation.yaml \
+    --model_config=scripts/sampling/configs/svd_interpolation_high_quali.yaml \
     --model_keyframes_config=scripts/sampling/configs/svd_keyframes_no_beats.yaml \
     --get_landmarks=False \
     --landmark_folder=landmarks_crop \
@@ -68,13 +68,13 @@ python scripts/sampling/full_pipeline_paper.py \
     --chunk_size=2 \
     --audio_folder=audio \
     --audio_emb_folder=audio_emb \
-    --output_folder=/data/home/antoni/results/${output_folder} \
+    --output_folder=/data/home/antoni/results_updated/${output_folder} \
     --keyframes_ckpt=${keyframes_ckpt} \
     --interpolation_ckpt=${interpolation_ckpt} \
     --double_first=False \
     --add_zero_flag=True \
     --emotion_folder=emotions \
-    --extra_audio=None \
+    --extra_audio=both \
     --compute_until=45 \
     --audio_emb_type=wav2vec2 \
     # --starting_index=${starting_index} \

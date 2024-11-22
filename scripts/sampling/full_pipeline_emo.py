@@ -10,9 +10,11 @@ import torch.nn.functional as F
 from einops import rearrange, repeat
 from fire import Fire
 from omegaconf import OmegaConf
-from torchvision.io import read_video
+from torchvision.io import read_video, read_image
 import torchaudio
 from safetensors.torch import load_file as load_safetensors
+from PIL import Image
+import torchvision.transforms as T
 
 from sgm.util import default, instantiate_from_config, trim_pad_audio, get_raw_audio, save_audio_video
 from sgm.data.data_utils import (
@@ -179,8 +181,8 @@ def create_emotion_list(emotion_states, total_frames, accentuate=False):
 
     if len(emotion_states) == 1:
         v, a = emotion_values[emotion_states[0]]
-        valence = [v] * total_frames
-        arousal = [a] * total_frames
+        valence = [v] * (total_frames + 2)
+        arousal = [a] * (total_frames + 2)
     else:
         frames_per_transition = total_frames // (len(emotion_states) - 1)
 
@@ -199,6 +201,9 @@ def create_emotion_list(emotion_states, total_frames, accentuate=False):
 
         valence = valence[:total_frames]
         arousal = arousal[:total_frames]
+        # Save valence and arousal as numpy arrays
+        valence = np.array(valence)
+        arousal = np.array(arousal)
 
     return (torch.tensor(valence), torch.tensor(arousal), torch.zeros(total_frames))
 
@@ -233,6 +238,8 @@ def create_pipeline_inputs(
         emotions = create_emotion_list(emotion_states, audio.shape[0], accentuate=accentuate)
     elif accentuate:
         emotions = (torch.clamp(emotions[0] * 1.5, -1, 1), torch.clamp(emotions[1] * 1.5, -1, 1), emotions[2])
+    else:
+        emotions = create_emotion_list(["neutral"], audio.shape[0], accentuate=accentuate)
 
     # Ensure there's at least one step forward on each iteration
     if step < 1:
@@ -259,9 +266,13 @@ def create_pipeline_inputs(
             audio_image_preds_idx.append(segment_end - 1)
             audio_image_preds.append(audio[segment_end - 1])
             if emotions is not None:
-                emotions_chunks.append(
-                    (emotions[0][segment_end - 1], emotions[1][segment_end - 1], emotions[2][segment_end - 1])
-                )
+                try:
+                    emotions_chunks.append(
+                        (emotions[0][segment_end - 1], emotions[1][segment_end - 1], emotions[2][segment_end - 1])
+                    )
+                except IndexError:
+                    # add from the last one
+                    emotions_chunks.append(emotions_chunks[-1])
             # emotions_chunks.append(
             #     (torch.ones_like(emotions[0][segment_end - 1]), torch.ones_like(emotions[1][segment_end - 1]))
             # )
@@ -392,7 +403,7 @@ def get_audio_embeddings(
             audio = audio[:max_frames]
             if audio_interpolation is not None:
                 audio_interpolation = audio_interpolation[:max_frames]
-        if extra_audio is not None:
+        if extra_audio in ["key", "both"]:
             # extra_audio_emb = torch.load(audio_path.replace(f"_{audio_emb_type}_emb", "_beats_emb"))
             extra_audio_emb = load_safetensors(audio_path.replace(f"_{audio_emb_type}_emb", "_beats_emb"))["audio"]
             if max_frames is not None:
@@ -408,6 +419,17 @@ def get_audio_embeddings(
 
         if audio_interpolation is None:
             audio_interpolation = audio
+        elif extra_audio in ["interp", "both"]:
+            extra_audio_emb = load_safetensors(audio_path.replace(f"_{audio_emb_type}_emb", "_beats_emb"))["audio"]
+            if max_frames is not None:
+                extra_audio_emb = extra_audio_emb[:max_frames]
+            print(
+                f"Loaded extra audio embeddings from {audio_path.replace(f'_{audio_emb_type}_emb', '_beats_emb')} {extra_audio_emb.shape}."
+            )
+            min_size = min(audio_interpolation.shape[0], extra_audio_emb.shape[0])
+            audio = audio[:min_size]
+            audio_interpolation = torch.cat([audio_interpolation[:min_size], extra_audio_emb[:min_size]], dim=-1)
+            print(f"Loaded audio embeddings from {audio_path} {audio.shape}.")
         print(f"Loaded audio embeddings from {audio_path} {audio.shape}.")
         raw_audio_path = audio_path.replace(".safetensors", ".wav").replace(f"_{audio_emb_type}_emb", "")
         if audio_folder is not None:
@@ -836,7 +858,13 @@ def sample(
 
         emotions = None
         if emotion_folder is not None:
-            emotions_path = video_path.replace(video_folder, emotion_folder).replace(".mp4", ".pt")
+            emotions_path = (
+                audio_path.replace(f"/{audio_folder}/", f"/{emotion_folder}/")
+                .replace(f"/{audio_folder}_emb/", f"/{emotion_folder}/")
+                .replace(".wav", ".pt")
+                .replace(f"_{audio_emb_type}_emb.safetensors", ".pt")
+            )
+            print(emotions_path)
             emotions = torch.load(emotions_path)
             emotions = emotions["valence"], emotions["arousal"], emotions["labels"]
 
@@ -849,23 +877,37 @@ def sample(
             )
             landmarks = scale_landmarks(landmarks[:, :, :2], (h, w), (512, 512))
         #     )
-        for k in vid_to_init_frame.keys():
-            if k in video_path:
-                video_path = vid_to_init_frame[k]
-                break
+        # for k in vid_to_init_frame.keys():
+        #     if k in video_path:
+        #         video_path = vid_to_init_frame[k]
+        #         break
+        # else:
+        #     raise ValueError(f"No initial frame found for {video_path}")
+
+        if video_path.endswith((".jpg", ".jpeg", ".png")):
+            # Handle image input
+            img = Image.open(video_path).convert("RGB")
+            transform = T.ToTensor()
+            video = transform(img).unsqueeze(0) * 255.0  # Add time dimension
+            video = (video / 255.0) * 2.0 - 1.0
+            h, w = video.shape[2:]
+            video = torch.nn.functional.interpolate(video, (512, 512), mode="bilinear")
         else:
-            raise ValueError(f"No initial frame found for {video_path}")
+            # Handle video input
+            video = read_video(video_path, output_format="TCHW")[0]
+            video = (video / 255.0) * 2.0 - 1.0
+            h, w = video.shape[2:]
+            video = torch.nn.functional.interpolate(video, (512, 512), mode="bilinear")
 
-        video = read_video(video_path, output_format="TCHW")[0]
-        video = (video / 255.0) * 2.0 - 1.0
-        h, w = video.shape[2:]
-        video = torch.nn.functional.interpolate(video, (512, 512), mode="bilinear")
-
-        video_embedding_path = video_path.replace(".mp4", "_video_512_latent.safetensors")
+        video_embedding_path = video_path.replace(".mp4", "_video_512_latent.safetensors").replace(
+            ".png", "_video_512_latent.safetensors"
+        )
         if video_folder is not None and latent_folder is not None:
             video_embedding_path = video_embedding_path.replace(video_folder, latent_folder)
         video_emb = None
+
         if use_latent:
+            print(video_embedding_path)
             video_emb = load_safetensors(video_embedding_path)["latents"].cpu()
 
         if compute_until == "end":
@@ -922,7 +964,7 @@ def sample(
                     f"WARNING: Your image is of size {h}x{w} which is not divisible by 64. We are resizing to {height}x{width}!"
                 )
 
-        emotion_states = [audio_path.split("/")[-3]]
+        # emotion_states = None
 
         (
             gt_chunks,
@@ -973,7 +1015,7 @@ def sample(
         valence_list = None
         arousal_list = None
         labels_list = None
-        if emotions is not None:
+        if emotions_chunks is not None:
             valence_list = torch.stack([x[0] for x in emotions_chunks]).to(device)
             arousal_list = torch.stack([x[1] for x in emotions_chunks]).to(device)
             labels_list = torch.stack([x[2] for x in emotions_chunks]).to(device)
@@ -1039,13 +1081,26 @@ def sample(
                 end_idx = len(test_interpolation_list) - 1 - end_idx  # Adjust for reversed enumeration
             end_idx += 1
 
+            print("Testing keyframes: ", test_keyframes_list_unwrapped)
+            # print("start_idx:", start_idx)
+            # print("end_idx:", end_idx)
+            # print("test_interpolation_list length:", len(test_interpolation_list))
+            # print("test_keyframes_list_unwrapped:", test_keyframes_list_unwrapped)
+            # print("first_keyframe:", first_keyframe)
+            # print("last_keyframe:", last_keyframe)
+            # print("test_interpolation_list:", test_interpolation_list)
+
+            if first_keyframe == last_keyframe:
+                print("First and last keyframe are the same. Exiting.")
+                break
+
             if end_idx < start_idx:
                 end_idx = len(audio_interpolation_list)
 
             audio_interpolation_list_chunk = audio_interpolation_list[start_idx:end_idx]
 
             print(start_idx, end_idx)
-            print("Testing keyframes: ", test_keyframes_list_unwrapped)
+
             print("Testing interpolation: ", test_interpolation_list[start_idx:end_idx])
             print("To remove: ", to_remove_chunks_unwrapped)
 
@@ -1332,13 +1387,21 @@ def main(
     if filelist_audio:
         with open(filelist_audio, "r") as f:
             audio_paths = f.readlines()
-        audio_paths = [
-            path.strip().replace("video_crop", "audio_emb").replace(".mp4", f"_{audio_emb_type}_emb.safetensors")
-            for path in audio_paths
-        ]
+        if ".mp4" in audio_paths[0]:
+            audio_paths = [
+                path.strip().replace("/video_crop", "/audio_emb").replace(".mp4", f"_{audio_emb_type}_emb.safetensors")
+                for path in audio_paths
+            ]
+        else:
+            audio_paths = [
+                path.strip().replace("/audio/", "/audio_emb/").replace(".wav", f"_{audio_emb_type}_emb.safetensors")
+                for path in audio_paths
+            ]
     else:
         audio_paths = [
-            video_path.replace("video_crop", "audio_emb").replace(".mp4", f"_{audio_emb_type}_emb.safetensors")
+            video_path.replace("/video_crop", "/audio_emb")
+            .replace(".mp4", f"_{audio_emb_type}_emb.safetensors")
+            .replace(".wav", f"_{audio_emb_type}_emb.safetensors")
             for video_path in video_paths
         ]
 

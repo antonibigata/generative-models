@@ -1,0 +1,36 @@
+
+Stats for CelebV-Text:
+number_of_videos: 75307
+number_of_speakers: 9109
+total_duration_seconds: 480550.959999999
+average_duration_seconds: 6.381225649673987
+
+Stats for AA_processed:
+number_of_videos: 4677
+number_of_speakers: 824
+total_duration_seconds: 575999.6333333317
+average_duration_seconds: 123.15579074905531
+
+Stats for CelebV_HQ:
+number_of_videos: 12158
+number_of_speakers: 3668
+total_duration_seconds: 48563.36000000016
+average_duration_seconds: 3.9943543345945187
+
+Stats for HDTF:
+number_of_videos: 318
+number_of_speakers: 264
+total_duration_seconds: 44228.0
+average_duration_seconds: 139.0817610062893
+
+Stats for 1000actors_nsv:
+number_of_videos: 5701
+number_of_speakers: 639
+total_duration_seconds: 107995.63333333377
+average_duration_seconds: 18.94327895690822
+
+Total stats across all datasets:
+number_of_videos: 98161
+number_of_speakers: 14078
+total_duration_seconds: 1257337.5866666415
+average_duration_seconds: 12.808932128509708

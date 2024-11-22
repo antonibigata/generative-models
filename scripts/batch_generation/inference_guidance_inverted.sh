@@ -76,6 +76,6 @@ python scripts/sampling/full_pipeline_paper.py \
     --emotion_folder=emotions \
     --extra_audio=both \
     --compute_until=45 \
-    --audio_emb_type=wav2vec2 \
+    --audio_emb_type=wavlm \
     # --starting_index=${starting_index} \
 

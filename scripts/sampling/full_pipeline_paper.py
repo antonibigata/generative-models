@@ -217,7 +217,7 @@ def create_pipeline_inputs(
     print(f"Added {frames_needed} frames from the start to make audio_image_preds a multiple of {num_frames}")
 
     # random_cond_idx = np.random.randint(0, len(video_emb))
-    random_cond_idx = 25
+    random_cond_idx = 0
 
     assert len(to_remove) == len(audio_image_preds), "to_remove and audio_image_preds must have the same length"
 
@@ -303,7 +303,7 @@ def get_audio_embeddings(
 
         if audio_interpolation is None:
             audio_interpolation = audio
-        if extra_audio == "interp":
+        elif extra_audio in ["interp", "both"]:
             extra_audio_emb = load_safetensors(audio_path.replace(f"_{audio_emb_type}_emb", "_beats_emb"))["audio"]
             if max_frames is not None:
                 extra_audio_emb = extra_audio_emb[:max_frames]
@@ -311,6 +311,7 @@ def get_audio_embeddings(
                 f"Loaded extra audio embeddings from {audio_path.replace(f'_{audio_emb_type}_emb', '_beats_emb')} {extra_audio_emb.shape}."
             )
             min_size = min(audio_interpolation.shape[0], extra_audio_emb.shape[0])
+            audio = audio[:min_size]
             audio_interpolation = torch.cat([audio_interpolation[:min_size], extra_audio_emb[:min_size]], dim=-1)
             print(f"Loaded audio embeddings from {audio_path} {audio.shape}.")
         print(f"Loaded audio embeddings from {audio_path} {audio.shape}.")
@@ -668,6 +669,7 @@ def sample(
     audio_emb_type: str = "wav2vec2",
     extra_naming: str = "",
     is_image_model: bool = False,
+    scale: list = None,
 ):
     """
     Simple script to generate a single sample conditioned on an image `input_path` or multiple images, one for each
@@ -1189,7 +1191,9 @@ def main(
     starting_index: int = 0,
     audio_emb_type: str = "wav2vec2",
     is_image_model: bool = False,
+    scale: list = None,
 ):
+    print("Scale: ", scale)
     num_frames = default(num_frames, 14)
     model, filter, n_batch = load_model(
         model_config,
@@ -1211,6 +1215,10 @@ def main(
         "latents",
         keyframes_ckpt,
     )
+    if scale is not None:
+        if len(scale) == 1:
+            scale = scale[0]
+        model_keyframes.sampler.guider.set_scale(scale)
 
     # Open the filelist and read the video paths
     with open(filelist, "r") as f:

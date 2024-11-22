@@ -1,0 +1,7 @@
+/data/home/antoni/code/generative-models/custom_inputs/ood_ids/broglie.png
+/data/home/antoni/code/generative-models/custom_inputs/ood_ids/mona_cropped.png
+/data/home/antoni/code/generative-models/custom_inputs/ood_ids/dora_maar.png
+/data/home/antoni/code/generative-models/custom_inputs/ood_ids/girl_earing.png
+/data/home/antoni/code/generative-models/custom_inputs/ood_ids/Leon_Riesener_cropped.png
+/data/home/antoni/code/generative-models/custom_inputs/ood_ids/Renoir_cropped.png
+/data/home/antoni/code/generative-models/custom_inputs/ood_ids/man_w_a_ring_cropped.png

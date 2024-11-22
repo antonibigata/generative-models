@@ -68,7 +68,7 @@ python scripts/sampling/full_pipeline_paper.py \
     --chunk_size=2 \
     --audio_folder=audio \
     --audio_emb_folder=audio_emb \
-    --output_folder=/data/home/antoni/results/${output_folder} \
+    --output_folder=/data/home/antoni/results_updated/${output_folder} \
     --keyframes_ckpt=${keyframes_ckpt} \
     --interpolation_ckpt=${interpolation_ckpt} \
     --double_first=False \
@@ -76,6 +76,6 @@ python scripts/sampling/full_pipeline_paper.py \
     --emotion_folder=emotions \
     --extra_audio=both \
     --compute_until=45 \
-    --audio_emb_type=wav2vec2 \
+    --audio_emb_type=wavlm \
     # --starting_index=${starting_index} \
 

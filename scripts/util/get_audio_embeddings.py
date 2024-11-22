@@ -181,7 +181,8 @@ def get_audio_embeddings(audio_path, output_path, model_size, fps, video_fps):
                 if max_len_sec is not None:
                     audio = trim_pad_audio(audio, audio_rate, max_len_sec=max_len_sec)[0]
                 else:
-                    audio = audio[0]
+                    if audio.dim() == 2:
+                        audio = audio[0]
                 audio = make_into_multiple_of(audio, samples_per_frame, dim=0)
                 audio_frames = rearrange(audio, "(f s) -> f s", s=samples_per_frame)
                 samples_frames = audio_frames.shape[0]
@@ -220,7 +221,9 @@ def get_audio_embeddings(audio_path, output_path, model_size, fps, video_fps):
                 if max_len_sec is not None:
                     audio = trim_pad_audio(audio, audio_rate, max_len_sec=max_len_sec)[0]
                 else:
-                    audio = audio[0]
+                    if audio.dim() == 2:
+                        audio = audio[0]
+
                 audio = make_into_multiple_of(audio, samples_per_frame, dim=0)
                 audio_frames = rearrange(audio, "(f s) -> f s", s=samples_per_frame)
                 if not args.skip_video and audio_frames.shape[0] - len_video == 1:
@@ -256,6 +259,7 @@ def get_audio_embeddings(audio_path, output_path, model_size, fps, video_fps):
             os.makedirs(os.path.dirname(audio_file_name), exist_ok=True)
             torch.save(audio_embeddings.squeeze(0).cpu(), audio_file_name)
         except Exception as e:
+            raise e
             print(f"Failed for file {audio_file}: {str(e)}")
             # print(audio_frames.shape)
             continue  # Continue to the next file instead of raising the exception

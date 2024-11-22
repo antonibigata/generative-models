@@ -7,6 +7,9 @@ import os
 import sys
 from pathlib import Path
 
+# Handle image input
+from PIL import Image
+import torchvision.transforms as T
 import torch
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
@@ -100,23 +103,32 @@ def main():
 
             # Run the model
             with torch.no_grad():
-                if args.chunk_size is not None:
-                    encoded = []
-                    video_reader = decord.VideoReader(video_file)
-                    for i in tqdm(range(0, len(video_reader), args.chunk_size), leave=False, desc="Chunking"):
-                        video = video_reader.get_batch(range(i, min(i + args.chunk_size, len(video_reader))))
-                        encoded_chunk = encode_video(video)
-                        encoded.append(encoded_chunk)
-                    # Process the last chunk
-                    if i < len(video_reader):
-                        video = video_reader.get_batch(range(i, len(video_reader)))
-                        encoded_chunk = encode_video(video)
-                        encoded.append(encoded_chunk)
-                    encoded = torch.cat(encoded, dim=0)
+                if video_file.endswith((".jpg", ".jpeg", ".png")):
+                    # Load and convert image to tensor
+                    img = Image.open(video_file).convert("RGB")
+                    transform = T.ToTensor()
+                    video = transform(img).unsqueeze(0) * 255.0  # Add time dimension
+                    encoded = encode_video(rearrange(video, "t c h w -> t h w c"))
+                    video_reader = [None]
                 else:
-                    video_reader = decord.VideoReader(video_file)
-                    video = video_reader.get_batch(range(len(video_reader)))
-                    encoded = encode_video(video)
+                    # Handle video input
+                    if args.chunk_size is not None:
+                        encoded = []
+                        video_reader = decord.VideoReader(video_file)
+                        for i in tqdm(range(0, len(video_reader), args.chunk_size), leave=False, desc="Chunking"):
+                            video = video_reader.get_batch(range(i, min(i + args.chunk_size, len(video_reader))))
+                            encoded_chunk = encode_video(video)
+                            encoded.append(encoded_chunk)
+                        # Process the last chunk
+                        if i < len(video_reader):
+                            video = video_reader.get_batch(range(i, len(video_reader)))
+                            encoded_chunk = encode_video(video)
+                            encoded.append(encoded_chunk)
+                        encoded = torch.cat(encoded, dim=0)
+                    else:
+                        video_reader = decord.VideoReader(video_file)
+                        video = video_reader.get_batch(range(len(video_reader)))
+                        encoded = encode_video(video)
 
             # Create output path in same directory as video
             if encoded.shape[0] > len(video_reader):
@@ -129,8 +141,9 @@ def main():
             else:
                 save_file({"latents": encoded.cpu(), "init_rez": torch.tensor(video.shape[-2:])}, out_path)
 
-        except:
+        except Exception as e:
             print(f"Failed for file {video_file}")
+            raise e
 
     print(f"Missing: {missing}")
 
