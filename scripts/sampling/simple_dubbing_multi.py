@@ -420,7 +420,7 @@ def sample(
         value_dict["cond_frames_without_noise"] = condition
         value_dict["masks"] = masks.transpose(1, 2).to(device)
 
-        value_dict["cond_frames"] = condition_emb
+        value_dict["cond_frames"] = rearrange(embbedings, "b t c h w -> (b t) c h w").to(device)
         value_dict["cond_aug"] = cond_aug
         value_dict["audio_emb"] = audio_cond
         value_dict["gt"] = rearrange(embbedings, "b t c h w -> b c t h w").to(device)
@@ -454,7 +454,7 @@ def sample(
 
                 additional_model_inputs = {}
                 additional_model_inputs["image_only_indicator"] = torch.zeros(n_batch, num_frames).to(device)
-                print('image_only_indicator', additional_model_inputs["image_only_indicator"].shape)
+                print("image_only_indicator", additional_model_inputs["image_only_indicator"].shape)
                 additional_model_inputs["num_video_frames"] = batch["num_video_frames"]
 
                 if chunk_size is not None:

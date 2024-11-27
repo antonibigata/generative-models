@@ -44,3 +44,4 @@ srun python main.py --base configs/example_training/svd_dubbing_half.yaml --wand
     lightning.trainer.devices=4 lightning.trainer.accumulate_grad_batches=1 \
     model.params.network_config.params.audio_cond_method=to_time_emb data.params.train.datapipeline.what_mask=box \
     'model.params.to_freeze=["time_"]' 'model.params.to_unfreeze=["time_embed"]' data.params.train.loader.batch_size=2 \
+    data.params.train.datapipeline.use_different_cond_frames=True 

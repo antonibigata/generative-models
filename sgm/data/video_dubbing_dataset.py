@@ -14,14 +14,12 @@ import soundfile as sf
 from torchvision.transforms import RandomHorizontalFlip
 from audiomentations import Compose, AddGaussianNoise, PitchShift
 from safetensors.torch import load_file
-from torchvision import utils as torch_utils
-import pickle
 from sgm.data.data_utils import (
-	create_masks_from_landmarks_full_size,
-	create_face_mask_from_landmarks,
-	create_masks_from_landmarks_box,
-	create_masks_half_face,
-	create_masks_from_landmarks_cheeks
+    create_masks_from_landmarks_full_size,
+    create_face_mask_from_landmarks,
+    create_masks_from_landmarks_box,
+    create_masks_half_face,
+    create_masks_from_landmarks_cheeks,
 )
 
 torchaudio.set_audio_backend("sox_io")
@@ -29,24 +27,24 @@ decord.bridge.set_bridge("torch")
 
 
 def exists(x):
-	return x is not None
+    return x is not None
 
 
 def trim_pad_audio(audio, sr, max_len_sec=None, max_len_raw=None):
-	len_file = audio.shape[-1]
+    len_file = audio.shape[-1]
 
-	if max_len_sec or max_len_raw:
-		max_len = max_len_raw if max_len_raw is not None else int(max_len_sec * sr)
-		if len_file < int(max_len):
-			# dummy = np.zeros((1, int(max_len_sec * sr) - len_file))
-			# extened_wav = np.concatenate((audio_data, dummy[0]))
-			extened_wav = torch.nn.functional.pad(audio, (0, int(max_len) - len_file), "constant")
-		else:
-			extened_wav = audio[:, : int(max_len)]
-	else:
-		extened_wav = audio
+    if max_len_sec or max_len_raw:
+        max_len = max_len_raw if max_len_raw is not None else int(max_len_sec * sr)
+        if len_file < int(max_len):
+            # dummy = np.zeros((1, int(max_len_sec * sr) - len_file))
+            # extened_wav = np.concatenate((audio_data, dummy[0]))
+            extened_wav = torch.nn.functional.pad(audio, (0, int(max_len) - len_file), "constant")
+        else:
+            extened_wav = audio[:, : int(max_len)]
+    else:
+        extened_wav = audio
 
-	return extened_wav
+    return extened_wav
 
 
 # Similar to regular video dataset but trades flexibility for speed
@@ -88,6 +86,7 @@ class VideoDataset(Dataset):
         get_masks=False,
         only_predict_mouth=False,
         what_mask="full",
+        use_different_cond_frames=False,
     ):
         self.audio_folder = audio_folder
         self.from_audio_embedding = from_audio_embedding
@@ -99,7 +98,11 @@ class VideoDataset(Dataset):
         self.only_predict_mouth = only_predict_mouth
         self.what_mask = what_mask
         self.audio_emb_folder = audio_emb_folder if audio_emb_folder is not None else audio_folder
+        self.use_different_cond_frames = use_different_cond_frames
         # self.fps = fps
+
+        # if use_different_cond_frames:
+        #     self.n_cond_frames = num_frames
 
         assert not (exists(data_mean) ^ exists(data_std)), "Both data_mean and data_std should be provided"
 
@@ -352,6 +355,12 @@ class VideoDataset(Dataset):
             if self.latent_condition:
                 # Noisy cond is the taget with lower part of the face removed
                 if self.only_predict_mouth:
+                    if self.use_different_cond_frames:
+                        # Get n_frames consecutive indexes from the video
+                        start_index = np.random.randint(0, len_video - self.num_frames)
+                        random_id_index = np.arange(
+                            start=start_index, stop=start_index + self.num_frames, dtype=np.int32
+                        )
                     noisy_cond = latents[random_id_index, :, :, :]
                     noisy_cond = rearrange(noisy_cond, "t c h w -> c t h w") * self.latent_scale
                 else:
@@ -480,22 +489,22 @@ class VideoDataset(Dataset):
 
 
 if __name__ == "__main__":
-	import torchvision.transforms as transforms
-	import cv2
+    import torchvision.transforms as transforms
+    import cv2
 
-	transform = transforms.Compose(transforms=[transforms.Resize((256, 256))])
-	dataset = VideoDataset(
-		"/vol/paramonos2/projects/antoni/datasets/mahnob/filelist_videos_val.txt", transform=transform, num_frames=25
-	)
-	print(len(dataset))
-	idx = np.random.randint(0, len(dataset))
+    transform = transforms.Compose(transforms=[transforms.Resize((256, 256))])
+    dataset = VideoDataset(
+        "/vol/paramonos2/projects/antoni/datasets/mahnob/filelist_videos_val.txt", transform=transform, num_frames=25
+    )
+    print(len(dataset))
+    idx = np.random.randint(0, len(dataset))
 
-	for i in range(10):
-		print(dataset[i][0].shape, dataset[i][1].shape)
+    for i in range(10):
+        print(dataset[i][0].shape, dataset[i][1].shape)
 
-	image_identity = (dataset[idx][0].permute(1, 2, 0).numpy() + 1) / 2 * 255
-	image_other = (dataset[idx][1][:, -1].permute(1, 2, 0).numpy() + 1) / 2 * 255
-	cv2.imwrite("image_identity.png", image_identity[:, :, ::-1])
-	for i in range(25):
-		image = (dataset[idx][1][:, i].permute(1, 2, 0).numpy() + 1) / 2 * 255
-		cv2.imwrite(f"tmp_vid_dataset/image_{i}.png", image[:, :, ::-1])
+    image_identity = (dataset[idx][0].permute(1, 2, 0).numpy() + 1) / 2 * 255
+    image_other = (dataset[idx][1][:, -1].permute(1, 2, 0).numpy() + 1) / 2 * 255
+    cv2.imwrite("image_identity.png", image_identity[:, :, ::-1])
+    for i in range(25):
+        image = (dataset[idx][1][:, i].permute(1, 2, 0).numpy() + 1) / 2 * 255
+        cv2.imwrite(f"tmp_vid_dataset/image_{i}.png", image[:, :, ::-1])

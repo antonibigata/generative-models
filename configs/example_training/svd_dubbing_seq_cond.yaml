@@ -127,8 +127,8 @@ model:
           target: sgm.modules.encoders.modules.VideoPredictionEmbedderWithEncoder
           params:
             disable_encoder_autocast: True
-            n_cond_frames: 1
-            n_copies: 14
+            n_cond_frames: 14
+            n_copies: 1
             is_ae: True
             load_encoder: False
             encoder_config:
@@ -285,7 +285,7 @@ data:
         use_latent_condition: True
         only_predict_mouth: True
         what_mask: full
-        use_different_cond_frames: False
+        use_different_cond_frames: True
 
       loader:
         batch_size: 1
