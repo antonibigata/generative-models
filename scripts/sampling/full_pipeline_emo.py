@@ -784,6 +784,7 @@ def sample(
     emotion_states: Optional[list[str]] = None,
     extra_naming: str = "",
     accentuate: bool = False,
+    recompute: bool = False,
 ):
     """
     Simple script to generate a single sample conditioned on an image `input_path` or multiple images, one for each
@@ -827,7 +828,7 @@ def sample(
         video_out_name = "_".join(video_path.split("/")[-6:])
     out_video_path = os.path.join(output_folder, video_out_name)
 
-    if os.path.exists(out_video_path):
+    if os.path.exists(out_video_path) and not recompute:
         print(f"Video already exists at {out_video_path}. Skipping.")
         return
 
@@ -1354,6 +1355,7 @@ def main(
     audio_emb_type: str = "wav2vec2",
     emotion_states: Optional[list[str]] = None,
     accentuate: bool = False,
+    recompute: bool = False,
 ):
     num_frames = default(num_frames, 14)
     model, filter, n_batch = load_model(
@@ -1394,7 +1396,11 @@ def main(
             ]
         else:
             audio_paths = [
-                path.strip().replace("/audio/", "/audio_emb/").replace(".wav", f"_{audio_emb_type}_emb.safetensors")
+                path.strip()
+                .replace("/audio/", "/audio_emb/")
+                .replace(".wav", f"_{audio_emb_type}_emb.safetensors")
+                .replace("/datasets01/", "/fsx/")
+                .replace("/LRS3_audio/", "/audio_emb/")
                 for path in audio_paths
             ]
     else:
@@ -1459,6 +1465,7 @@ def main(
             emotion_states=emotion_states,
             extra_naming=os.path.basename(audio_path).split(".")[0] if filelist_audio else "",
             accentuate=accentuate,
+            recompute=recompute,
         )
 
 

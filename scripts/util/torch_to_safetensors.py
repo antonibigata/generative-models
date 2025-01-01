@@ -4,6 +4,7 @@ from safetensors.torch import save_file
 import argparse
 from tqdm import tqdm
 import os
+import random
 
 
 def convert_to_safetensors(args):
@@ -12,6 +13,8 @@ def convert_to_safetensors(args):
             file_list = [line.strip() for line in f]
     else:
         file_list = glob.glob(args.glob_path)
+
+    random.shuffle(file_list)
 
     for file_path in tqdm(file_list, desc="Converting", total=len(file_list)):
         if file_path.endswith(".pt"):

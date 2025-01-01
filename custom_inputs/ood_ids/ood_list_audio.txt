@@ -1,14 +1,2 @@
 /fsx/rs2517/data/HDTF/audio/WDA_BarackObama_000.wav
-/fsx/rs2517/data/HDTF/audio/WDA_BarackObama_000.wav
-/fsx/rs2517/data/HDTF/audio/WDA_BarackObama_000.wav
-/fsx/rs2517/data/HDTF/audio/WDA_BarackObama_000.wav
-/fsx/rs2517/data/HDTF/audio/WDA_BarackObama_000.wav
-/fsx/rs2517/data/HDTF/audio/WDA_BarackObama_000.wav
-/fsx/rs2517/data/HDTF/audio/WDA_LaurenUnderwood_000.wav
-/fsx/rs2517/data/HDTF/audio/WDA_LaurenUnderwood_000.wav
-/fsx/rs2517/data/HDTF/audio/WDA_LaurenUnderwood_000.wav
-/fsx/rs2517/data/HDTF/audio/WDA_LaurenUnderwood_000.wav
-/fsx/rs2517/data/HDTF/audio/WDA_LaurenUnderwood_000.wav
-/fsx/rs2517/data/HDTF/audio/WDA_LaurenUnderwood_000.wav
-/fsx/rs2517/data/HDTF/audio/WDA_LaurenUnderwood_000.wav
 /fsx/rs2517/data/HDTF/audio/WDA_LaurenUnderwood_000.wav
